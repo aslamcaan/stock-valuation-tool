@@ -1,0 +1,87 @@
+{
+  "ticker": "UBER",
+  "source": "PROMPT.md Section 15, golden test 2",
+  "units": "US$ millions",
+  "fiscal_year_end": "12-31",
+  "tolerance": 0.005,
+  "metrics": {
+    "gross_bookings": {
+      "values": {
+        "FY2023": 137865,
+        "FY2024": 162773,
+        "FY2025": 193454
+      },
+      "note": "Non-GAAP KPI, not in XBRL. Manual fixture input (from the brief), used for the KPI divergence flag."
+    },
+    "revenue": {
+      "values": {
+        "FY2023": 37281,
+        "FY2024": 43978,
+        "FY2025": 52017
+      }
+    },
+    "operating_income": {
+      "values": {
+        "FY2023": 1110,
+        "FY2024": 2799,
+        "FY2025": 5565
+      }
+    },
+    "net_income_attributable": {
+      "values": {
+        "FY2023": 1887,
+        "FY2024": 9856,
+        "FY2025": 10053
+      },
+      "note": "Net income attributable to Uber Technologies, Inc."
+    },
+    "cash_from_operations": {
+      "values": {
+        "FY2023": 3585,
+        "FY2024": 7137,
+        "FY2025": 10099
+      }
+    },
+    "capex": {
+      "values": {
+        "FY2023": 223,
+        "FY2024": 242,
+        "FY2025": 336
+      },
+      "note": "Purchases of property and equipment (cash flow statement)."
+    },
+    "total_assets": {
+      "values": {
+        "FY2023": 38699,
+        "FY2024": 51244,
+        "FY2025": 61802
+      }
+    },
+    "total_equity": {
+      "values": {
+        "FY2023": 12028,
+        "FY2024": 22383,
+        "FY2025": 27918
+      }
+    },
+    "long_term_debt": {
+      "values": {
+        "FY2023": 9459,
+        "FY2024": 8347,
+        "FY2025": 10521
+      }
+    }
+  },
+  "manual_inputs": [
+    "gross_bookings"
+  ],
+  "expected_flags": [
+    {
+      "flag": "net_income_far_above_operating_income",
+      "periods": [
+        "FY2024",
+        "FY2025"
+      ]
+    }
+  ]
+}

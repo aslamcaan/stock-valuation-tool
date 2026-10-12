@@ -1,0 +1,365 @@
+{
+  "source_file": "tests/fixtures/grab_model.xlsx",
+  "sheet": "GRAB DCF",
+  "title": "Grab Holdings (GRAB) - DCF Valuation Model",
+  "prepared": "Prepared by Aslam Khan | September 2026",
+  "units": "US$ millions, except per-share values",
+  "historicals": {
+    "FY2025A": {
+      "revenue": {
+        "value": 3370,
+        "cell": "'GRAB DCF'!B13"
+      },
+      "ebitda": {
+        "value": 498.76,
+        "cell": "'GRAB DCF'!B14",
+        "formula": "=B13*B7"
+      },
+      "d_and_a": {
+        "value": 101.1,
+        "cell": "'GRAB DCF'!B15",
+        "formula": "=B13*B8"
+      },
+      "capex": {
+        "value": -101.1,
+        "cell": "'GRAB DCF'!B20",
+        "formula": "=-B13*B9"
+      },
+      "ebit": {
+        "value": 397.65999999999997,
+        "cell": "'GRAB DCF'!B16",
+        "formula": "=B14-B15"
+      }
+    },
+    "balance_sheet": {
+      "cash_and_investments": {
+        "value": 6861,
+        "cell": "'GRAB DCF'!B53"
+      },
+      "total_debt": {
+        "value": 1600,
+        "cell": "'GRAB DCF'!B27"
+      },
+      "shares_outstanding_m": {
+        "value": 4100,
+        "cell": "'GRAB DCF'!B25"
+      }
+    },
+    "market": {
+      "share_price": {
+        "value": 3.05,
+        "cell": "'GRAB DCF'!B24"
+      }
+    },
+    "notes": "FY2025A EBITDA, D&A and capex are the FY2025 ratios in rows 7-9 applied to revenue, not separately reported figures. EBITDA appears to be Grab's adjusted (non-IFRS) EBITDA."
+  },
+  "assumptions": {
+    "revenue_growth": {
+      "FY2026E": {
+        "value": 0.21,
+        "cell": "'GRAB DCF'!C6"
+      },
+      "FY2027E": {
+        "value": 0.18,
+        "cell": "'GRAB DCF'!D6"
+      },
+      "FY2028E": {
+        "value": 0.15,
+        "cell": "'GRAB DCF'!E6"
+      },
+      "FY2029E": {
+        "value": 0.12,
+        "cell": "'GRAB DCF'!F6"
+      },
+      "FY2030E": {
+        "value": 0.1,
+        "cell": "'GRAB DCF'!G6"
+      }
+    },
+    "ebitda_margin": {
+      "FY2025A": {
+        "value": 0.148,
+        "cell": "'GRAB DCF'!B7"
+      },
+      "FY2026E": {
+        "value": 0.175,
+        "cell": "'GRAB DCF'!C7"
+      },
+      "FY2027E": {
+        "value": 0.2,
+        "cell": "'GRAB DCF'!D7"
+      },
+      "FY2028E": {
+        "value": 0.23,
+        "cell": "'GRAB DCF'!E7"
+      },
+      "FY2029E": {
+        "value": 0.25,
+        "cell": "'GRAB DCF'!F7"
+      },
+      "FY2030E": {
+        "value": 0.26,
+        "cell": "'GRAB DCF'!G7"
+      }
+    },
+    "d_and_a_pct_revenue": {
+      "FY2025A": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!B8"
+      },
+      "FY2026E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!C8"
+      },
+      "FY2027E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!D8"
+      },
+      "FY2028E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!E8"
+      },
+      "FY2029E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!F8"
+      },
+      "FY2030E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!G8"
+      }
+    },
+    "capex_pct_revenue": {
+      "FY2025A": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!B9"
+      },
+      "FY2026E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!C9"
+      },
+      "FY2027E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!D9"
+      },
+      "FY2028E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!E9"
+      },
+      "FY2029E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!F9"
+      },
+      "FY2030E": {
+        "value": 0.03,
+        "cell": "'GRAB DCF'!G9"
+      }
+    },
+    "tax_rate": {
+      "FY2025A": {
+        "value": 0.02,
+        "cell": "'GRAB DCF'!B10"
+      },
+      "FY2026E": {
+        "value": 0.05,
+        "cell": "'GRAB DCF'!C10"
+      },
+      "FY2027E": {
+        "value": 0.12,
+        "cell": "'GRAB DCF'!D10"
+      },
+      "FY2028E": {
+        "value": 0.2,
+        "cell": "'GRAB DCF'!E10"
+      },
+      "FY2029E": {
+        "value": 0.22,
+        "cell": "'GRAB DCF'!F10"
+      },
+      "FY2030E": {
+        "value": 0.22,
+        "cell": "'GRAB DCF'!G10"
+      }
+    },
+    "risk_free_rate": {
+      "value": 0.05,
+      "cell": "'GRAB DCF'!B31"
+    },
+    "beta": {
+      "value": 0.89,
+      "cell": "'GRAB DCF'!B32"
+    },
+    "equity_risk_premium": {
+      "value": 0.05,
+      "cell": "'GRAB DCF'!B33"
+    },
+    "pre_tax_cost_of_debt": {
+      "value": 0.03,
+      "cell": "'GRAB DCF'!B34"
+    },
+    "debt_tax_rate": {
+      "value": 0.2,
+      "cell": "'GRAB DCF'!B36"
+    },
+    "terminal_growth": {
+      "value": 0.025,
+      "cell": "'GRAB DCF'!B40"
+    }
+  },
+  "conventions": {
+    "forecast_years": [
+      "FY2026E",
+      "FY2027E",
+      "FY2028E",
+      "FY2029E",
+      "FY2030E"
+    ],
+    "discounting": "end_of_year",
+    "discount_periods": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "stub_period": false,
+    "fcf_definition": "NOPAT + D&A - capex (EBIT taxed at forecast tax rate); no working capital, SBC not deducted",
+    "terminal_value": "Gordon growth on FY2030E UFCF: UFCF*(1+g)/(WACC-g), discounted with the FY2030 factor",
+    "wacc_weights": "market cap (price x shares) and book total debt",
+    "equity_bridge": "EV + cash & investments - total debt",
+    "share_count": "shares outstanding (B25), no dilution adjustment"
+  },
+  "computed": {
+    "ufcf": {
+      "FY2026E": {
+        "value": 561.703175,
+        "cell": "'GRAB DCF'!C21",
+        "formula": "=C18+C19+C20"
+      },
+      "FY2027E": {
+        "value": 719.8282255999998,
+        "cell": "'GRAB DCF'!D21",
+        "formula": "=D18+D19+D20"
+      },
+      "FY2028E": {
+        "value": 885.3502239999997,
+        "cell": "'GRAB DCF'!E21",
+        "formula": "=E18+E19+E20"
+      },
+      "FY2029E": {
+        "value": 1063.4826890688,
+        "cell": "'GRAB DCF'!F21",
+        "formula": "=F18+F19+F20"
+      },
+      "FY2030E": {
+        "value": 1223.00509242912,
+        "cell": "'GRAB DCF'!G21",
+        "formula": "=G18+G19+G20"
+      }
+    },
+    "market_cap": {
+      "value": 12505,
+      "cell": "'GRAB DCF'!B26",
+      "formula": "=B24*B25"
+    },
+    "cost_of_equity": {
+      "value": 0.0945,
+      "cell": "'GRAB DCF'!B35",
+      "formula": "=B31+(B33*B32)"
+    },
+    "wacc": {
+      "value": 0.08650283587380361,
+      "cell": "'GRAB DCF'!B37",
+      "formula": "=(B29*B35)+(B30*B34*(1-B36))"
+    },
+    "terminal_value": {
+      "value": 20382.478335016014,
+      "cell": "'GRAB DCF'!B41",
+      "formula": "=G21*(1+B40)/(B37-B40)"
+    },
+    "pv_terminal_value": {
+      "value": 13461.785565369768,
+      "cell": "'GRAB DCF'!G47",
+      "formula": "=B41*G45"
+    },
+    "sum_pv_fcf": {
+      "value": 3387.9190259758248,
+      "cell": "'GRAB DCF'!B50",
+      "formula": "=SUM(C46:G46)"
+    },
+    "enterprise_value": {
+      "value": 16849.70459134559,
+      "cell": "'GRAB DCF'!B52",
+      "formula": "=B50+B51"
+    },
+    "equity_value": {
+      "value": 22110.70459134559,
+      "cell": "'GRAB DCF'!B55",
+      "formula": "=B52+B53-B54"
+    },
+    "value_per_share": {
+      "value": 5.392854778376973,
+      "cell": "'GRAB DCF'!B57",
+      "formula": "=B55/B56"
+    },
+    "upside": {
+      "value": 0.7681491076645816,
+      "cell": "'GRAB DCF'!B59",
+      "formula": "=(B57-B58)/B58"
+    }
+  },
+  "sensitivity": {
+    "description": "Value per share: terminal growth (rows B63:B67) x WACC (columns C62:G62), Excel data table",
+    "terminal_growth": [
+      0.015,
+      0.02,
+      0.025,
+      0.03,
+      0.035
+    ],
+    "wacc": [
+      0.075,
+      0.08,
+      0.0865,
+      0.09,
+      0.095
+    ],
+    "value_per_share": [
+      [
+        5.653299559483793,
+        5.295773234410218,
+        4.906262965544998,
+        4.724717480939493,
+        4.493174021321603
+      ],
+      [
+        5.991727815629445,
+        5.5768693110385765,
+        5.13135897886477,
+        4.925973611192201,
+        4.666078676421863
+      ],
+      [
+        6.397841723004223,
+        5.909073765235726,
+        5.393055969960116,
+        5.158192223022248,
+        4.863683996536444
+      ],
+      [
+        6.894203165351178,
+        6.307719110272307,
+        5.701071012576763,
+        5.429113936823972,
+        5.091690135130193
+      ],
+      [
+        7.514654968284871,
+        6.79495230976146,
+        6.068894801332566,
+        5.74929414404419,
+        5.3576972968229
+      ]
+    ],
+    "cells": "C63:G67"
+  }
+}

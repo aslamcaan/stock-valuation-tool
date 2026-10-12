@@ -24,9 +24,9 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [x] **CHECKPOINT 1:** .env instructions → user adds keys → test connections → report unavailable FMP endpoints + alternatives
 
 ### Phase 2 — golden fixtures
-- [ ] Extract tests/fixtures/grab_model.xlsx → tests/fixtures/grab_expected.json (historicals, assumptions, value per share, cell refs)
-- [ ] tests/fixtures/uber_expected.json from the brief
-- [ ] Commit + push
+- [x] Extract tests/fixtures/grab_model.xlsx → tests/fixtures/grab_expected.json (historicals, assumptions, value per share, cell refs)
+- [x] tests/fixtures/uber_expected.json from the brief
+- [x] Commit + push
 - [ ] **CHECKPOINT 2:** show extracted Grab table, wait for confirmation
 
 ### Phase 3 — historicals and financial analysis
@@ -109,3 +109,6 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   Finnhub may quote a foreign company's home listing (ASML -> ASML.AS, EUR): market-cap check must convert currency.
   After the FMP upgrade: run Debug > Market data coverage for GRAB/ASML and confirm every item says FMP.
   SEC identity set; live tests (SEC, FRED, FMP, Tiingo/Finnhub, Damodaran) pass.
+- Phase 2: Grab model is a single sheet 'GRAB DCF' (5-year DCF, end-of-year discounting, no stub, no SBC, no NWC,
+  EV + cash & investments - debt, 4,100m shares). Extractor: scripts/extract_grab_model.py (re-run if the model changes).
+  Engine needs convention switches (end-year vs mid-year, stub on/off, SBC on/off, NWC on/off) to reproduce it.

@@ -21,7 +21,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [x] Debug page showing raw data for a chosen ticker
 - [x] Offline tests with fixtures; live tests marked `@pytest.mark.live`
 - [x] Commit + push
-- [ ] **CHECKPOINT 1:** .env instructions → user adds keys → test connections → report unavailable FMP endpoints + alternatives
+- [x] **CHECKPOINT 1:** .env instructions → user adds keys → test connections → report unavailable FMP endpoints + alternatives
 
 ### Phase 2 — golden fixtures
 - [ ] Extract tests/fixtures/grab_model.xlsx → tests/fixtures/grab_expected.json (historicals, assumptions, value per share, cell refs)
@@ -102,5 +102,10 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Checkpoint 1 (2026-10-12): FRED OK; Anthropic OK (claude-haiku-5-5, claude-sonnet-5-5 available); Damodaran OK.
   FMP key is on the free plan: statements capped at limit=5; only a sample of large US symbols allowed
   (AAPL, UBER, KO, JPM, CVX, PEP, MSFT ok; GRAB, ASML, MU, SNDK, O, TRV, DASH, LYFT, SE blocked);
-  news, insider-trading and institutional-ownership endpoints restricted. Awaiting user decision: upgrade FMP or use free alternatives.
-  SEC name/email still placeholders in .env.
+  news, insider-trading and institutional-ownership endpoints restricted.
+  Decision: stay on free FMP while building; user will upgrade FMP before demos. `datasources/market.py`
+  tries FMP first, then Tiingo (prices) and Finnhub (market cap, ratings, beat/miss, news, insiders), recording the
+  reason. Analyst estimates and price targets have no free source: report says so and forecast uses history.
+  Finnhub may quote a foreign company's home listing (ASML -> ASML.AS, EUR): market-cap check must convert currency.
+  After the FMP upgrade: run Debug > Market data coverage for GRAB/ASML and confirm every item says FMP.
+  SEC identity set; live tests (SEC, FRED, FMP, Tiingo/Finnhub, Damodaran) pass.

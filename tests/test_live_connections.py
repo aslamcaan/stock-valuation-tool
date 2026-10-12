@@ -35,3 +35,10 @@ def test_fmp_quote(svc):
 
 def test_damodaran_live(svc):
     assert 0.02 < svc.damodaran.implied_erp().value < 0.08
+
+
+def test_tiingo_and_finnhub_fallback_for_grab(svc):
+    q = svc.market.quote("GRAB")
+    assert q.available and q.data["price"] > 0
+    assert svc.market.price_history("GRAB", "2025-01-01").available
+    assert svc.market.ratings("GRAB").available

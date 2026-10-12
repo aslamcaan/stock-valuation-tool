@@ -34,8 +34,14 @@ ticker = st.text_input("Ticker", value=st.session_state.get("selected", {}).get(
 if not ticker:
     st.stop()
 
-tab_edgar, tab_fmp, tab_fred, tab_dam, tab_probe = st.tabs(
-    ["SEC EDGAR", "FMP", "FRED", "Damodaran", "FMP endpoint check"])
+tab_cov, tab_edgar, tab_fmp, tab_fred, tab_dam, tab_probe = st.tabs(
+    ["Market data coverage", "SEC EDGAR", "FMP", "FRED", "Damodaran", "FMP endpoint check"])
+
+with tab_cov:
+    st.write("Which provider answers each market-data item for this ticker (FMP first, then free fallbacks).")
+    if st.button("Check coverage"):
+        with st.spinner("Checking providers…"):
+            st.dataframe(pd.DataFrame(svc.market.coverage(ticker)), hide_index=True)
 
 with tab_edgar:
     cik = _safe(svc.edgar.cik_for, ticker)

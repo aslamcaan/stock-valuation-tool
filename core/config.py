@@ -12,7 +12,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SECRET_FIELDS = {"fmp_api_key", "fred_api_key", "anthropic_api_key", "app_password", "database_url"}
+SECRET_FIELDS = {"fmp_api_key", "fred_api_key", "tiingo_api_key", "finnhub_api_key", "anthropic_api_key",
+                 "app_password", "database_url"}
 
 
 def _streamlit_secret(name: str) -> str | None:
@@ -47,6 +48,8 @@ class Settings:
     sec_user_email: str = ""
     fmp_api_key: str = field(default="", repr=False)
     fred_api_key: str = field(default="", repr=False)
+    tiingo_api_key: str = field(default="", repr=False)
+    finnhub_api_key: str = field(default="", repr=False)
     anthropic_api_key: str = field(default="", repr=False)
     max_cost_per_report: float = 0.50
     max_cost_per_day: float = 2.00
@@ -75,6 +78,8 @@ def load_settings() -> Settings:
         sec_user_email=_get("SEC_USER_EMAIL"),
         fmp_api_key=_get("FMP_API_KEY"),
         fred_api_key=_get("FRED_API_KEY"),
+        tiingo_api_key=_get("TIINGO_API_KEY"),
+        finnhub_api_key=_get("FINNHUB_API_KEY"),
         anthropic_api_key=_get("ANTHROPIC_API_KEY"),
         max_cost_per_report=_float("MAX_COST_PER_REPORT", 0.50),
         max_cost_per_day=_float("MAX_COST_PER_DAY", 2.00),

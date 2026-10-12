@@ -5,7 +5,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 ## Setup
 - [x] CLAUDE.md with RULES, ACCURACY RULES and AI RULES (verbatim)
 - [x] PLAN.md
-- [ ] git repo initialised, private GitHub repo `stock-valuation-tool` created and pushed
+- [x] git repo initialised, private GitHub repo `stock-valuation-tool` created and pushed
 
 ## RELEASE 1: core tool (corporate companies)
 
@@ -20,7 +20,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [x] Search bar ("Stock name or ticker") on landing page
 - [x] Debug page showing raw data for a chosen ticker
 - [x] Offline tests with fixtures; live tests marked `@pytest.mark.live`
-- [ ] Commit + push
+- [x] Commit + push
 - [ ] **CHECKPOINT 1:** .env instructions → user adds keys → test connections → report unavailable FMP endpoints + alternatives
 
 ### Phase 2 — golden fixtures

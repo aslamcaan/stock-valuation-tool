@@ -99,3 +99,8 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Landing search uses `streamlit-searchbox` so matches update per keystroke (st.text_input only updates on Enter).
 - Tests: offline by default; `VT_OFFLINE=1` + `VT_CACHE_DIR` serves recorded cache entries, never the network. Live tests: `pytest -m live`.
 - FMP has no estimate-history endpoint known on the stable API; plan: snapshot consensus daily ourselves for 30/60/90-day revisions (confirm at Checkpoint 1).
+- Checkpoint 1 (2026-10-12): FRED OK; Anthropic OK (claude-haiku-5-5, claude-sonnet-5-5 available); Damodaran OK.
+  FMP key is on the free plan: statements capped at limit=5; only a sample of large US symbols allowed
+  (AAPL, UBER, KO, JPM, CVX, PEP, MSFT ok; GRAB, ASML, MU, SNDK, O, TRV, DASH, LYFT, SE blocked);
+  news, insider-trading and institutional-ownership endpoints restricted. Awaiting user decision: upgrade FMP or use free alternatives.
+  SEC name/email still placeholders in .env.

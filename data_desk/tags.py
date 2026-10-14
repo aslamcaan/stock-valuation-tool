@@ -165,6 +165,17 @@ LINES: dict[str, Line] = {
                                 (G, "LiabilitiesAndStockholdersEquity"), (I, "EquityAndLiabilities")),
     "shares_outstanding": L("Shares outstanding (balance sheet)", "SH", "instant",
                             (G, "CommonStockSharesOutstanding"), (I, "NumberOfSharesOutstanding"), unit="shares"),
+    # --- equity awards (treasury-method dilution) ----------------------------------------------------
+    "options_outstanding": L("Share options outstanding", "SH", "instant",
+                             (G, "ShareBasedCompensationArrangementByShareBasedPaymentAwardOptionsOutstandingNumber"),
+                             (I, "NumberOfShareOptionsOutstandingInSharebasedPaymentArrangement"), unit="shares"),
+    "options_strike": L("Options weighted-average exercise price", "PS", "instant",
+                        (G, "ShareBasedCompensationArrangementByShareBasedPaymentAwardOptionsOutstandingWeightedAverageExercisePrice"),
+                        (I, "WeightedAverageExercisePriceOfShareOptionsOutstandingInSharebasedPaymentArrangement"),
+                        unit="per_share"),
+    "rsus_outstanding": L("Unvested RSUs / restricted shares", "SH", "instant",
+                          (G, "ShareBasedCompensationArrangementByShareBasedPaymentAwardEquityInstrumentsOtherThanOptionsNonvestedNumber"),
+                          unit="shares"),
     # --- cash flow ---------------------------------------------------------------------------
     "cfo": L("Cash from operations", "CF", "duration",
              (G, "NetCashProvidedByUsedInOperatingActivities"),

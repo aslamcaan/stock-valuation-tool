@@ -40,14 +40,14 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [x] Commit + push
 
 ### Phase 4 — engine
-- [ ] Sector toolkit classification (SIC) and lifecycle stage; cycle percentile measurement
-- [ ] Consensus blending (history | consensus | industry | chosen, source, confidence)
-- [ ] Forecast by stage
-- [ ] WACC (DGS10, Damodaran ERP, relevered industry beta, revenue-weighted CRP, after-tax Kd, market weights)
-- [ ] DCF (SBC as cash cost, mid-year, stub, Gordon TV, g/ROIC reinvestment, equity bridge, treasury-method diluted shares)
-- [ ] SOTP, scenarios, sensitivity grids, reverse DCF
-- [ ] Pass `test_grab_engine`, KO and cyclical tests
-- [ ] Commit + push
+- [x] Sector toolkit classification (SIC) and lifecycle stage; cycle percentile measurement
+- [x] Consensus blending (history | consensus | industry | chosen, source, confidence)
+- [x] Forecast by stage
+- [x] WACC (DGS10, Damodaran ERP, relevered industry beta, revenue-weighted CRP, after-tax Kd, market weights)
+- [x] DCF (SBC as cash cost, mid-year, stub, Gordon TV, g/ROIC reinvestment, equity bridge, treasury-method diluted shares)
+- [x] SOTP, scenarios, sensitivity grids, reverse DCF
+- [x] Pass `test_grab_engine`, KO and cyclical tests
+- [x] Commit + push
 - [ ] **CHECKPOINT 3:** valuation summary for GRAB, KO, AAPL
 
 ### Phase 5 — comps, verdict, flags, provenance
@@ -132,3 +132,29 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   balance-sheet parts -> LTD incl. current + short-term borrowings -> IFRS borrowings; finance leases not re-added
   when the debt tag includes them; CVX-style overlapping tags flagged amber.
 - Banks/REITs (JPM, O) show "missing key line" for operating income etc.: expected until the Release 3 toolkits.
+- Phase 4 engine: engine/dcf.py (conventions switchable: mid/end-year, stub, GAAP vs adjusted margins + SBC,
+  sales-to-capital vs explicit capex/D&A, value-driver vs Gordon-on-final-FCF terminal), wacc.py, classify.py,
+  forecast.py, scenarios.py, shares.py, sotp.py, valuation.py (orchestrator, pure EngineInputs -> Valuation);
+  data_desk/valuation_inputs.py assembles inputs (FRED DGS10, Damodaran ERP/betas/margins/growth/S2C/ratings/tax,
+  CRP from FMP revenue geography, consensus from FMP).
+- test_grab_engine reproduces the user's model exactly (value per share, every FCF, TV, EV, 25-cell data table).
+- Rules chosen (documented in module docstrings): CRP relative to the US CRP (ERP is the US implied premium);
+  emerging-market companies without a geography split use the regional CRP; net-cash companies' synthetic rating
+  floored at A3/A-; consensus EBIT >3pts from GAAP margin treated as a different basis (only its change used);
+  history growth without consensus clipped to [-15%, 30%]; cyclicals use long-run CAGR clipped to [-5%, 10%];
+  sales-to-capital on operating invested capital (ex goodwill/acquired intangibles); mature-stable margin target =
+  5-year median; terminal ROIC halfway between WACC and current ROIC (capped 40%) if ROIC > WACC, else WACC;
+  completed-but-unreported fiscal years are forecast but not discounted.
+- FMP publishes consensus mean only (no median): stated on the row.
+- Options/RSU counts are rarely in companyfacts: diluted shares fall back to the company's own EPS dilution.
+- SOTP needs segment profit: comes from the research desk in Phase 6 (FMP segments blocked on the free plan).
+- Phase 4 independent review (sub-agent) fixes: cash flow from the latest balance-sheet date counted (date-based
+  timing per year: undiscounted before today, mid-period after); US GAAP operating leases excluded from valuation
+  debt (cost already in operating income; IFRS 16 leases included) via `debt_for_valuation`; Gordon TV under
+  mid-year discounting dated mid-year N; no tax on losses (carry-forward within the forecast); terminal NOPAT must be
+  positive; scenario margins shifted in points (bear -3, bull +2) so loss-makers order correctly; declining bull
+  case capped at 0% growth; missing revenue/operating income -> ValuationError; country default spread (CRP/1.52)
+  added to cost of debt; amber flag when debt exists but interest expense is untagged; reverse DCF solves growth
+  and margin with a grid scan (no monotonicity assumption); 90th-percentile margin flag unconditional (per
+  CLAUDE.md); high-growth = 5 explicit years easing halfway to industry growth, then 5 fade years.
+- Default terminal growth min(2.5%, risk-free) is a major driver with rf at 5.2%: shown at Checkpoint 3.

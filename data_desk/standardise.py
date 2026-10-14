@@ -22,6 +22,7 @@ DERIVED_LABELS = {
     "total_debt": "Total debt",
     "lease_liabilities": "Lease liabilities not already in debt",
     "total_debt_incl_leases": "Total debt incl. leases",
+    "debt_for_valuation": "Debt for valuation (US GAAP: excl. operating leases; IFRS: incl. leases)",
     "cash_and_investments": "Cash and short-term investments",
     "net_debt": "Net debt (incl. leases)",
     "ebitda": "EBITDA (operating income + D&A)",
@@ -154,6 +155,19 @@ def standardise(h: Historicals) -> Historicals:
             _set(h, "total_debt_incl_leases", p,
                  calc(lambda d, l_: d + l_, "total_debt + lease_liabilities", p, MILLIONS, c,
                       total_debt=g("total_debt"), lease_liabilities=_z(h, "lease_liabilities", p, c)))
+        if has(g("total_debt")):
+            if h.taxonomy == "ifrs-full":
+                # IFRS 16: lease costs are depreciation + interest, not operating expense, so leases are debt
+                _set(h, "debt_for_valuation", p, g("total_debt_incl_leases").with_note(
+                    "IFRS 16: all lease liabilities are debt (operating profit excludes lease interest)"))
+            else:
+                fin = (Value(0.0, c, MILLIONS, p, "excluded", note="finance leases already in debt tags")
+                       if fin_in_debt else _z(h, "finance_lease_liabilities", p, c))
+                _set(h, "debt_for_valuation", p, calc(
+                    lambda d, f: d + f, "total_debt + finance_lease_liabilities", p, MILLIONS, c,
+                    total_debt=g("total_debt"), finance_lease_liabilities=fin).with_note(
+                    "US GAAP: operating lease costs are already deducted in operating income, so operating lease "
+                    "liabilities are not added as debt"))
         if has(g("cash")):
             _set(h, "cash_and_investments", p,
                  calc(lambda a, b: a + b, "cash + short_term_investments", p, MILLIONS, c,

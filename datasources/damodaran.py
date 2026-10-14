@@ -25,7 +25,22 @@ FILES = {
     "margins_us": "datasets/margin.xls",
     "margins_global": "datasets/marginGlobal.xls",
     "margins_emerging": "datasets/marginemerg.xls",
+    "industry_names": "datasets/indname.xls",
+    "capex_us": "datasets/capex.xls",
+    "capex_global": "datasets/capexGlobal.xls",
+    "growth_us": "datasets/histgr.xls",
+    "ratings": "ratings.xls",
 }
+
+_NAME_NOISE = {"inc", "corp", "corporation", "co", "company", "ltd", "limited", "holdings", "holding", "plc", "nv",
+               "n", "v", "sa", "ag", "se", "the", "group", "class", "a", "de", "llc", "lp"}
+US_EXCHANGE_PREFIXES = ("Nasdaq", "NYSE", "NYSEAM", "NYSEArca", "BATS", "Cboe")
+
+
+def normalise_name(name: str) -> str:
+    import re
+    words = re.sub(r"[^a-z0-9 ]", " ", name.lower()).split()
+    return " ".join(w for w in words if w not in _NAME_NOISE)
 
 
 @dataclass(frozen=True)
@@ -138,3 +153,101 @@ class DamodaranClient:
                 row[k] = None if pd.isna(v) else float(v)
             out[str(r["Industry Name"]).strip()] = row
         return out, as_of, c
+
+    # --- industry classification (company -> Damodaran industry) ------------------------------------
+    def industry_index(self) -> tuple[dict, Cached]:
+        """Compact index parsed from indname.xls (cached as JSON): by US ticker, by name, by SIC."""
+        raw = self.raw("industry_names")
+
+        def build():
+            df = pd.read_excel(io.BytesIO(raw.payload), sheet_name="By company name", header=0)
+            by_ticker, by_name, sic_counts = {}, {}, {}
+            for row in df.itertuples(index=False):
+                name, exch_ticker, industry, sector, sic, country, broad, sub = row[:8]
+                if not isinstance(exch_ticker, str) or not isinstance(industry, str):
+                    continue
+                exch, _, tick = exch_ticker.partition(":")
+                rec = {"industry": industry, "sector": sector, "country": country, "broad_group": broad,
+                       "sub_group": sub if isinstance(sub, str) else None, "listing": exch_ticker,
+                       "name": str(name)}
+                if exch.startswith(US_EXCHANGE_PREFIXES):
+                    by_ticker.setdefault(tick.upper(), rec)
+                key = normalise_name(str(name).split(" (")[0])
+                by_name.setdefault(key, rec)
+                if country == "United States" and not pd.isna(sic):
+                    counts = sic_counts.setdefault(str(int(sic)), {})
+                    counts[industry] = counts.get(industry, 0) + 1
+            by_sic = {k: max(v, key=v.get) for k, v in sic_counts.items()}
+            return {"by_ticker": by_ticker, "by_name": by_name, "by_sic": by_sic,
+                    "fetched_at": raw.fetched_at_iso}
+
+        key = cache_key(BASE + FILES["industry_names"]) + "#index-v1"
+        return self.cache.get_or_fetch("damodaran", key, build).payload, raw
+
+    def industry_for(self, ticker: str, company_name: str, sic: str) -> dict:
+        """Damodaran industry for a company: by US ticker, then company name, then most common for its SIC."""
+        idx, raw = self.industry_index()
+        rec = idx["by_ticker"].get(ticker.upper())
+        how = f"matched ticker {ticker.upper()}"
+        if rec is None:
+            rec = idx["by_name"].get(normalise_name(company_name))
+            how = f"matched company name '{company_name}'"
+        if rec is None and sic in idx["by_sic"]:
+            rec = {"industry": idx["by_sic"][sic], "country": None, "broad_group": None, "listing": None}
+            how = f"most common industry for US companies with SIC {sic}"
+        if rec is None:
+            rec = {"industry": "Total Market (without financials)", "country": None, "broad_group": None,
+                   "listing": None}
+            how = "no match: market average used"
+        return {**rec, "how": how, "file": FILES["industry_names"], "fetched_at": idx["fetched_at"]}
+
+    def sales_to_capital(self, region: str = "us") -> tuple[dict[str, float], str, Cached]:
+        c = self.raw(f"capex_{region}")
+        df = _excel(c.payload, "Industry Averages")
+        as_of = _date_str(df.iat[0, 1])
+        t = _table(df, "Industry Name")
+        col = next(x for x in t.columns if x.startswith("Sales/"))
+        out = {}
+        for _, r in t.iterrows():
+            v = pd.to_numeric(r[col], errors="coerce")
+            if not pd.isna(v):
+                out[str(r["Industry Name"]).strip()] = float(v)
+        return out, as_of, c
+
+    def industry_growth(self) -> tuple[dict[str, dict], str, Cached]:
+        """US industry revenue CAGR (last 5 years) and expected revenue growth (next 2 years)."""
+        c = self.raw("growth_us")
+        df = _excel(c.payload, "Industry Averages")
+        as_of = _date_str(df.iat[0, 1])
+        t = _table(df, "Industry Name")
+        cols = list(t.columns)
+        rev_hist = next(x for x in cols if "Revenues" in x and "CAGR" in x)
+        rev_exp = next((x for x in cols if "Revenues" in x and "Expected" in x), None)
+        out = {}
+        for _, r in t.iterrows():
+            h = pd.to_numeric(r[rev_hist], errors="coerce")
+            e = pd.to_numeric(r[rev_exp], errors="coerce") if rev_exp else float("nan")
+            out[str(r["Industry Name"]).strip()] = {"revenue_cagr_5y": None if pd.isna(h) else float(h),
+                                                    "expected_revenue_growth": None if pd.isna(e) else float(e)}
+        return out, as_of, c
+
+    def rating_table(self, large: bool = True) -> tuple[list[dict], Cached]:
+        """Synthetic rating table: interest coverage bands -> rating and default spread."""
+        c = self.raw("ratings")
+        df = _excel(c.payload, "Start here Ratings sheet")
+        start = 18 if large else 37
+        rows = []
+        for i in range(start, start + 15):
+            lo, hi, rating, spread = (df.iat[i, j] for j in range(4))
+            rows.append({"min": float(lo), "max": float(hi), "rating": str(rating), "spread": float(spread)})
+        return rows, c
+
+    def country_tax_rates(self) -> tuple[dict[str, float], Cached]:
+        c = self.raw("country")
+        df = _excel(c.payload, "Country Tax Rates")
+        out = {}
+        for i in range(1, len(df)):
+            name, rate = df.iat[i, 0], pd.to_numeric(df.iat[i, 1], errors="coerce")
+            if isinstance(name, str) and not pd.isna(rate):
+                out[name.strip()] = float(rate)
+        return out, c

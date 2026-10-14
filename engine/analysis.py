@@ -119,10 +119,10 @@ def analyse(h: Historicals, earnings_history: list[dict] | None = None,
             nopat = calc(lambda o, t: o * (1 - t), "operating_income x (1 - tax rate)", p, MILLIONS, h.currency,
                          o=oi, t=etr)
             a.put("nopat", p, nopat)
-        eq, debt, cash = g("total_equity", p), g("total_debt_incl_leases", p), g("cash_and_investments", p)
+        eq, debt, cash = g("total_equity", p), g("debt_for_valuation", p), g("cash_and_investments", p)
         if eq and debt and cash and None not in (eq.value, debt.value, cash.value):
             a.put("invested_capital", p, calc(lambda e, d, c: e + d - c,
-                                              "total_equity + total_debt_incl_leases - cash_and_investments",
+                                              "total_equity + debt_for_valuation - cash_and_investments",
                                               p, MILLIONS, h.currency, e=eq, d=debt, c=cash))
     for p in labels:
         prev = prev_of.get(p)

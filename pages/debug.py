@@ -6,6 +6,9 @@ import streamlit as st
 
 from core.cache import CacheMiss
 from core.http import DataSourceError
+from data_desk.builder import DataDeskError, build_company_data
+from data_desk.standardise import DERIVED_LABELS
+from data_desk.tags import LINES
 from datasources.fmp import ENDPOINTS
 from datasources.fred import FX_SERIES, SERIES
 from ui.state import get_services
@@ -34,8 +37,51 @@ ticker = st.text_input("Ticker", value=st.session_state.get("selected", {}).get(
 if not ticker:
     st.stop()
 
-tab_cov, tab_edgar, tab_fmp, tab_fred, tab_dam, tab_probe = st.tabs(
-    ["Market data coverage", "SEC EDGAR", "FMP", "FRED", "Damodaran", "FMP endpoint check"])
+tab_desk, tab_cov, tab_edgar, tab_fmp, tab_fred, tab_dam, tab_probe = st.tabs(
+    ["Data desk", "Market data coverage", "SEC EDGAR", "FMP", "FRED", "Damodaran", "FMP endpoint check"])
+
+with tab_desk:
+    st.write("Standardised historicals, data checks and financial analysis (Phase 3 output).")
+    if st.button("Run data desk"):
+        try:
+            with st.status("Running data desk…") as status:
+                cd = build_company_data(ticker, svc, progress=status.write)
+            st.session_state["debug_cd"] = cd
+        except DataDeskError as exc:
+            st.error(str(exc))
+    cd = st.session_state.get("debug_cd")
+    if cd is not None and cd.profile.ticker == ticker:
+        p = cd.profile
+        st.write(f"**{p.name}** · SIC {p.sic} {p.sic_description} · reports in {p.reporting_currency} ({p.taxonomy})"
+                 f" · FY end {p.fiscal_year_end}")
+        for f in cd.flags:
+            icon = {"hard_stop": "⛔", "red": "🔴", "amber": "🟠", "info": "ℹ️"}[f.level]
+            st.write(f"{icon} **{f.title}** — {f.message}")
+        h = cd.historicals
+        labels = [x.label for x in h.periods]
+        main = labels[-4:]
+        names = {**{k: v.label for k, v in LINES.items()}, **DERIVED_LABELS}
+        rows = []
+        for line, by_p in h.lines.items():
+            if any(by_p.get(x) for x in labels):
+                rows.append({"line": names.get(line, line),
+                             **{x: (by_p[x].value if by_p.get(x) else None) for x in labels}})
+        df = pd.DataFrame(rows).set_index("line")
+        st.subheader(f"Historicals ({h.currency} m)")
+        st.dataframe(df[main].style.format("{:,.1f}", na_rep="–"))
+        with st.expander("All years"):
+            st.dataframe(df.style.format("{:,.1f}", na_rep="–"))
+        trace_line = st.selectbox("Trace a number", list(h.lines))
+        trace_p = st.selectbox("Period", labels, index=len(labels) - 1)
+        v = h.get(trace_line, trace_p)
+        st.code("\n".join(v.trace()) if v else "not available")
+        st.subheader("Financial analysis")
+        a = cd.analysis
+        st.dataframe(pd.DataFrame({m: {x: by.get(x).value if by.get(x) else None for x in main}
+                                   for m, by in a.metrics.items()}).T.style.format("{:,.3f}", na_rep="–"))
+        for section, lines_ in a.commentary.items():
+            if lines_:
+                st.markdown(f"**{section.replace('_', ' ').capitalize()}:** " + " ".join(lines_))
 
 with tab_cov:
     st.write("Which provider answers each market-data item for this ticker (FMP first, then free fallbacks).")

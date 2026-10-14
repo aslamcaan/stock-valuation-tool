@@ -35,3 +35,17 @@ def fake_get(monkeypatch):
 
     monkeypatch.setattr("requests.get", _get)
     return calls, responses
+
+
+def load_edgar_fixture(ticker: str) -> dict:
+    import gzip
+    import json
+    with gzip.open(FIXTURES / "edgar" / f"{ticker}.json.gz", "rt", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def historicals_for(ticker: str):
+    from data_desk.standardise import standardise
+    from data_desk.xbrl import extract
+    d = load_edgar_fixture(ticker)
+    return standardise(extract(d["companyfacts"], d["fetched_at"]))

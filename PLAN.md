@@ -30,14 +30,14 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [ ] **CHECKPOINT 2:** show extracted Grab table, wait for confirmation
 
 ### Phase 3 — historicals and financial analysis
-- [ ] Historicals 5–10 years + LTM, US GAAP + IFRS tag mapping with fallbacks, tag logging
-- [ ] Value objects {value, currency, unit, period, source, tag, fetched_at}; unit normalisation
-- [ ] FX (FRED; period-average for IS/CF, period-end for BS), ADR ratios, currency-mismatch flag
-- [ ] Non-December fiscal years; restated figures; >120-day filing flag
-- [ ] Data checks: hard stops (BS balance >0.5%, market cap >3% vs FMP); red flags (sums, cash tie, 1%); EDGAR vs FMP amber (>2%)
-- [ ] Ratios and full financial analysis (Section 6 item 4, no Beneish/Altman)
-- [ ] Pass `test_grab_data` and Uber test
-- [ ] Commit + push
+- [x] Historicals 5–10 years + LTM, US GAAP + IFRS tag mapping with fallbacks, tag logging
+- [x] Value objects {value, currency, unit, period, source, tag, fetched_at}; unit normalisation
+- [x] FX (FRED; period-average for IS/CF, period-end for BS), ADR ratios, currency-mismatch flag
+- [x] Non-December fiscal years; restated figures; >120-day filing flag
+- [x] Data checks: hard stops (BS balance >0.5%, market cap >3% vs FMP); red flags (sums, cash tie, 1%); EDGAR vs FMP amber (>2%)
+- [x] Ratios and full financial analysis (Section 6 item 4, no Beneish/Altman)
+- [x] Pass `test_grab_data` and Uber test
+- [x] Commit + push
 
 ### Phase 4 — engine
 - [ ] Sector toolkit classification (SIC) and lifecycle stage; cycle percentile measurement
@@ -112,3 +112,23 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Phase 2: Grab model is a single sheet 'GRAB DCF' (5-year DCF, end-of-year discounting, no stub, no SBC, no NWC,
   EV + cash & investments - debt, 4,100m shares). Extractor: scripts/extract_grab_model.py (re-run if the model changes).
   Engine needs convention switches (end-year vs mid-year, stub on/off, SBC on/off, NWC on/off) to reproduce it.
+- Phase 3: convertible-debt detection from companyfacts is weak (dimensional facts omitted). Research desk must confirm convertibles from the debt note in Phase 6.
+- Phase 3 layout: `data_desk/` = tags (line -> US GAAP/IFRS candidates), xbrl (extraction, restatements = latest filed,
+  FY label = year of end date except first week of Jan, LTM = FY + YTD - prior YTD with 7-day tolerance for 52/53-week
+  quarters), standardise (derived lines: total debt = current portion + ST borrowings + LTD, leases, net debt, EBITDA,
+  FCF, EBIT proxy when no operating-income tag), fx, adr, checks, fmp_statements, builder (only I/O).
+  `engine/` = values (traceable Value + calc), model (Historicals/Period), flags, analysis.
+- Market-cap hard stop only applies with a point-in-time share count (dei cover page or balance-sheet shares). When
+  only a weighted-average count exists (e.g. GRAB 20-F, DASH multi-class) it is amber "approximate".
+- Lease balances are tagged annually only: LTM carries the latest FY lease balance forward (noted on the value).
+- If EDGAR has a newer annual filing than the XBRL data (TSM FY2025 20-F not yet in companyfacts), amber flag.
+- Statement checks cover the last 5 FY + LTM (older years only appear in an expander).
+- Grab known differences vs the user's model (agreed Checkpoint 2): D&A 177 vs 101, capex 97 vs 101, debt 2,053 vs
+  1,600, cash & investments 6,804 vs 6,861. Revenue and shares match within 0.5%.
+- Live sweep (16 tickers incl. JPM, O, TRV, TSM): no crashes, no false hard stops.
+- Phase 3 independent review (sub-agent) found: debt double-counted/missed for CVX, MU, O, TRV; leap-day crash;
+  CVX cash missing; LTM tag mixing; FMP quarter validation; stale 20-F share counts. All fixed with regression tests
+  (tests/test_review_regressions.py, golden total debt for 9 fixtures). Debt order: reported all-in total ->
+  balance-sheet parts -> LTD incl. current + short-term borrowings -> IFRS borrowings; finance leases not re-added
+  when the debt tag includes them; CVX-style overlapping tags flagged amber.
+- Banks/REITs (JPM, O) show "missing key line" for operating income etc.: expected until the Release 3 toolkits.

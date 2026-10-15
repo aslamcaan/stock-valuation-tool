@@ -30,6 +30,7 @@ TTL_SECONDS: dict[str, int] = {
     "news": HOUR,
     "reference": DAY,  # ticker lists, profiles, peers
     "fundamentals": DAY,  # FMP fallback statements, ownership
+    "ai": 3650 * DAY,  # AI responses keyed by the exact request: same inputs -> same output (determinism)
 }
 MAX_TTL = {"news": HOUR}
 

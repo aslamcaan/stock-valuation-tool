@@ -58,10 +58,10 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [ ] Commit + push
 
 ### Phase 6 — AI desks
-- [ ] Research desk (Haiku), review desk, MD (Sonnet); temperature 0; JSON schemas
-- [ ] Number guard; determinism; cost logging and caps
-- [ ] Pass determinism and number-guard tests
-- [ ] Commit + push
+- [x] Research desk (Haiku), review desk, MD (Sonnet); temperature 0; JSON schemas
+- [x] Number guard; determinism; cost logging and caps
+- [x] Pass determinism and number-guard tests
+- [x] Commit + push
 
 ### Phase 7 — UI
 - [ ] Landing page, progress panel (threads + queue), full report, editable assumptions with live recalculation
@@ -170,3 +170,14 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   -> confidence reduced. Forward P/E mostly unavailable on free FMP (consensus blocked for most peers).
 - test_grab_judgement: user $5.39 -> tool $1.46; operating margin step -$2.86 is the largest driver.
 - Click-to-trace data: every headline number has a Value in report.trace (UI in Phase 7).
+- Phase 6: desks/ai.py (structured JSON via output_config.format + jsonschema; Sonnet calls use server-side
+  refusal fallback "default"; AI response cache keyed by exact request = determinism; cost ledger in SQLite with
+  per-report / per-day caps checked before each call), number_guard.py (+ guarded.py: regenerate once, then drop
+  sentences and log), research.py (Haiku, 3 smaller schemas because one schema exceeded the grammar limit; quotes and
+  numbers verified against the filing), review.py and md.py (Sonnet), engine/rubric.py (code half of the rubric,
+  rating map, one-notch rule), summary.py, pipeline.py (desk status queue, research || peers, saved reports).
+- DECISION FOR USER: brief says temperature 0, but claude-haiku-5-5 / claude-sonnet-5-5 reject non-default sampling
+  parameters. Determinism comes from caching AI responses by request hash instead (same data -> same output).
+- Live Uber run: Buy (Medium), AI cost $0.20 (cap $0.50), ~3.5 minutes; review desk overrode stage to mature growth.
+- Filing extraction: Item 1/1A/7 + segment note (10-K), Items 4/3.D/5 (20-F); ASML's integrated report extracts
+  only partly (fallback headings).

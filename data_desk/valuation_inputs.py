@@ -177,3 +177,54 @@ def build_engine_inputs(cd: CompanyData, svc, valuation_date: date | None = None
         analysis=cd.analysis, price=m.price, basic_shares=m.shares, adr_ratio=m.adr_ratio, market_cap=mcap,
         risk_free=rf, erp=erp, beta_regression=m.beta, industry=industry, crp=crp, marginal_tax=marginal_tax,
         rating_table_large=large, rating_table_small=small, consensus=consensus, overrides=overrides or {}), notes
+
+
+def crp_from_filing_geography(svc, geo: list[dict], source: str) -> Value | None:
+    """CRP weighted by the annual report's own revenue split (research desk, verified quotes)."""
+    table, as_of, c = svc.damodaran.country_risk()
+    regions, _ = svc.damodaran.regional_crp()
+    us = table["United States"]["crp"]
+    rows = [(g["region"], g.get("revenue_millions") or g.get("share_of_revenue_pct")) for g in geo]
+    rows = [(r, float(x)) for r, x in rows if x]
+    total = sum(x for _, x in rows)
+    if not rows or total <= 0:
+        return None
+    parts, unmapped = [], 0.0
+    for label, x in rows:
+        crp = None
+        if label in table:
+            crp, how = table[label]["crp"], f"country {label}"
+        else:
+            t = _geo_target(label)
+            if t:
+                kind, name = t
+                crp = table.get(name, {}).get("crp") if kind == "country" else regions.get(name)
+                how = f"{kind} {name}"
+            else:
+                for country in table:
+                    if country.lower() in label.lower():
+                        crp, how = table[country]["crp"], f"country {country}"
+                        break
+        if crp is None:
+            unmapped += x
+            continue
+        parts.append((label, x / total, max(0.0, crp - us), how))
+    if not parts or unmapped / total >= 0.25:
+        return None
+    mapped = sum(w for _, w, _, _ in parts)
+    value = sum(w * x for _, w, x, _ in parts) / mapped
+    return Value(value, None, RATIO, as_of, "annual report revenue geography x Damodaran CRP",
+                 note=f"{source}; relative to US CRP {us:.2%}. " +
+                      "; ".join(f"{lab} {w:.0%} -> {how} CRP {x:.2%}" for lab, w, x, how in parts))
+
+
+def one_off_adjustments(research: dict, fy_labels: list[str]) -> dict[str, float]:
+    """FY label -> amount to add back to operating income (charges added back, gains removed)."""
+    out: dict[str, float] = {}
+    for item in research.get("one_off_items", []):
+        amt = item.get("amount_millions")
+        fy = f"FY{str(item.get('fiscal_year', ''))[-4:]}"
+        if not amt or not item.get("in_operating_income") or fy not in fy_labels:
+            continue
+        out[fy] = out.get(fy, 0.0) + (abs(amt) if item.get("effect") == "charge" else -abs(amt))
+    return out

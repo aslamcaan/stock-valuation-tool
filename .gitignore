@@ -24,3 +24,4 @@ exports/
 .DS_Store
 Thumbs.db
 ~$*.xlsx
+data/

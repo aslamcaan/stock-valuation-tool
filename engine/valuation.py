@@ -62,6 +62,7 @@ class EngineInputs:
     rating_table_small: list[dict]
     consensus: list[ConsensusYear] = field(default_factory=list)
     segments: list[Segment] = field(default_factory=list)
+    one_off_adjustments: dict[str, float] = field(default_factory=dict)  # FY label -> amount added back to EBIT
     overrides: dict = field(default_factory=dict)
 
 
@@ -169,8 +170,9 @@ def value_company(i: EngineInputs) -> Valuation:
         flags.append(Flag(AMBER, "wacc_range", "WACC outside 6-15%", f"WACC is {wacc:.2%}.", None, {"wacc": wacc}))
 
     # --- forecast ----------------------------------------------------------------------------------------------
-    margins_5y = sorted(h.v("operating_income", p) / h.v("revenue", p) for p in h.fy_labels[-5:]
-                        if h.v("operating_income", p) is not None and h.v("revenue", p))
+    # one-off items (research desk, verified against the filing) are stripped out of historical margins
+    margins_5y = sorted((h.v("operating_income", p) + i.one_off_adjustments.get(p, 0.0)) / h.v("revenue", p)
+                        for p in h.fy_labels[-5:] if h.v("operating_income", p) is not None and h.v("revenue", p))
     plan = build_plan(
         h, cls.stage, valuation_date=i.valuation_date, current_margin=cur_margin, consensus=i.consensus,
         industry_margin=i.industry.operating_margin, industry_growth=i.industry.revenue_growth,

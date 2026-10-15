@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from core.cache import Cache
 from core.config import Settings, load_settings
 from core.store import Store
+from desks.ai import AIClient, CostLedger
 from datasources.damodaran import DamodaranClient
 from datasources.edgar import EdgarClient
 from datasources.finnhub import FinnhubClient
@@ -27,6 +28,7 @@ class Services:
     finnhub: FinnhubClient
     market: MarketData
     store: Store
+    ai: AIClient
 
 
 def build_services(settings: Settings | None = None) -> Services:
@@ -46,4 +48,5 @@ def build_services(settings: Settings | None = None) -> Services:
         finnhub=finnhub,
         market=MarketData(fmp, tiingo, finnhub),
         store=Store(s.db_path),
+        ai=AIClient(s.anthropic_api_key, cache, CostLedger(s.db_path, s.max_cost_per_report, s.max_cost_per_day)),
     )

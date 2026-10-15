@@ -8,8 +8,9 @@ from datetime import date, timedelta
 
 from data_desk.builder import CompanyData
 from data_desk.history_data import price_series, week52, year_points
-from data_desk.peers import gather_peers, latest_period, metrics_from, next_fy_eps
-from data_desk.valuation_inputs import build_engine_inputs
+from data_desk.peers import gather_peers, latest_period, metrics_from, next_fy_eps, peer_metrics
+from data_desk.valuation_inputs import build_engine_inputs, crp_from_filing_geography, one_off_adjustments
+from engine.sotp import Segment
 from engine.comps import CompanyMetrics, CompsResult, run_comps, select_peers
 from engine.flags import AMBER, INFO, RED, Flag, sort_flags
 from engine.history_multiples import HistoryResult, history_multiples, implied_price
@@ -49,14 +50,63 @@ def company_metrics(cd: CompanyData, svc, ei: EngineInputs) -> CompanyMetrics:
                         source=f"SEC XBRL ({latest_period(h)})")
 
 
+def segments_from_research(svc, cd: CompanyData, research: dict, notes: list[str]) -> list[Segment]:
+    """Segments with an EV/Sales multiple from the research desk's US-listed comparables (computed by code)."""
+    segs = research.get("segments") or []
+    if len(segs) < 2 or cd.historicals.currency != "USD":
+        return []
+    total = cd.historicals.v("revenue", cd.historicals.fy_labels[-1]) or 0
+    if total <= 0 or sum(s.get("revenue_millions") or 0 for s in segs) < 0.9 * total:
+        notes.append("SOTP: segment revenues from the filing cover less than 90% of revenue")
+        return []
+    rows = {r["ticker"]: r for r in svc.edgar.company_tickers().payload}
+    out = []
+    for s in segs:
+        mults, used = [], []
+        for t in (s.get("comparable_us_tickers") or [])[:3]:
+            m, _ = peer_metrics(svc, t.upper(), rows)
+            ev = m.multiples()["ev_sales"] if m else None
+            if ev:
+                mults.append(ev)
+                used.append(f"{t.upper()} {ev:.1f}x")
+        if not mults or not s.get("revenue_millions"):
+            notes.append(f"SOTP: no usable comparable multiple for segment {s.get('name')}")
+            return []
+        mults.sort()
+        mid = mults[len(mults) // 2] if len(mults) % 2 else (mults[len(mults) // 2 - 1] + mults[len(mults) // 2]) / 2
+        out.append(Segment(s["name"], s["revenue_millions"], s.get("profit_millions"), metric="EV/Sales",
+                           metric_value=s["revenue_millions"], multiple=mid,
+                           multiple_source="median EV/Sales of " + ", ".join(used)))
+    return out
+
+
 def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, overrides: dict | None = None,
-                  progress=None, peers: list[CompanyMetrics] | None = None) -> ValuationReport:
+                  progress=None, peers: list[CompanyMetrics] | None = None, research: dict | None = None
+                  ) -> ValuationReport:
     say = progress or (lambda m: None)
     today = valuation_date or date.today()
     ei, notes = build_engine_inputs(cd, svc, today, overrides)
+    extra_flags: list[Flag] = []
+    if research:
+        geo_crp = crp_from_filing_geography(svc, research.get("geographic_mix") or [], "annual report")
+        if geo_crp is not None:
+            ei.crp = geo_crp
+        if cd.historicals.currency == "USD":
+            ei.one_off_adjustments = one_off_adjustments(research, cd.historicals.fy_labels)
+        say("Valuing segments for the sum of the parts")
+        ei.segments = segments_from_research(svc, cd, research, notes)
+        conv = research.get("convertible_debt") or {}
+        if conv.get("present") and not any(f.code == "convertible_debt" for f in cd.flags):
+            extra_flags.append(Flag(AMBER, "convertible_debt", "Convertible debt outstanding",
+                                    f"The annual report describes convertible notes: \"{conv.get('quote', '')[:200]}\". "
+                                    "Conversion would dilute shareholders beyond the diluted share count.", None, {}))
+        sc = research.get("share_classes") or {}
+        if sc.get("multiple") and not any(f.code == "multiple_share_classes" for f in cd.flags):
+            extra_flags.append(Flag(AMBER, "multiple_share_classes", "Multiple share classes",
+                                    f"{sc.get('description', '')} Quote: \"{sc.get('quote', '')[:200]}\"", None, {}))
     say("Classifying the company and building the forecast")
     v = value_company(ei)
-    flags: list[Flag] = list(cd.flags) + list(v.flags)
+    flags: list[Flag] = list(cd.flags) + list(v.flags) + extra_flags
     adr = ei.adr_ratio
     shares = v.diluted_shares.value
     bridge = sum(x.value for _, x in v.bridge)

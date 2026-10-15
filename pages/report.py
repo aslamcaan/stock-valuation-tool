@@ -10,6 +10,8 @@ import streamlit as st
 
 from desks.modelling import run_modelling
 from desks.pipeline import DESKS, DONE, FAILED, RUNNING, SKIPPED, load, run_report
+from exports.excel import export_bytes
+from exports.pdf import build_pdf
 from ui.format import CSS, STATE_COLOUR, STATE_ICON, money
 from ui.report import render_report, verdict_card
 from ui.state import get_services
@@ -138,8 +140,14 @@ top[0].caption(f"Saved report {rep.report_id}")
 if top[1].button("Re-run (new version)"):
     start_run(rep.ticker, rep.overrides or None)
     st.rerun()
-top[2].button("Download Excel model", disabled=True, help="Arrives in Phase 8")
-top[3].button("Download PDF report", disabled=True, help="Arrives in Phase 8")
+if rep.model is not None and rep.model.valuation.dcf is not None:
+    try:
+        top[2].download_button("Download Excel model", export_bytes(rep), file_name=f"{rep.report_id}.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        top[3].download_button("Download PDF report", build_pdf(rep), file_name=f"{rep.report_id}.pdf",
+                               mime="application/pdf")
+    except Exception as exc:  # an export problem must not hide the report
+        top[2].caption(f"Export unavailable: {exc}")
 if "edited" in st.session_state:
     st.info("Showing your edited assumptions (not saved). Use Re-run to save a new dated version with AI commentary.")
     if st.button("Back to the saved version"):

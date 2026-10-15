@@ -1,0 +1,2 @@
+# Windows-only: open exported workbooks in real Excel (scripts/excel_check.py)
+pywin32==312

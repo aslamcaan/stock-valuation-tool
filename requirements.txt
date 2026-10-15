@@ -10,3 +10,6 @@ plotly==7.1.0
 jsonschema==4.26.0
 pytest==9.1.1
 streamlit-searchbox==0.1.24
+reportlab==5.0.1
+pycel==1.0b30
+pypdf==6.20.1

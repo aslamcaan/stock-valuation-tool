@@ -69,9 +69,9 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [x] Commit + push
 
 ### Phase 8 — exports
-- [ ] Excel export (banking conventions, real formulas); verify Grab file calculates, matches app
-- [ ] PDF report
-- [ ] Commit + push
+- [x] Excel export (banking conventions, real formulas); verify Grab file calculates, matches app
+- [x] PDF report
+- [x] Commit + push
 
 ### Phase 9 — README
 - [ ] README (architecture diagram, setup, tests, limitations); push
@@ -195,3 +195,8 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   ui/report.py (sections 0-22, hover any number for its trace), pages/track_record.py + engine/track.py
   (returns vs SPY and SPDR sector ETF, hit rates at 1/3/6/12 months, moved toward fair value, filters).
   Reports are pickled under data/reports/ (gitignored).
+- Phase 8: exports/excel.py (Cover, Inputs, Historicals, Ratios, Forecast, WACC, DCF, SOTP, Comps, Hist multiples,
+  Scenarios, Sensitivity, Summary + Calc tab with a full formula DCF per scenario and per sensitivity cell);
+  exports/verify.py (pycel + MEDIAN plugin) and scripts/excel_check.py (real Excel via pywin32). Verified: UBER 9,611,
+  KO 5,249, GRAB 9,584 formulas, zero errors, Excel fair value = app fair value exactly; GRAB also checked in
+  Microsoft Excel. exports/pdf.py (reportlab, 7 pages for UBER).

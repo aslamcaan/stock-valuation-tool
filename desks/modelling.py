@@ -32,6 +32,7 @@ class ValuationReport:
     analyst_targets: dict | None
     week52: tuple[float, float] | None
     flags: list[Flag]
+    company_metrics: CompanyMetrics | None
     trace: dict[str, Value]
     assumptions: list[dict]
     sources: list[dict]
@@ -195,7 +196,7 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
             f"{k} {verdict.components[k]:,.2f} x {w:.0%}" for k, w in verdict.weights_used.items()))
         trace["gap"] = _v(verdict.gap, "fair value / price - 1", RATIO)
 
-    report = ValuationReport(cd, ei, v, comps, hist, revisions, verdict, football, targets, w52, all_flags, trace,
+    report = ValuationReport(cd, ei, v, comps, hist, revisions, verdict, football, targets, w52, all_flags, me, trace,
                              assumptions_table(ei, v, verdict), sources(cd, ei, price_src), notes)
     say("Modelling complete")
     return report

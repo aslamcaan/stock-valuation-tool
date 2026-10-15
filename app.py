@@ -7,6 +7,7 @@ st.set_page_config(page_title="Stock Valuation Tool", page_icon="📈", layout="
 
 pages = [
     st.Page("pages/home.py", title="Search", icon=":material/search:", default=True),
+    st.Page("pages/report.py", title="Report", icon=":material/description:"),
     st.Page("pages/track_record.py", title="Track Record", icon=":material/insights:"),
     st.Page("pages/debug.py", title="Debug: raw data", icon=":material/bug_report:"),
 ]

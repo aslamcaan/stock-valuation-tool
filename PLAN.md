@@ -64,9 +64,9 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [x] Commit + push
 
 ### Phase 7 — UI
-- [ ] Landing page, progress panel (threads + queue), full report, editable assumptions with live recalculation
-- [ ] Track Record page with auto-logging (SQLite)
-- [ ] Commit + push
+- [x] Landing page, progress panel (threads + queue), full report, editable assumptions with live recalculation
+- [x] Track Record page with auto-logging (SQLite)
+- [x] Commit + push
 
 ### Phase 8 — exports
 - [ ] Excel export (banking conventions, real formulas); verify Grab file calculates, matches app
@@ -189,3 +189,9 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   and no longer double-counts consensus / peers; peer market cap = price x SEC cover-page shares.
 - Known: KO/AAPL DCFs sit well below other methods (statutory terminal tax, margin fade, 5.2% rf); research-desk
   one-off adjustments lift mature-stable margin targets in full pipeline runs.
+- Phase 7 UI: pages/home.py (search + Analyse + recent saved reports), pages/report.py (worker thread + status
+  queue progress panel with spinner/tick/cross/dot, elapsed time, running AI cost; verdict card appears as soon as
+  the model is ready; edit-assumptions form recalculates the full model; Re-run saves a new dated version),
+  ui/report.py (sections 0-22, hover any number for its trace), pages/track_record.py + engine/track.py
+  (returns vs SPY and SPDR sector ETF, hit rates at 1/3/6/12 months, moved toward fair value, filters).
+  Reports are pickled under data/reports/ (gitignored).

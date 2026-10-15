@@ -59,6 +59,8 @@ class FullReport:
     ai_cost: float = 0.0
     desk_status: dict[str, tuple[str, str]] = field(default_factory=dict)
     overrides: dict = field(default_factory=dict)
+    peers_pool: list = field(default_factory=list)   # all peer candidates (reused when assumptions are edited)
+    peer_notes: list[str] = field(default_factory=list)
 
 
 class Progress:
@@ -79,11 +81,14 @@ def _sources_text(research: ResearchResult | None, filing) -> str:
 
 
 def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_date: date | None = None,
-               overrides: dict | None = None, use_ai: bool = True) -> FullReport:
+               overrides: dict | None = None, use_ai: bool = True, holder: dict | None = None) -> FullReport:
+    """`holder['report']` exposes the report while it is being built, so the UI can render finished sections."""
     today = valuation_date or date.today()
     rid = f"{ticker.upper()}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}"
     rep = FullReport(rid, ticker.upper(), datetime.now(timezone.utc).isoformat(timespec="seconds"), today,
                      overrides=dict(overrides or {}))
+    if holder is not None:
+        holder["report"] = rep
     p = Progress(events)
 
     def cost():
@@ -150,6 +155,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
             research = None
         peers, peer_notes = f_peers.result()
     rep.research = research
+    rep.peers_pool, rep.peer_notes = peers, peer_notes
 
     # --- modelling desk --------------------------------------------------------------------------------------------
     p("Modelling desk", RUNNING, "Building the forecast, WACC, DCF, comps and verdict…")
@@ -168,6 +174,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
     if not use_ai:
         for d in ("Review desk", "MD"):
             p(d, SKIPPED, "AI desks switched off" if not rep.stopped else "Stopped: AI cost cap reached")
+        log_to_track_record(rep, svc.store)
         return _finish(rep, p, cost())
 
     sources = _sources_text(research, filing)
@@ -194,6 +201,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         rep.md = md
         rep.guard_log += md.guard_log
         p("MD", DONE, f"{md.rating} (conviction {md.conviction})", cost())
+        log_to_track_record(rep, svc.store)
     except CostCapExceeded as exc:
         rep.stopped = str(exc)
         for d in ("Review desk", "MD"):
@@ -214,11 +222,27 @@ def _research_for_ai(research: ResearchResult | None) -> dict:
     return {k: research.data.get(k) for k in keep}
 
 
-def _finish(rep: FullReport, p: Progress, cost: float) -> FullReport:
+def _finish(rep: FullReport, p: Progress, cost: float, store=None) -> FullReport:
     rep.ai_cost = cost
     rep.desk_status = dict(p.status)
     save(rep)
     return rep
+
+
+def log_to_track_record(rep: FullReport, store) -> None:
+    """Every completed report (a verdict was reached) goes into the track record."""
+    if rep.model is None or rep.model.verdict.fair_value is None:
+        return
+    from data_desk.sector_etf import sector_etf
+    created = datetime.fromisoformat(rep.created_at)
+    store.log_call({
+        "report_id": rep.report_id, "ticker": rep.ticker, "call_date": created.date().isoformat(),
+        "call_time": created.strftime("%H:%M"), "price": rep.model.verdict.price,
+        "fair_value": rep.model.verdict.fair_value, "verdict": rep.model.verdict.verdict,
+        "rating": rep.md.rating if rep.md else None, "conviction": rep.md.conviction if rep.md else None,
+        "confidence": rep.model.verdict.confidence,
+        "toolkit": rep.model.valuation.classification.toolkit, "stage": rep.model.valuation.classification.stage,
+        "sector_etf": sector_etf(rep.company.profile.sic)})
 
 
 def save(rep: FullReport) -> Path:

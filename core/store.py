@@ -22,6 +22,23 @@ CREATE TABLE IF NOT EXISTS estimate_snapshots (
     PRIMARY KEY (ticker, snapshot_date, fiscal_year_end)
 );
 """
+TRACK_SCHEMA = """
+CREATE TABLE IF NOT EXISTS track_record (
+    report_id TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    call_date TEXT NOT NULL,
+    call_time TEXT NOT NULL,
+    price REAL,
+    fair_value REAL,
+    verdict TEXT,
+    rating TEXT,
+    conviction TEXT,
+    confidence TEXT,
+    toolkit TEXT,
+    stage TEXT,
+    sector_etf TEXT
+);
+"""
 REVISION_WINDOWS = (30, 60, 90)
 WINDOW_SLACK_DAYS = 10  # a snapshot up to this many days older than the target date still counts
 
@@ -32,7 +49,7 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         with self._conn() as c:
-            c.executescript(SCHEMA)
+            c.executescript(SCHEMA + TRACK_SCHEMA)
 
     def _conn(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)
@@ -55,6 +72,18 @@ class Store:
             rows = c.execute("SELECT fiscal_year_end, revenue_avg, eps_avg, analysts FROM estimate_snapshots "
                              "WHERE ticker=? AND snapshot_date=?", (ticker.upper(), row[0])).fetchall()
         return row[0], {r[0]: {"revenue_avg": r[1], "eps_avg": r[2], "analysts": r[3]} for r in rows}
+
+    def log_call(self, row: dict) -> None:
+        cols = ("report_id", "ticker", "call_date", "call_time", "price", "fair_value", "verdict", "rating",
+                "conviction", "confidence", "toolkit", "stage", "sector_etf")
+        with self._lock, self._conn() as c:
+            c.execute(f"INSERT OR REPLACE INTO track_record ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+                      tuple(row.get(k) for k in cols))
+
+    def calls(self) -> list[dict]:
+        with self._conn() as c:
+            c.row_factory = sqlite3.Row
+            return [dict(r) for r in c.execute("SELECT * FROM track_record ORDER BY call_date DESC, call_time DESC")]
 
     def revisions(self, ticker: str, today: date, current: list[dict]) -> dict:
         """For each window, % change in revenue and EPS consensus per fiscal year since the snapshot."""

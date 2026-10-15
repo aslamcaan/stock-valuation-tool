@@ -44,7 +44,7 @@ def _v(x: float | None, formula: str, unit: str = PER_SHARE) -> Value:
 
 def company_metrics(cd: CompanyData, svc, ei: EngineInputs) -> CompanyMetrics:
     h = cd.historicals_usd
-    eps = next_fy_eps(svc, cd.profile.ticker, h.periods[-1].end.isoformat()) if cd.historicals.currency == "USD" else None
+    eps = next_fy_eps(svc, cd.profile.ticker, ei.valuation_date.isoformat()) if cd.historicals.currency == "USD" else None
     return metrics_from(h, cd.analysis, ticker=cd.profile.ticker, name=cd.profile.name, sic=cd.profile.sic,
                         market_cap=ei.market_cap.value, price=ei.price.value, forward_eps=eps,
                         source=f"SEC XBRL ({latest_period(h)})")
@@ -129,8 +129,8 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
 
     # --- historical multiples ---------------------------------------------------------------------------------
     say("Computing historical multiples")
-    closes, price_src = price_series(svc, cd.profile.ticker, today - timedelta(days=365 * 6 + 30))
-    pts = year_points(cd.historicals_usd, closes, adr)
+    closes, price_src, splits = price_series(svc, cd.profile.ticker, today - timedelta(days=365 * 6 + 30))
+    pts = year_points(cd.historicals_usd, closes, adr, splits)
     current_metrics = {"revenue": me.revenue, "ebitda": me.ebitda, "fcf": me.fcf, "net_income": me.net_income}
     hist = history_multiples(pts, me.multiples(), current_metrics, shares, bridge, adr)
     w52 = week52(closes, today)
@@ -160,12 +160,13 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
         if c.revenue and c.revenue_high and c.revenue_low:
             disp = (c.revenue_high - c.revenue_low) / c.revenue
     all_flags = sort_flags(flags)
-    key_inputs = [bool(ei.consensus), comps is not None and len(chosen) >= 5, hist_v is not None,
-                  cd.historicals.ltm is not None, ei.industry.unlevered_beta is not None,
+    # consensus and peers have their own signals, so they are not counted again in completeness;
+    # flags are counted once per code (not once per period)
+    key_inputs = [hist_v is not None, cd.historicals.ltm is not None, ei.industry.unlevered_beta is not None,
                   "geography unavailable" not in (ei.crp.note or "")]
     level, reasons = confidence(verdict, estimate_dispersion=disp,
-                                red_flags=sum(1 for f in all_flags if f.level == RED),
-                                amber_flags=sum(1 for f in all_flags if f.level == AMBER),
+                                red_flags=len({f.code for f in all_flags if f.level == RED}),
+                                amber_flags=len({f.code for f in all_flags if f.level == AMBER and f.code != "few_peers"}),
                                 tv_share=v.dcf.tv_share_of_ev if v.dcf else None,
                                 completeness=sum(key_inputs) / len(key_inputs),
                                 peers_meet_brief_filter=bool(comps) and len(steps) <= 3)

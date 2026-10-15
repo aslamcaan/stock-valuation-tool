@@ -123,3 +123,36 @@ def test_football_field_bars():
                           analyst_targets={"low": 90, "high": 140, "median": 110}, week52=(70, 120))
     assert [b.method for b in bars] == ["DCF (bear-bull)", "Analyst price targets", "52-week trading range"]
     assert bars[0].low == 80 and bars[0].high == 130
+
+
+def test_pe_dropped_when_net_income_distorted():
+    uber_like = cm("U", 140000, rev=55000, ebitda=7400, ni=9579, fcf=10000)
+    uber_like.operating_income = 6700
+    assert uber_like.multiples()["pe_trailing"] is not None  # LTM alone is under the threshold...
+    uber_like.earnings_flagged = True                         # ...but the latest fiscal year is flagged
+    assert uber_like.multiples()["pe_trailing"] is None
+    big_gain = cm("G", 1000, rev=100, ni=40)
+    big_gain.operating_income = 10
+    assert big_gain.multiples()["pe_trailing"] is None
+    assert implied_from_multiple("pe_trailing", 30, uber_like, shares=2000, bridge=0, adr_ratio=1) is None
+    normal = cm("N", 1000, ni=8.0)
+    normal.operating_income = 10.0
+    assert normal.multiples()["pe_trailing"] is not None
+
+
+def test_split_restatement_of_old_share_counts():
+    from data_desk.history_data import restated_shares
+    from engine.values import Value
+    old = Value(2535.0, None, "shares_m", "FY2022", "SEC", filing="10-K filed 2022-03-18 (x)")
+    new = Value(24500.0, None, "shares_m", "FY2025", "SEC", filing="10-K filed 2025-02-26 (y)")
+    splits = [("2024-06-10", 10.0)]
+    assert restated_shares(old, splits) == 25350.0  # pre-split filing: restated
+    assert restated_shares(new, splits) == 24500.0  # filed after the split: already restated
+
+
+def test_micro_caps_excluded_from_size_fallback():
+    me = cm("ME", 100000)
+    cands = [cm("T1", 30), cm("T2", 150)] + [cm(f"B{i}", 10000) for i in range(3)]
+    peers, steps = select_peers(me, cands)
+    assert {p.ticker for p in peers} == {"B0", "B1", "B2"}
+    assert "micro-caps" in steps[-1]

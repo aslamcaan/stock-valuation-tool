@@ -10,13 +10,16 @@ from concurrent.futures import ThreadPoolExecutor
 
 from core.cache import CacheMiss
 from core.http import DataSourceError
+from datetime import date
+
+from data_desk.adr import adr_ratio
 from data_desk.builder import _fx_rates
 from data_desk.fx import to_usd
 from data_desk.standardise import standardise
 from data_desk.xbrl import extract
 from datasources.search import US_EXCHANGES
 from engine.analysis import analyse
-from engine.comps import CompanyMetrics
+from engine.comps import CompanyMetrics, earnings_distorted
 from engine.model import Historicals
 
 MAX_CANDIDATES = 15
@@ -38,15 +41,21 @@ def metrics_from(h: Historicals, analysis, *, ticker: str, name: str, sic: str, 
     p = latest_period(h)
     last = h.fy_labels[-1]
     rg = analysis.m("revenue_growth", last)
+    debt = h.v("debt_for_valuation", p) if h.v("debt_for_valuation", p) is not None else h.v("total_debt", p)
+    if debt is None and h.v("total_assets", p) is not None:
+        debt = 0.0  # balance sheet reported with no debt tagged: treated as debt-free, as in the DCF bridge
+    ebitda = h.v("ebitda", p)
     return CompanyMetrics(
         ticker=ticker, name=name, sic=sic, market_cap=market_cap, price=price,
-        revenue=h.v("revenue", p), ebitda=h.v("ebitda", p), fcf=h.v("fcf", p),
+        revenue=h.v("revenue", p), ebitda=ebitda, fcf=h.v("fcf", p),
         net_income=h.v("net_income_attributable", p), forward_eps=forward_eps,
-        debt=h.v("debt_for_valuation", p) if h.v("debt_for_valuation", p) is not None else h.v("total_debt", p),
-        cash=h.v("cash_and_investments", p), minority=h.v("minority_interest", p) or 0.0, period=p,
+        debt=debt, cash=h.v("cash_and_investments", p), minority=h.v("minority_interest", p) or 0.0, period=p,
+        operating_income=h.v("operating_income", p), preferred=h.v("preferred_equity", p) or 0.0,
+        earnings_flagged=earnings_distorted(h.v("net_income_attributable", last), h.v("operating_income", last),
+                                            h.v("revenue", last)),
         benchmarks={"revenue_growth": rg, "operating_margin": analysis.m("operating_margin", p),
                     "roic": analysis.m("roic", last), "fcf_margin": analysis.m("fcf_margin", p),
-                    "net_debt_to_ebitda": analysis.m("net_debt_to_ebitda", p)},
+                    "net_debt_to_ebitda": analysis.m("net_debt_to_ebitda", p) if ebitda and ebitda > 0 else None},
         source=source)
 
 
@@ -71,6 +80,7 @@ def peer_metrics(svc, ticker: str, sec_rows: dict) -> tuple[CompanyMetrics | Non
     h = standardise(extract(facts.payload, facts.fetched_at_iso))
     if not h.periods:
         return None, f"{ticker}: no XBRL financials"
+    reporting_ccy = h.currency
     if h.currency != "USD":
         fx = _fx_rates(svc, h.currency)
         h2, problems = to_usd(h, fx) if fx else (None, ["no FX series"])
@@ -78,20 +88,23 @@ def peer_metrics(svc, ticker: str, sec_rows: dict) -> tuple[CompanyMetrics | Non
             return None, f"{ticker}: reports in {h.currency} and could not be converted"
         h = h2
     analysis = analyse(h)
-    mc = svc.market.market_cap(ticker)
-    mcap = None
-    if mc.available and (mc.data.get("currency") or "USD") == "USD":
-        mcap = mc.data["market_cap"] / 1e6
+    ratio, _ = adr_ratio(ticker)
     q = svc.market.quote(ticker)
     price = q.data["price"] if q.available else None
-    if mcap is None and price and h.dei_shares and h.dei_shares.value:
-        mcap = price * h.dei_shares.value
+    mcap, mc_src = None, None
+    if price and h.dei_shares and h.dei_shares.value:
+        mcap, mc_src = price * h.dei_shares.value / ratio, "price x SEC cover-page shares"  # same basis every run
+    else:
+        mc = svc.market.market_cap(ticker)
+        if mc.available and (mc.data.get("currency") or "USD") == "USD":
+            mcap, mc_src = mc.data["market_cap"] / 1e6, mc.source
     if mcap is None:
         return None, f"{ticker}: market cap unavailable"
-    eps = _ok(next_fy_eps, svc, ticker, h.periods[-1].end.isoformat()) if h.currency == "USD" else None
+    # forward EPS only for US$ reporters with ordinary shares listed (estimates are in the reporting currency)
+    eps = _ok(next_fy_eps, svc, ticker, date.today().isoformat()) if reporting_ccy == "USD" and ratio == 1 else None
     return metrics_from(h, analysis, ticker=ticker, name=row["name"], sic=str(sub.get("sic") or ""),
                         market_cap=mcap, price=price, forward_eps=eps,
-                        source=f"SEC XBRL ({latest_period(h)}); market cap {mc.source or 'computed'}"), None
+                        source=f"SEC XBRL ({latest_period(h)}); market cap {mc_src}"), None
 
 
 def candidate_tickers(svc, ticker: str) -> tuple[list[str], dict]:

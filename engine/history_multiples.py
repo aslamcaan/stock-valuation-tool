@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from statistics import median
 
-from engine.comps import MULTIPLES
+from engine.comps import MULTIPLES, earnings_distorted
 
 
 @dataclass
@@ -26,6 +26,7 @@ class YearPoint:
     ebitda: float | None
     fcf: float | None
     net_income: float | None
+    operating_income: float | None = None
 
     def multiples(self) -> dict[str, float | None]:
         if self.price is None or not self.shares:
@@ -35,7 +36,9 @@ class YearPoint:
 
         def pos(n, d):
             return n / d if n is not None and d and d > 0 and n > 0 else None
-        return {"pe_forward": None, "pe_trailing": pos(mcap, self.net_income), "ev_sales": pos(ev, self.revenue),
+        pe = None if earnings_distorted(self.net_income, self.operating_income, self.revenue) \
+            else pos(mcap, self.net_income)
+        return {"pe_forward": None, "pe_trailing": pe, "ev_sales": pos(ev, self.revenue),
                 "ev_ebitda": pos(ev, self.ebitda), "ev_fcf": pos(ev, self.fcf)}
 
 

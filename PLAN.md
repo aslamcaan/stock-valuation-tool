@@ -181,3 +181,11 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Live Uber run: Buy (Medium), AI cost $0.20 (cap $0.50), ~3.5 minutes; review desk overrode stage to mature growth.
 - Filing extraction: Item 1/1A/7 + segment note (10-K), Items 4/3.D/5 (20-F); ASML's integrated report extracts
   only partly (fallback headings).
+- Phase 5 independent review fixes: P/E dropped when net income is distorted (company, peers, history years; Uber
+  moves from Undervalued to Fairly valued); historical share counts restated for splits after their filing date
+  (NVDA FY2022); debt-free peers kept (missing debt = 0 when a balance sheet exists); peer forward EPS only for US$
+  reporters; forward EPS = first fiscal year ending after the valuation date; size fallback limited to 0.02x-50x
+  (fewer peers accepted, flagged); leverage benchmark skipped when EBITDA <= 0; confidence counts distinct flag codes
+  and no longer double-counts consensus / peers; peer market cap = price x SEC cover-page shares.
+- Known: KO/AAPL DCFs sit well below other methods (statutory terminal tax, margin fade, 5.2% rf); research-desk
+  one-off adjustments lift mature-stable margin targets in full pipeline runs.

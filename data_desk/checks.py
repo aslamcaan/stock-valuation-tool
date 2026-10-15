@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 from engine.model import Historicals
+from engine.comps import earnings_distorted
 from engine.flags import AMBER, HARD_STOP, INFO, RED, Flag, rel_diff
 
 BS_TOLERANCE = 0.005
@@ -155,7 +156,7 @@ def net_income_vs_operating(h: Historicals) -> list[Flag]:
         if None in (ni, oi, rev) or rev <= 0:
             continue
         gap = ni - oi
-        if gap > 0.5 * abs(oi) and gap > 0.05 * rev:
+        if earnings_distorted(ni, oi, rev):
             flags.append(Flag(AMBER, "ni_far_above_oi", "Net income far above operating income",
                               f"{p}: net income {_fmt(ni)} vs operating income {_fmt(oi)} (gap {_fmt(gap)}, "
                               f"{gap / rev:.1%} of revenue). Likely one-off tax or investment gains; forecasts use "

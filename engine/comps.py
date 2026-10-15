@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from statistics import median
 
 MIN_PEERS = 5
+SIZE_FLOOR, SIZE_CAP = 0.02, 50.0  # the nearest-by-size fallback never goes beyond these market-cap ratios
 MULTIPLES = {
     "pe_forward": ("Forward P/E", "equity"),
     "pe_trailing": ("Trailing P/E", "equity"),
@@ -24,6 +25,15 @@ BENCHMARKS = {  # metric -> (label, higher is better)
     "fcf_margin": ("FCF margin", True),
     "net_debt_to_ebitda": ("Net debt / EBITDA", False),
 }
+
+
+def earnings_distorted(net_income: float | None, operating_income: float | None, revenue: float | None) -> bool:
+    """Net income far above operating income (one-off tax or investment gains): P/E is not meaningful.
+    Same rule as the data-desk flag: gap > 50% of |operating income| and > 5% of revenue."""
+    if net_income is None or operating_income is None or not revenue or revenue <= 0:
+        return False
+    gap = net_income - operating_income
+    return gap > 0.5 * abs(operating_income) and gap > 0.05 * revenue
 
 
 @dataclass
@@ -43,6 +53,9 @@ class CompanyMetrics:
     cash: float | None
     minority: float = 0.0
     period: str = ""
+    operating_income: float | None = None
+    preferred: float = 0.0
+    earnings_flagged: bool = False  # net income distorted in the latest fiscal year (even if not in the LTM)
     benchmarks: dict[str, float | None] = field(default_factory=dict)
     source: str = ""
 
@@ -50,7 +63,11 @@ class CompanyMetrics:
     def ev(self) -> float | None:
         if self.market_cap is None or self.debt is None or self.cash is None:
             return None
-        return self.market_cap + self.debt - self.cash + (self.minority or 0.0)
+        return self.market_cap + self.debt - self.cash + (self.minority or 0.0) + (self.preferred or 0.0)
+
+    @property
+    def pe_meaningful(self) -> bool:
+        return not (self.earnings_flagged or earnings_distorted(self.net_income, self.operating_income, self.revenue))
 
     def multiples(self) -> dict[str, float | None]:
         ev = self.ev
@@ -59,7 +76,7 @@ class CompanyMetrics:
             return n / d if n is not None and d and d > 0 and n > 0 else None
 
         return {"pe_forward": pos(self.price, self.forward_eps),
-                "pe_trailing": pos(self.market_cap, self.net_income),
+                "pe_trailing": pos(self.market_cap, self.net_income) if self.pe_meaningful else None,
                 "ev_sales": pos(ev, self.revenue), "ev_ebitda": pos(ev, self.ebitda), "ev_fcf": pos(ev, self.fcf)}
 
 
@@ -85,8 +102,10 @@ def select_peers(company: CompanyMetrics, candidates: list[CompanyMetrics]) -> t
         if len(peers) >= MIN_PEERS:
             return peers, taken
     import math
-    peers = sorted(pool, key=lambda c: abs(math.log(c.market_cap / mc)))[:max(MIN_PEERS, 8)]
-    taken.append(f"nearest {len(peers)} candidates by market cap (size filter dropped)")
+    sized = [c for c in pool if SIZE_FLOOR <= c.market_cap / mc <= SIZE_CAP]
+    peers = sorted(sized, key=lambda c: abs(math.log(c.market_cap / mc)))[:max(MIN_PEERS, 8)]
+    taken.append(f"nearest {len(peers)} candidates by market cap within {SIZE_FLOOR:g}x-{SIZE_CAP:g}x "
+                 f"(fewer than {MIN_PEERS} accepted rather than micro-caps)")
     return peers, taken
 
 
@@ -137,6 +156,8 @@ def implied_from_multiple(key: str, multiple: float, company: CompanyMetrics, sh
               "ev_fcf": company.fcf}[key]
     if metric is None or metric <= 0 or not shares:
         return None
+    if key == "pe_trailing" and not company.pe_meaningful:
+        return None  # net income inflated by one-off gains
     if key == "pe_trailing":
         return multiple * metric / shares * adr_ratio
     return (multiple * metric + bridge) / shares * adr_ratio

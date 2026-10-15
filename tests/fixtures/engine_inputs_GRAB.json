@@ -1,0 +1,294 @@
+{
+  "ticker": "GRAB",
+  "recorded": "2026-10-15",
+  "valuation_date": "2026-10-15",
+  "price": {
+    "value": 3.005,
+    "source": "Tiingo",
+    "period": "2026-10-15T16:00:04.482735148-04:00",
+    "note": "FMP: not available on the current plan for this symbol",
+    "unit": "per_share",
+    "currency": "USD"
+  },
+  "basic_shares": {
+    "value": 4092.151,
+    "source": "SEC EDGAR companyfacts",
+    "period": "FY2025",
+    "note": "cover-page share count not tagged; using shares basic weighted",
+    "unit": "shares_m",
+    "currency": null
+  },
+  "adr_ratio": 1.0,
+  "market_cap": {
+    "value": 12296.913755,
+    "source": "calculated",
+    "period": "current",
+    "note": null,
+    "unit": "m",
+    "currency": "USD"
+  },
+  "risk_free": {
+    "value": 0.0519,
+    "source": "FRED DGS10",
+    "period": "2026-10-14",
+    "note": "10-year Treasury constant maturity",
+    "unit": "ratio",
+    "currency": null
+  },
+  "erp": {
+    "value": 0.037,
+    "source": "Damodaran implied ERP",
+    "period": "2026-10-01",
+    "note": "Implied ERP (trailing 12m cash yield), start of month 2026-10-01",
+    "unit": "ratio",
+    "currency": null
+  },
+  "beta_regression": {
+    "value": 0.908,
+    "source": "FMP",
+    "period": "latest",
+    "note": null,
+    "unit": "ratio",
+    "currency": null
+  },
+  "industry": {
+    "name": "Transportation",
+    "how": "matched ticker GRAB",
+    "unlevered_beta": {
+      "value": 0.7937991068388717,
+      "source": "Damodaran EMERGING industry 'Transportation'",
+      "period": "2026-01-05",
+      "note": "cash-adjusted unlevered beta, 330 firms; industry matched ticker GRAB",
+      "unit": "ratio",
+      "currency": null
+    },
+    "operating_margin": {
+      "value": 0.0748643270797604,
+      "source": "Damodaran EMERGING industry 'Transportation'",
+      "period": "2026-01-05",
+      "note": "pre-tax unadjusted operating margin (industry aggregate)",
+      "unit": "ratio",
+      "currency": null
+    },
+    "revenue_growth": {
+      "value": 0.036465000000000004,
+      "source": "Damodaran US industry 'Transportation'",
+      "period": "2026-01-05",
+      "note": "expected revenue growth, next 2 years",
+      "unit": "ratio",
+      "currency": null
+    },
+    "sales_to_capital": {
+      "value": 1.4750420379334863,
+      "source": "Damodaran EMERGING industry 'Transportation'",
+      "period": "2026-01-05",
+      "note": "sales / invested capital",
+      "unit": "x",
+      "currency": null
+    }
+  },
+  "crp": {
+    "value": 0.01258955647846024,
+    "source": "Damodaran regional CRP",
+    "period": "2026-01-01",
+    "note": "revenue geography unavailable; Singapore is an emerging-markets company, so the GDP-weighted Asia average CRP is used as a proxy (relative to US). The research desk refines this from the annual report's geographic split.",
+    "unit": "ratio",
+    "currency": null
+  },
+  "marginal_tax": {
+    "value": 0.17,
+    "source": "Damodaran country tax rates",
+    "period": "2025",
+    "note": "marginal corporate tax rate, Singapore",
+    "unit": "ratio",
+    "currency": null
+  },
+  "rating_table_large": [
+    {
+      "min": -100000.0,
+      "max": 0.199999,
+      "rating": "D2/D",
+      "spread": 0.19
+    },
+    {
+      "min": 0.2,
+      "max": 0.649999,
+      "rating": "C2/C",
+      "spread": 0.16
+    },
+    {
+      "min": 0.65,
+      "max": 0.799999,
+      "rating": "Ca2/CC",
+      "spread": 0.1261
+    },
+    {
+      "min": 0.8,
+      "max": 1.249999,
+      "rating": "Caa/CCC",
+      "spread": 0.0885
+    },
+    {
+      "min": 1.25,
+      "max": 1.499999,
+      "rating": "B3/B-",
+      "spread": 0.0509
+    },
+    {
+      "min": 1.5,
+      "max": 1.749999,
+      "rating": "B2/B",
+      "spread": 0.0321
+    },
+    {
+      "min": 1.75,
+      "max": 1.999999,
+      "rating": "B1/B+",
+      "spread": 0.0275
+    },
+    {
+      "min": 2.0,
+      "max": 2.2499999,
+      "rating": "Ba2/BB",
+      "spread": 0.0184
+    },
+    {
+      "min": 2.25,
+      "max": 2.49999,
+      "rating": "Ba1/BB+",
+      "spread": 0.0138
+    },
+    {
+      "min": 2.5,
+      "max": 2.999999,
+      "rating": "Baa2/BBB",
+      "spread": 0.0111
+    },
+    {
+      "min": 3.0,
+      "max": 4.249999,
+      "rating": "A3/A-",
+      "spread": 0.0089
+    },
+    {
+      "min": 4.25,
+      "max": 5.499999,
+      "rating": "A2/A",
+      "spread": 0.0078
+    },
+    {
+      "min": 5.5,
+      "max": 6.499999,
+      "rating": "A1/A+",
+      "spread": 0.007
+    },
+    {
+      "min": 6.5,
+      "max": 8.499999,
+      "rating": "Aa2/AA",
+      "spread": 0.0055
+    },
+    {
+      "min": 8.5,
+      "max": 100000.0,
+      "rating": "Aaa/AAA",
+      "spread": 0.004
+    }
+  ],
+  "rating_table_small": [
+    {
+      "min": -100000.0,
+      "max": 0.499999,
+      "rating": "D2/D",
+      "spread": 0.19
+    },
+    {
+      "min": 0.5,
+      "max": 0.799999,
+      "rating": "C2/C",
+      "spread": 0.16
+    },
+    {
+      "min": 0.8,
+      "max": 1.249999,
+      "rating": "Ca2/CC",
+      "spread": 0.1261
+    },
+    {
+      "min": 1.25,
+      "max": 1.499999,
+      "rating": "Caa/CCC",
+      "spread": 0.0885
+    },
+    {
+      "min": 1.5,
+      "max": 1.999999,
+      "rating": "B3/B-",
+      "spread": 0.0509
+    },
+    {
+      "min": 2.0,
+      "max": 2.499999,
+      "rating": "B2/B",
+      "spread": 0.0321
+    },
+    {
+      "min": 2.5,
+      "max": 2.999999,
+      "rating": "B1/B+",
+      "spread": 0.0275
+    },
+    {
+      "min": 3.0,
+      "max": 3.499999,
+      "rating": "Ba2/BB",
+      "spread": 0.0184
+    },
+    {
+      "min": 3.5,
+      "max": 3.9999999,
+      "rating": "Ba1/BB+",
+      "spread": 0.0138
+    },
+    {
+      "min": 4.0,
+      "max": 4.499999,
+      "rating": "Baa2/BBB",
+      "spread": 0.0111
+    },
+    {
+      "min": 4.5,
+      "max": 5.999999,
+      "rating": "A3/A-",
+      "spread": 0.0089
+    },
+    {
+      "min": 6.0,
+      "max": 7.499999,
+      "rating": "A2/A",
+      "spread": 0.0078
+    },
+    {
+      "min": 7.5,
+      "max": 9.499999,
+      "rating": "A1/A+",
+      "spread": 0.007
+    },
+    {
+      "min": 9.5,
+      "max": 12.499999,
+      "rating": "Aa2/AA",
+      "spread": 0.0055
+    },
+    {
+      "min": 12.5,
+      "max": 100000.0,
+      "rating": "Aaa/AAA",
+      "spread": 0.004
+    }
+  ],
+  "consensus": [],
+  "notes": [
+    "FMP: not available on the current plan for this symbol; No free source for analyst estimates; forecast falls back to history."
+  ]
+}

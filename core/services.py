@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from core.cache import Cache
 from core.config import Settings, load_settings
+from core.store import Store
 from datasources.damodaran import DamodaranClient
 from datasources.edgar import EdgarClient
 from datasources.finnhub import FinnhubClient
@@ -25,6 +26,7 @@ class Services:
     tiingo: TiingoClient
     finnhub: FinnhubClient
     market: MarketData
+    store: Store
 
 
 def build_services(settings: Settings | None = None) -> Services:
@@ -43,4 +45,5 @@ def build_services(settings: Settings | None = None) -> Services:
         tiingo=tiingo,
         finnhub=finnhub,
         market=MarketData(fmp, tiingo, finnhub),
+        store=Store(s.db_path),
     )

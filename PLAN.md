@@ -51,10 +51,10 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [x] **CHECKPOINT 3:** valuation summary for GRAB, KO, AAPL
 
 ### Phase 5 — comps, verdict, flags, provenance
-- [ ] Comps (peer filter SIC + 0.25–4x mcap, min 5), historical multiples, estimate revisions
-- [ ] Industry benchmarking percentiles
-- [ ] Verdict rules + confidence; flags; football field; assumptions table; provenance / click-to-trace
-- [ ] Pass `test_grab_judgement`, ASML, AAPL tests
+- [x] Comps (peer filter SIC + 0.25–4x mcap, min 5), historical multiples, estimate revisions
+- [x] Industry benchmarking percentiles
+- [x] Verdict rules + confidence; flags; football field; assumptions table; provenance / click-to-trace
+- [x] Pass `test_grab_judgement`, ASML, AAPL tests
 - [ ] Commit + push
 
 ### Phase 6 — AI desks
@@ -161,3 +161,12 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Checkpoint 3 (2026-10-15): user approved. Decisions: industry beta stays the default (easier to explain, editable).
   Tax: effective rate held through the explicit forecast, statutory rate in the terminal value (+2-3% for KO/AAPL).
   User authorised continuing autonomously through the phases; stop at Checkpoint 4 for them to try Release 1.
+- Phase 5: engine/comps.py (peer filter + widening, multiples, implied prices, benchmarking), history_multiples.py
+  (split-adjusted Tiingo closes x restated diluted shares), verdict.py (50/30/20 blend, +/-15% bands, confidence,
+  football field), bridge.py (user model -> tool, 9 ordered steps); core/store.py (SQLite consensus snapshots for
+  30/60/90-day revisions: none until history accumulates); data_desk/peers.py, history_data.py;
+  desks/modelling.py (ValuationReport with trace registry, assumptions table, sources).
+- Peers: FMP + Finnhub candidates kept only if SEC-registered US listings; mega caps (AAPL, KO) need widening
+  -> confidence reduced. Forward P/E mostly unavailable on free FMP (consensus blocked for most peers).
+- test_grab_judgement: user $5.39 -> tool $1.46; operating margin step -$2.86 is the largest driver.
+- Click-to-trace data: every headline number has a Value in report.trace (UI in Phase 7).

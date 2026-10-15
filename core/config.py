@@ -56,6 +56,7 @@ class Settings:
     app_password: str = field(default="", repr=False)
     database_url: str = field(default="", repr=False)
     cache_dir: Path = PROJECT_ROOT / ".cache"
+    db_path: Path = PROJECT_ROOT / "data" / "vt.sqlite"
     offline: bool = False  # serve only from cache, never hit the network
 
     @property
@@ -86,5 +87,6 @@ def load_settings() -> Settings:
         app_password=_get("APP_PASSWORD"),
         database_url=_get("DATABASE_URL"),
         cache_dir=Path(cache_dir) if cache_dir else PROJECT_ROOT / ".cache",
+        db_path=Path(_get("VT_DB_PATH")) if _get("VT_DB_PATH") else PROJECT_ROOT / "data" / "vt.sqlite",
         offline=_get("VT_OFFLINE").lower() in {"1", "true", "yes"},
     )

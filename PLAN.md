@@ -74,7 +74,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [x] Commit + push
 
 ### Phase 9 — README
-- [ ] README (architecture diagram, setup, tests, limitations); push
+- [x] README (architecture diagram, setup, tests, limitations); push
 - [ ] **CHECKPOINT 4:** Release 1 summary + run command; wait for user
 
 ## RELEASE 2: news, ownership, comparison
@@ -200,3 +200,6 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   exports/verify.py (pycel + MEDIAN plugin) and scripts/excel_check.py (real Excel via pywin32). Verified: UBER 9,611,
   KO 5,249, GRAB 9,584 formulas, zero errors, Excel fair value = app fair value exactly; GRAB also checked in
   Microsoft Excel. exports/pdf.py (reportlab, 7 pages for UBER).
+- Phase 9: README written. Live tests at the end of 2026-10-15: SEC, FRED, Damodaran pass; FMP (429 daily limit) and
+  Tiingo (hourly limit) failed only because today's heavy testing used up the free quotas.
+- CHECKPOINT 4 reached (2026-10-15): waiting for the user to try Release 1.

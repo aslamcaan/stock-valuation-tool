@@ -48,7 +48,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [x] SOTP, scenarios, sensitivity grids, reverse DCF
 - [x] Pass `test_grab_engine`, KO and cyclical tests
 - [x] Commit + push
-- [ ] **CHECKPOINT 3:** valuation summary for GRAB, KO, AAPL
+- [x] **CHECKPOINT 3:** valuation summary for GRAB, KO, AAPL
 
 ### Phase 5 — comps, verdict, flags, provenance
 - [ ] Comps (peer filter SIC + 0.25–4x mcap, min 5), historical multiples, estimate revisions
@@ -158,3 +158,6 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   and margin with a grid scan (no monotonicity assumption); 90th-percentile margin flag unconditional (per
   CLAUDE.md); high-growth = 5 explicit years easing halfway to industry growth, then 5 fade years.
 - Default terminal growth min(2.5%, risk-free) is a major driver with rf at 5.2%: shown at Checkpoint 3.
+- Checkpoint 3 (2026-10-15): user approved. Decisions: industry beta stays the default (easier to explain, editable).
+  Tax: effective rate held through the explicit forecast, statutory rate in the terminal value (+2-3% for KO/AAPL).
+  User authorised continuing autonomously through the phases; stop at Checkpoint 4 for them to try Release 1.

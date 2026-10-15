@@ -9,7 +9,8 @@ and a confidence level. Rules:
   mature, cyclical, declining: 5 years toward terminal growth.
 - Margins: early -> ramp to the industry (mature-peer) margin; high / mature growth -> close half the gap to
   the industry margin; mature stable -> 5-year average; cyclical -> mid-cycle (10-year average) from year 3.
-- Tax: effective rate in year 1 moving to the marginal rate by the final year.
+- Tax: the latest effective rate is held through the explicit forecast; the marginal (statutory) rate applies in
+  the terminal value (multinationals keep low effective rates for years; steady state converges to statutory).
 - Reinvestment: sales-to-capital (company history, else industry).
 Every number is a Value; per-year paths are plain floats derived from those Values by the rules above.
 """
@@ -267,10 +268,11 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
 
     # --- tax ---------------------------------------------------------------------------------------------
     t0 = effective_tax.value if effective_tax is not None and 0 <= effective_tax.value <= 0.40 else marginal_tax.value
-    tax_path = [t0] + _lerp(t0, marginal_tax.value, n - 1)
+    tax_path = [t0] * n
     drivers["tax_rate"] = DriverRow("tax_rate", "Tax rate", effective_tax, None, marginal_tax,
-                                    _v(marginal_tax.value, "marginal rate by the final year", "chosen"), tax_path,
-                                    "effective rate in year 1, moving to the marginal rate", "Medium")
+                                    _v(marginal_tax.value, "marginal (statutory) rate in the terminal value", "chosen"),
+                                    tax_path, "latest effective rate held through the explicit forecast; the marginal "
+                                    "(statutory) rate applies in the terminal value", "Medium")
 
     # --- reinvestment: sales-to-capital ----------------------------------------------------------------
     s2c_hist = _sales_to_capital(h)
@@ -360,6 +362,7 @@ def to_dcf_inputs(plan: ForecastPlan, wacc: float, bridge: tuple[tuple[str, floa
         start = end
     return DCFInputs(base_label=plan.base_label, base_revenue=plan.base_revenue.value, years=tuple(years), wacc=wacc,
                      terminal_growth=plan.terminal_growth.value, terminal_roic=plan.terminal_roic.value,
+                     terminal_tax_rate=plan.drivers["tax_rate"].chosen.value,
                      conventions=conv, bridge=bridge, shares=shares, timing=tuple(timing),
                      end_of_final_year=(plan.year_ends[-1] - plan.valuation_date).days / YEAR)
 

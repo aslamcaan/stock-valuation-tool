@@ -203,3 +203,4 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Phase 9: README written. Live tests at the end of 2026-10-15: SEC, FRED, Damodaran pass; FMP (429 daily limit) and
   Tiingo (hourly limit) failed only because today's heavy testing used up the free quotas.
 - CHECKPOINT 4 reached (2026-10-15): waiting for the user to try Release 1.
+- Checkpoint 4 decisions (user, 2026-10-16): response caching replaces temperature 0 (accepted); keep the server-side refusal fallback on Sonnet calls; keep the review desk's stage override. User wants the app as a password-protected personal website with a polished look.

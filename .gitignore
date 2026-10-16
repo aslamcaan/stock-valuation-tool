@@ -20,7 +20,7 @@ venv/
 *.egg-info/
 
 # Exports and OS files
-exports/
+/output/
 .DS_Store
 Thumbs.db
 ~$*.xlsx

@@ -25,3 +25,8 @@ venv/
 Thumbs.db
 ~$*.xlsx
 data/
+.neon
+
+# Neon CLI agent tooling (local only)
+.claude/
+skills-lock.json

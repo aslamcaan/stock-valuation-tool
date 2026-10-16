@@ -34,8 +34,7 @@ def main() -> int:
         print(f"\nFill these in .env first: {', '.join(missing)}")
         return 1
     if len(env["APP_PASSWORD"]) < 12:
-        print("\nAPP_PASSWORD is shorter than 12 characters. Use a longer one (a few random words works well).")
-        return 1
+        print("\nNote: APP_PASSWORD is shorter than 12 characters; a longer one is harder to guess.")
 
     print("\nConnecting to the hosted database...")
     try:

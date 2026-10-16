@@ -17,6 +17,8 @@ SECRET_FIELDS = {"fmp_api_key", "fred_api_key", "tiingo_api_key", "finnhub_api_k
 
 
 def _streamlit_secret(name: str) -> str | None:
+    if os.environ.get("VT_IGNORE_SECRETS"):  # tests: never read a local .streamlit/secrets.toml
+        return None
     try:
         import streamlit as st
 

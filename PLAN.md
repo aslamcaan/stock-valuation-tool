@@ -204,3 +204,18 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   Tiingo (hourly limit) failed only because today's heavy testing used up the free quotas.
 - CHECKPOINT 4 reached (2026-10-15): waiting for the user to try Release 1.
 - Checkpoint 4 decisions (user, 2026-10-16): response caching replaces temperature 0 (accepted); keep the server-side refusal fallback on Sonnet calls; keep the review desk's stage override. User wants the app as a password-protected personal website with a polished look.
+- Deploy brought forward (user, 2026-10-16): Streamlit Community Cloud now, before Release 2; dark clean theme for
+  now, full design pass later. Built: `core/db.py` (one interface over SQLite and Postgres; `?` placeholders,
+  ON CONFLICT upserts), Store and CostLedger on it, saved reports moved from .pkl files into a `reports` table
+  (zlib-compressed pickles; local .pkl files imported once and renamed .pkl.imported), AI response cache stored in
+  the database when deployed (determinism survives restarts), `ui/auth.py` password gate (hmac compare, 5 tries
+  then 60 s lockout per session; deployed app without APP_PASSWORD stays locked), `.streamlit/config.toml` dark
+  theme, `scripts/deploy_prep.py`. Hosted DB: Neon rather than Supabase (Supabase free projects pause after a
+  week idle and need a manual restore; Neon wakes automatically).
+- Found and fixed: `.gitignore` excluded the whole `exports/` package, so the Excel/PDF code had never been pushed.
+- Verified on a real Postgres 18 (portable, in scratch): storage tests on both engines (tests/test_db.py, Postgres
+  runs when VT_TEST_PG_URL is set), login flow via AppTest, a full live KO report saved, reloaded and re-run
+  (identical fair value and rating, AI $0.000 on the re-run), deploy_prep idempotent.
+- KO fair value $36.05 (2026-10-15) vs $45.94 (2026-10-16): the earlier run had no historical-multiples leg
+  because the free price quotas were used up; today it is $80.71 and enters the blend. DCF 28.84 -> 30.44, comps
+  48.07 -> 48.58.

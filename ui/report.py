@@ -9,8 +9,8 @@ from data_desk.tags import LINES
 from engine.analysis import METRIC_SECTION
 from engine.rubric import LABELS, WEIGHTS
 from engine.values import MULTIPLE, PER_SHARE, RATIO, Value
-from ui.format import (CSS, FLAG_ICON, calc_value, fmt_value, millions, money, mult, pct, plain_table,
-                       trace_text, traced_table)
+from ui.format import (AMBER, BLUE, CSS, FLAG_ICON, GREEN, MUTED, RED, calc_value, fmt_value, millions, money, mult,
+                       pct, plain_table, trace_text, traced_table)
 
 NAMES = {**{k: v.label for k, v in LINES.items()}, **DERIVED_LABELS}
 IS_LINES = ["revenue", "cost_of_revenue", "gross_profit", "rnd", "sga", "operating_income", "interest_expense",
@@ -58,7 +58,7 @@ def verdict_card(rep) -> None:
         _metric("Fair value", m.trace.get("fair_value"), money(vd.fair_value),
                 delta=None if vd.gap is None else f"{vd.gap:+.1%} vs price")
     with c3:
-        colour = {"Undervalued": "#1a7f37", "Overvalued": "#cf222e"}.get(vd.verdict, "#9a6700")
+        colour = {"Undervalued": GREEN, "Overvalued": RED}.get(vd.verdict, AMBER)
         html(f"<div class='vt-muted'>Verdict</div><div class='vt-verdict' style='color:{colour}'>{vd.verdict}</div>"
              f"<div class='vt-muted'>Confidence: <b>{vd.confidence}</b></div>")
     with c4:
@@ -374,14 +374,14 @@ def football(rep) -> None:
     fig = go.Figure()
     for b in reversed(bars):
         fig.add_trace(go.Bar(y=[b.method], x=[b.high - b.low], base=[b.low], orientation="h",
-                             marker_color="#0969da" if "DCF" in b.method else "#8c959f",
+                             marker_color=BLUE if "DCF" in b.method else MUTED,
                              hovertemplate=f"{b.method}: {money(b.low)} – {money(b.high)}<extra>{b.note}</extra>",
                              showlegend=False))
-    fig.add_vline(x=price, line_color="#cf222e", annotation_text=f"Price {money(price)}")
+    fig.add_vline(x=price, line_color=RED, annotation_text=f"Price {money(price)}")
     if rep.model.verdict.fair_value:
-        fig.add_vline(x=rep.model.verdict.fair_value, line_dash="dash", line_color="#1a7f37",
+        fig.add_vline(x=rep.model.verdict.fair_value, line_dash="dash", line_color=GREEN,
                       annotation_text=f"Fair value {money(rep.model.verdict.fair_value)}", annotation_position="bottom")
-    fig.update_layout(height=60 + 34 * len(bars), margin=dict(l=10, r=10, t=30, b=10), plot_bgcolor="white",
+    fig.update_layout(height=60 + 34 * len(bars), margin=dict(l=10, r=10, t=30, b=10), plot_bgcolor="rgba(0,0,0,0)",
                       xaxis_title="US$ per share")
     st.plotly_chart(fig, width="stretch")
 

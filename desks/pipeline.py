@@ -7,7 +7,6 @@ Status events go through a queue because Streamlit can only update the UI from t
 """
 from __future__ import annotations
 
-import pickle
 import queue
 import threading
 import time
@@ -15,7 +14,6 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
-from pathlib import Path
 
 from core.config import PROJECT_ROOT
 from data_desk.builder import CompanyData, DataDeskError, build_company_data
@@ -58,6 +56,7 @@ class FullReport:
     stopped: str | None = None            # plain-English reason the run stopped early
     ai_cost: float = 0.0
     desk_status: dict[str, tuple[str, str]] = field(default_factory=dict)
+    save_error: str | None = None
     overrides: dict = field(default_factory=dict)
     peers_pool: list = field(default_factory=list)   # all peer candidates (reused when assumptions are edited)
     peer_notes: list[str] = field(default_factory=list)
@@ -101,7 +100,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
     except DataDeskError as exc:
         p("Data desk", FAILED, str(exc))
         rep.stopped = str(exc)
-        return _finish(rep, p, cost())
+        return _finish(rep, p, cost(), svc.store)
     rep.company = cd
     h = cd.historicals
     p("Data desk", DONE, f"Fetched {len(h.fy_labels)} annual periods{' + ' + h.ltm.label if h.ltm else ''}, "
@@ -113,7 +112,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         msg = " ".join(f"{f.title}: {f.message}" for f in cd.hard_stops)
         p("Data checks", FAILED, msg)
         rep.stopped = f"Valuation refused because a hard check failed. {msg}"
-        return _finish(rep, p, cost())
+        return _finish(rep, p, cost(), svc.store)
     reds = sum(1 for f in cd.flags if f.level == "red")
     ambers = sum(1 for f in cd.flags if f.level == "amber")
     p("Data checks", DONE, f"No hard stops · {reds} red · {ambers} amber flags")
@@ -165,7 +164,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
     except ValuationError as exc:
         p("Modelling desk", FAILED, str(exc))
         rep.stopped = str(exc)
-        return _finish(rep, p, cost())
+        return _finish(rep, p, cost(), svc.store)
     model.notes += peer_notes
     rep.model = model
     vd = model.verdict
@@ -175,7 +174,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         for d in ("Review desk", "MD"):
             p(d, SKIPPED, "AI desks switched off" if not rep.stopped else "Stopped: AI cost cap reached")
         log_to_track_record(rep, svc.store)
-        return _finish(rep, p, cost())
+        return _finish(rep, p, cost(), svc.store)
 
     sources = _sources_text(research, filing)
     research_view = _research_for_ai(research)
@@ -211,7 +210,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         for d in ("Review desk", "MD"):
             if p.status[d][0] in (WAITING, RUNNING):
                 p(d, FAILED, str(exc))
-    return _finish(rep, p, cost())
+    return _finish(rep, p, cost(), svc.store)
 
 
 def _research_for_ai(research: ResearchResult | None) -> dict:
@@ -222,10 +221,13 @@ def _research_for_ai(research: ResearchResult | None) -> dict:
     return {k: research.data.get(k) for k in keep}
 
 
-def _finish(rep: FullReport, p: Progress, cost: float, store=None) -> FullReport:
+def _finish(rep: FullReport, p: Progress, cost: float, store) -> FullReport:
     rep.ai_cost = cost
     rep.desk_status = dict(p.status)
-    save(rep)
+    try:
+        save(rep, store)
+    except Exception as exc:  # the report is still shown; it just is not kept
+        rep.save_error = f"The report could not be saved ({type(exc).__name__}: {exc})."
     return rep
 
 
@@ -245,21 +247,32 @@ def log_to_track_record(rep: FullReport, store) -> None:
         "sector_etf": sector_etf(rep.company.profile.sic)})
 
 
-def save(rep: FullReport) -> Path:
-    d = REPORTS_DIR / rep.ticker
-    d.mkdir(parents=True, exist_ok=True)
-    path = d / f"{rep.report_id}.pkl"
-    with open(path, "wb") as fh:
-        pickle.dump(rep, fh)
-    return path
+def headline(rep: FullReport) -> str:
+    vd = rep.model.verdict if rep.model else None
+    return ((f"{vd.verdict} (fair value ${vd.fair_value:,.2f})" if vd and vd.fair_value else (rep.stopped or "incomplete"))
+            + (f" · {rep.md.rating}" if rep.md else ""))
 
 
-def load(path: Path) -> FullReport:
-    with open(path, "rb") as fh:
-        return pickle.load(fh)
+def save(rep: FullReport, store) -> None:
+    store.save_report(rep.report_id, rep.ticker, rep.created_at, headline(rep), rep)
 
 
-def saved_reports() -> list[Path]:
-    if not REPORTS_DIR.exists():
-        return []
-    return sorted(REPORTS_DIR.glob("*/*.pkl"), key=lambda p: p.stat().st_mtime, reverse=True)
+def load(report_id: str, store) -> FullReport:
+    return store.load_report(report_id)
+
+
+def import_legacy_files(store) -> int:
+    """Reports saved as .pkl files before the database store: copy them in once (local only)."""
+    import pickle
+
+    n = 0
+    for path in REPORTS_DIR.glob("*/*.pkl") if REPORTS_DIR.exists() else []:
+        try:
+            with open(path, "rb") as fh:
+                rep = pickle.load(fh)
+            save(rep, store)
+            path.rename(path.with_suffix(".pkl.imported"))
+            n += 1
+        except Exception:  # an unreadable old file is skipped, not fatal
+            continue
+    return n

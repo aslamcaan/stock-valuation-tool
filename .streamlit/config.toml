@@ -1,0 +1,14 @@
+# Dark, clean theme. Secrets go in .streamlit/secrets.toml (gitignored) or the Streamlit Cloud secrets box.
+[theme]
+base = "dark"
+primaryColor = "#4c8dff"
+backgroundColor = "#0b0f14"
+secondaryBackgroundColor = "#151b23"
+textColor = "#e6edf3"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false

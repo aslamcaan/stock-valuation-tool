@@ -33,8 +33,8 @@ def progress_panel(status: dict, started: float, cost: float) -> str:
                     f"<b style='display:inline-block;width:9.5em'>{d}</b> {msg}</div>")
     return (f"<style>@keyframes vtspin{{to{{transform:rotate(360deg)}}}}.vt-spin{{display:inline-block;"
             f"animation:vtspin 1s linear infinite}}</style>"
-            f"<div class='vt-card vt-desk'><div style='background:#eaeef2;border-radius:4px;height:8px;margin-bottom:8px'>"
-            f"<div style='background:#0969da;width:{pct * 100:.0f}%;height:8px;border-radius:4px'></div></div>"
+            f"<div class='vt-card vt-desk'><div style='background:#1f262e;border-radius:4px;height:8px;margin-bottom:8px'>"
+            f"<div style='background:#4c8dff;width:{pct * 100:.0f}%;height:8px;border-radius:4px'></div></div>"
             f"<div class='vt-muted'>{pct:.0%} complete · {time.time() - started:,.0f}s elapsed · AI cost ${cost:.3f}</div>"
             + "".join(rows) + "</div>")
 
@@ -124,8 +124,8 @@ elif st.session_state.get("start_ticker"):
     t = st.session_state.pop("start_ticker")
     start_run(t)
     st.rerun()
-elif st.session_state.get("open_path"):
-    st.session_state.report = load(st.session_state.pop("open_path"))
+elif st.session_state.get("open_id"):
+    st.session_state.report = load(st.session_state.pop("open_id"), svc.store)
     st.session_state.pop("edited", None)
     st.rerun()
 
@@ -137,6 +137,8 @@ if rep is None:
 
 top = st.columns([3, 1, 1, 1])
 top[0].caption(f"Saved report {rep.report_id}")
+if getattr(rep, "save_error", None):
+    st.warning(rep.save_error)
 if top[1].button("Re-run (new version)"):
     start_run(rep.ticker, rep.overrides or None)
     st.rerun()

@@ -3,6 +3,9 @@
 Layout: <root>/<category>/<sha1(key)>.json  (JSON payloads)
         <root>/<category>/<sha1(key)>.bin + .json meta  (binary payloads, e.g. Damodaran .xls)
 
+Categories in DB_CATEGORIES can instead live in the database (core/db.py) when one is passed: the deployed app's
+files are wiped on restart, and the AI response cache is what keeps re-runs deterministic.
+
 Cache keys must never contain secrets; callers build keys from URLs with API keys stripped.
 """
 from __future__ import annotations
@@ -33,6 +36,7 @@ TTL_SECONDS: dict[str, int] = {
     "ai": 3650 * DAY,  # AI responses keyed by the exact request: same inputs -> same output (determinism)
 }
 MAX_TTL = {"news": HOUR}
+DB_CATEGORIES = {"ai"}
 
 
 class CacheMiss(Exception):
@@ -57,9 +61,13 @@ def _now() -> datetime:
 
 
 class Cache:
-    def __init__(self, root: Path, offline: bool = False):
+    def __init__(self, root: Path, offline: bool = False, db=None):
         self.root = Path(root)
         self.offline = offline
+        self.db = db
+        if db is not None:
+            db.execute("CREATE TABLE IF NOT EXISTS cache_entries (category TEXT NOT NULL, digest TEXT NOT NULL, "
+                       "fetched_at TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (category, digest))")
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
 
@@ -76,7 +84,24 @@ class Cache:
         ttl = TTL_SECONDS.get(category, DAY)
         return min(ttl, MAX_TTL.get(category, ttl))
 
+    def _in_db(self, category: str) -> bool:
+        return self.db is not None and category in DB_CATEGORIES
+
+    def _read_db(self, category: str, key: str, allow_stale: bool) -> Cached | None:
+        rows = self.db.query("SELECT fetched_at, payload FROM cache_entries WHERE category=? AND digest=?",
+                             (category, self._path(category, key).stem))
+        if not rows:
+            return None
+        fetched_at = datetime.fromisoformat(rows[0]["fetched_at"])
+        if not (allow_stale or _now() - fetched_at < timedelta(seconds=self.ttl(category))):
+            return None
+        return Cached(json.loads(rows[0]["payload"]), fetched_at, True, key, category)
+
     def read(self, category: str, key: str, allow_stale: bool = False) -> Cached | None:
+        if self._in_db(category):
+            hit = self._read_db(category, key, allow_stale)
+            if hit is not None:
+                return hit
         meta_path = self._path(category, key)
         if not meta_path.exists():
             return None
@@ -96,9 +121,14 @@ class Cache:
 
     def write(self, category: str, key: str, payload: Any, binary: bool = False,
               fetched_at: datetime | None = None) -> Cached:
+        fetched_at = fetched_at or _now()
+        if self._in_db(category) and not binary:
+            self.db.upsert("cache_entries", {"category": category, "digest": self._path(category, key).stem,
+                                             "fetched_at": fetched_at.isoformat(), "payload": json.dumps(payload)},
+                           keys=("category", "digest"))
+            return Cached(payload, fetched_at, False, key, category)
         meta_path = self._path(category, key)
         meta_path.parent.mkdir(parents=True, exist_ok=True)
-        fetched_at = fetched_at or _now()
         meta = {"key": key, "category": category, "fetched_at": fetched_at.isoformat(), "binary": binary}
         if binary:
             meta_path.with_suffix(".bin").write_bytes(payload)

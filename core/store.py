@@ -1,14 +1,16 @@
-"""Local SQLite store: consensus snapshots (for estimate revisions) and, later, the track record.
+"""Store: consensus snapshots (for estimate revisions), the track record and saved reports.
 
 FMP publishes current consensus only, so the tool saves a dated snapshot on every run and measures
-30/60/90-day revisions against its own history.
+30/60/90-day revisions against its own history. SQLite locally, Postgres when deployed (core/db.py).
 """
 from __future__ import annotations
 
-import sqlite3
-import threading
+import pickle
+import zlib
 from datetime import date, timedelta
 from pathlib import Path
+
+from core.db import Database, as_database
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS estimate_snapshots (
@@ -39,51 +41,66 @@ CREATE TABLE IF NOT EXISTS track_record (
     sector_etf TEXT
 );
 """
+REPORTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS reports (
+    report_id TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    headline TEXT,
+    payload {BLOB} NOT NULL
+);
+"""
 REVISION_WINDOWS = (30, 60, 90)
 WINDOW_SLACK_DAYS = 10  # a snapshot up to this many days older than the target date still counts
 
 
 class Store:
-    def __init__(self, path: Path):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        with self._conn() as c:
-            c.executescript(SCHEMA + TRACK_SCHEMA)
-
-    def _conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path)
+    def __init__(self, target: Database | str | Path):
+        self.db = as_database(target)
+        self.db.script(SCHEMA + TRACK_SCHEMA + REPORTS_SCHEMA)
 
     def save_snapshot(self, ticker: str, rows: list[dict], when: date) -> None:
         """rows: {fiscal_year_end, revenue_avg, eps_avg, analysts, source}. One snapshot per ticker per day."""
-        with self._lock, self._conn() as c:
-            for r in rows:
-                c.execute("INSERT OR REPLACE INTO estimate_snapshots VALUES (?,?,?,?,?,?,?)",
-                          (ticker.upper(), when.isoformat(), r["fiscal_year_end"], r.get("revenue_avg"),
-                           r.get("eps_avg"), r.get("analysts"), r.get("source")))
+        for r in rows:
+            self.db.upsert("estimate_snapshots", {
+                "ticker": ticker.upper(), "snapshot_date": when.isoformat(), "fiscal_year_end": r["fiscal_year_end"],
+                "revenue_avg": r.get("revenue_avg"), "eps_avg": r.get("eps_avg"), "analysts": r.get("analysts"),
+                "source": r.get("source")}, keys=("ticker", "snapshot_date", "fiscal_year_end"))
 
     def snapshot_on_or_before(self, ticker: str, target: date) -> tuple[str, dict[str, dict]] | None:
         lo = (target - timedelta(days=WINDOW_SLACK_DAYS)).isoformat()
-        with self._conn() as c:
-            row = c.execute("SELECT MAX(snapshot_date) FROM estimate_snapshots WHERE ticker=? AND snapshot_date<=? "
-                            "AND snapshot_date>=?", (ticker.upper(), target.isoformat(), lo)).fetchone()
-            if not row or not row[0]:
-                return None
-            rows = c.execute("SELECT fiscal_year_end, revenue_avg, eps_avg, analysts FROM estimate_snapshots "
-                             "WHERE ticker=? AND snapshot_date=?", (ticker.upper(), row[0])).fetchall()
-        return row[0], {r[0]: {"revenue_avg": r[1], "eps_avg": r[2], "analysts": r[3]} for r in rows}
+        latest = self.db.scalar("SELECT MAX(snapshot_date) FROM estimate_snapshots WHERE ticker=? AND snapshot_date<=? "
+                                "AND snapshot_date>=?", (ticker.upper(), target.isoformat(), lo))
+        if not latest:
+            return None
+        rows = self.db.query("SELECT fiscal_year_end, revenue_avg, eps_avg, analysts FROM estimate_snapshots "
+                             "WHERE ticker=? AND snapshot_date=?", (ticker.upper(), latest))
+        return latest, {r["fiscal_year_end"]: {"revenue_avg": r["revenue_avg"], "eps_avg": r["eps_avg"],
+                                               "analysts": r["analysts"]} for r in rows}
 
     def log_call(self, row: dict) -> None:
         cols = ("report_id", "ticker", "call_date", "call_time", "price", "fair_value", "verdict", "rating",
                 "conviction", "confidence", "toolkit", "stage", "sector_etf")
-        with self._lock, self._conn() as c:
-            c.execute(f"INSERT OR REPLACE INTO track_record ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
-                      tuple(row.get(k) for k in cols))
+        self.db.upsert("track_record", {k: row.get(k) for k in cols}, keys=("report_id",))
 
     def calls(self) -> list[dict]:
-        with self._conn() as c:
-            c.row_factory = sqlite3.Row
-            return [dict(r) for r in c.execute("SELECT * FROM track_record ORDER BY call_date DESC, call_time DESC")]
+        return self.db.query("SELECT * FROM track_record ORDER BY call_date DESC, call_time DESC")
+
+    # --- saved reports (pickled FullReport objects, compressed) -----------------------------------------------------
+    def save_report(self, report_id: str, ticker: str, created_at: str, headline: str, obj) -> None:
+        payload = zlib.compress(pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL), 6)
+        self.db.upsert("reports", {"report_id": report_id, "ticker": ticker, "created_at": created_at,
+                                   "headline": headline, "payload": payload}, keys=("report_id",))
+
+    def load_report(self, report_id: str):
+        rows = self.db.query("SELECT payload FROM reports WHERE report_id=?", (report_id,))
+        if not rows:
+            raise KeyError(f"No saved report {report_id}")
+        return pickle.loads(zlib.decompress(bytes(rows[0]["payload"])))
+
+    def recent_reports(self, limit: int = 12) -> list[dict]:
+        return self.db.query("SELECT report_id, ticker, created_at, headline FROM reports "
+                             "ORDER BY created_at DESC LIMIT ?", (limit,))
 
     def revisions(self, ticker: str, today: date, current: list[dict]) -> dict:
         """For each window, % change in revenue and EPS consensus per fiscal year since the snapshot."""

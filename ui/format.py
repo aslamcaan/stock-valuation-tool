@@ -10,21 +10,29 @@ import html
 from engine.values import DAYS, MILLIONS, MULTIPLE, PER_SHARE, RATIO, SHARES_M, Value
 
 STATE_ICON = {"done": "✓", "running": "◌", "failed": "✗", "waiting": "·", "skipped": "–"}
-STATE_COLOUR = {"done": "#1a7f37", "running": "#0969da", "failed": "#cf222e", "waiting": "#8c959f", "skipped": "#8c959f"}
+# Dark theme palette (see .streamlit/config.toml).
+GREEN, RED, AMBER, BLUE, MUTED = "#3fb950", "#f85149", "#d29922", "#4c8dff", "#8b949e"
+STATE_COLOUR = {"done": GREEN, "running": BLUE, "failed": RED, "waiting": MUTED, "skipped": MUTED}
 FLAG_ICON = {"hard_stop": "⛔", "red": "🔴", "amber": "🟠", "info": "ℹ️"}
 
 CSS = """
 <style>
-.vt-table {border-collapse: collapse; width: 100%; font-size: 0.86rem; margin-bottom: 0.6rem;}
-.vt-table th {text-align: right; padding: 4px 8px; border-bottom: 2px solid #d0d7de; color: #57606a; font-weight: 600;}
+.vt-table {border-collapse: collapse; width: 100%; font-size: 0.86rem; margin-bottom: 0.6rem;
+           font-variant-numeric: tabular-nums;}
+.vt-table th {text-align: right; padding: 5px 8px; border-bottom: 1px solid #30363d; color: #8b949e; font-weight: 600;}
 .vt-table th:first-child, .vt-table td:first-child {text-align: left;}
-.vt-table td {text-align: right; padding: 3px 8px; border-bottom: 1px solid #eaeef2;}
-.vt-table td.tr {cursor: help; text-decoration: underline dotted #8c959f;}
-.vt-table tr.sub td {color: #57606a; font-style: italic;}
-.vt-card {border: 1px solid #d0d7de; border-radius: 8px; padding: 1rem 1.2rem; background: #ffffff;}
-.vt-verdict {font-size: 1.6rem; font-weight: 700;}
-.vt-muted {color: #57606a; font-size: 0.85rem;}
-.vt-desk {font-family: ui-monospace, monospace; font-size: 0.9rem; line-height: 1.6;}
+.vt-table td {text-align: right; padding: 4px 8px; border-bottom: 1px solid #1f262e;}
+.vt-table tr:hover td {background: #161d26;}
+.vt-table td.tr {cursor: help; text-decoration: underline dotted #6e7681;}
+.vt-table tr.sub td {color: #8b949e; font-style: italic;}
+.vt-card {border: 1px solid #262d36; border-radius: 12px; padding: 1.1rem 1.3rem; background: #11161d;}
+.vt-verdict {font-size: 1.6rem; font-weight: 700; letter-spacing: -0.01em;}
+.vt-muted {color: #8b949e; font-size: 0.85rem;}
+.vt-desk {font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; line-height: 1.7;}
+.vt-login {text-align: center; margin: 12vh 0 1.5rem;}
+.vt-login h1 {font-size: 2rem; margin: 0.4rem 0 0.2rem;}
+.vt-logo {font-size: 2.4rem; color: #4c8dff;}
+[data-testid="stMetricValue"] {font-variant-numeric: tabular-nums;}
 </style>
 """
 

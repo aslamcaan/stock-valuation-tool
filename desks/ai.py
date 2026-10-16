@@ -12,11 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
-import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
-from pathlib import Path
 
 import jsonschema
 
@@ -68,28 +65,23 @@ def price_of(model: str, input_tokens: int, output_tokens: int, cache_read: int 
 
 
 class CostLedger:
-    """Per-report and per-day AI spend, persisted in SQLite so the daily cap survives restarts."""
+    """Per-report and per-day AI spend, persisted in the database so the daily cap survives restarts."""
 
-    def __init__(self, path: Path, per_report_cap: float, per_day_cap: float):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, target, per_report_cap: float, per_day_cap: float):
+        from core.db import as_database
+
+        self.db = as_database(target)
         self.per_report_cap, self.per_day_cap = per_report_cap, per_day_cap
-        self._lock = threading.Lock()
-        with sqlite3.connect(self.path) as c:
-            c.execute("CREATE TABLE IF NOT EXISTS ai_calls (report_id TEXT, day TEXT, at TEXT, desk TEXT, model TEXT, "
-                      "input_tokens INT, output_tokens INT, cache_read INT, searches INT, cost REAL, cached INT, "
-                      "served_by TEXT)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS ai_calls (report_id TEXT, day TEXT, at TEXT, desk TEXT, model TEXT, "
+                        "input_tokens INT, output_tokens INT, cache_read INT, searches INT, cost REAL, cached INT, "
+                        "served_by TEXT)")
 
     def spent_today(self, day: date | None = None) -> float:
-        with sqlite3.connect(self.path) as c:
-            r = c.execute("SELECT COALESCE(SUM(cost),0) FROM ai_calls WHERE day=?",
-                          ((day or date.today()).isoformat(),)).fetchone()
-        return float(r[0])
+        return float(self.db.scalar("SELECT COALESCE(SUM(cost),0) FROM ai_calls WHERE day=?",
+                                    ((day or date.today()).isoformat(),)) or 0)
 
     def spent_on_report(self, report_id: str) -> float:
-        with sqlite3.connect(self.path) as c:
-            r = c.execute("SELECT COALESCE(SUM(cost),0) FROM ai_calls WHERE report_id=?", (report_id,)).fetchone()
-        return float(r[0])
+        return float(self.db.scalar("SELECT COALESCE(SUM(cost),0) FROM ai_calls WHERE report_id=?", (report_id,)) or 0)
 
     def check(self, report_id: str, estimate: float) -> None:
         rep, day = self.spent_on_report(report_id), self.spent_today()
@@ -101,11 +93,10 @@ class CostLedger:
                                   f"MAX_COST_PER_DAY ${self.per_day_cap:.2f}.")
 
     def log(self, report_id: str, rec: CallRecord) -> None:
-        with self._lock, sqlite3.connect(self.path) as c:
-            c.execute("INSERT INTO ai_calls VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                      (report_id, date.today().isoformat(), rec.at, rec.desk, rec.model, rec.input_tokens,
-                       rec.output_tokens, rec.cache_read_tokens, rec.searches, rec.cost, int(rec.cached),
-                       rec.served_by))
+        self.db.execute("INSERT INTO ai_calls VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (report_id, date.today().isoformat(), rec.at, rec.desk, rec.model, rec.input_tokens,
+                         rec.output_tokens, rec.cache_read_tokens, rec.searches, rec.cost, int(rec.cached),
+                         rec.served_by))
 
 
 class AIClient:

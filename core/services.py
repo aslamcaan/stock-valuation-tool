@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from core.cache import Cache
 from core.config import Settings, load_settings
+from core.db import Database
 from core.store import Store
 from desks.ai import AIClient, CostLedger
 from datasources.damodaran import DamodaranClient
@@ -29,11 +30,14 @@ class Services:
     market: MarketData
     store: Store
     ai: AIClient
+    db: Database
 
 
 def build_services(settings: Settings | None = None) -> Services:
     s = settings or load_settings()
-    cache = Cache(s.cache_dir, offline=s.offline)
+    # Hosted Postgres when DATABASE_URL is set (deployed), otherwise the local SQLite file.
+    db = Database(s.database_url) if s.database_url else Database(s.db_path)
+    cache = Cache(s.cache_dir, offline=s.offline, db=db if db.is_postgres else None)
     fmp = FmpClient(cache, s.fmp_api_key)
     tiingo = TiingoClient(cache, s.tiingo_api_key)
     finnhub = FinnhubClient(cache, s.finnhub_api_key)
@@ -47,6 +51,7 @@ def build_services(settings: Settings | None = None) -> Services:
         tiingo=tiingo,
         finnhub=finnhub,
         market=MarketData(fmp, tiingo, finnhub),
-        store=Store(s.db_path),
-        ai=AIClient(s.anthropic_api_key, cache, CostLedger(s.db_path, s.max_cost_per_report, s.max_cost_per_day)),
+        store=Store(db),
+        ai=AIClient(s.anthropic_api_key, cache, CostLedger(db, s.max_cost_per_report, s.max_cost_per_day)),
+        db=db,
     )

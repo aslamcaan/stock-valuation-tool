@@ -41,13 +41,13 @@ flowchart LR
 
 | Package | What |
 |---|---|
-| `core/` | Settings (`.env` / Streamlit secrets), response cache with per-source TTLs, HTTP with rate limits and key redaction, SQLite store |
+| `core/` | Settings (`.env` / Streamlit secrets), response cache with per-source TTLs, HTTP with rate limits and key redaction, store on SQLite (local) or Postgres (deployed) |
 | `datasources/` | SEC EDGAR, FMP, FRED, Damodaran, Tiingo and Finnhub clients; FMP-first market data with free fallbacks |
 | `data_desk/` | XBRL extraction (US GAAP + IFRS tag map, restatements, 52/53-week years, LTM), derived lines, FX, data checks, peers, filings text |
 | `engine/` | **Pure** valuation engine: classification, forecast, WACC, DCF, scenarios, comps, history multiples, verdict, rubric, bridge |
 | `desks/` | AI client (structured outputs, cost caps, response cache), number guard, research / review / MD desks, modelling desk, pipeline |
 | `exports/` | Excel model with live formulas, PDF report, formula verifier |
-| `pages/`, `ui/` | Streamlit app: search, run screen and report, Track Record, debug page |
+| `pages/`, `ui/` | Streamlit app: password gate, search, run screen and report, Track Record, debug page |
 
 ## Setup
 
@@ -77,10 +77,25 @@ Run the app:
 streamlit run app.py
 ```
 
+## Deploying (private website)
+
+The app runs on Streamlit Community Cloud behind a password. Saved reports, the Track Record, estimate snapshots,
+the AI spend ledger and the AI response cache live in a hosted Postgres database (Neon free tier), because Streamlit
+Cloud wipes local files on restart. Locally, without `DATABASE_URL`, everything stays in `data/vt.sqlite`.
+
+1. Create a free Postgres database at neon.tech and copy its connection string.
+2. In `.env`, set `APP_PASSWORD` (12+ characters) and `DATABASE_URL`.
+3. Run `python scripts/deploy_prep.py`: checks the keys, tests the database, copies your local reports and track
+   record into it, and writes `.streamlit/secrets.toml` (gitignored).
+4. At share.streamlit.io: **Create app** from this repo, branch `main`, file `app.py`; under **Advanced settings**
+   choose Python 3.13 and paste the contents of `.streamlit/secrets.toml` into **Secrets**.
+
+Without `APP_PASSWORD` the deployed app stays locked. The theme is in `.streamlit/config.toml`.
+
 ## Tests
 
 ```bash
-pytest              # offline: 180 tests, recorded fixtures, no network
+pytest              # offline: 185 tests, recorded fixtures, no network
 pytest -m live      # live API smoke tests (uses your keys and quotas)
 ```
 

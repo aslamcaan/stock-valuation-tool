@@ -7,11 +7,10 @@ from streamlit_searchbox import st_searchbox
 from core.cache import CacheMiss
 from core.http import DataSourceError
 from datasources.search import label, search
-from desks.pipeline import load, saved_reports
 from ui.state import get_services
 
 st.markdown("<h1 style='text-align:center;margin-top:2rem'>Stock Valuation Tool</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center;color:#5f6b7a'>Equity research and valuation for US-listed companies</p>",
+st.markdown("<p style='text-align:center;color:#8b949e'>Equity research and valuation for US-listed companies</p>",
             unsafe_allow_html=True)
 
 _, mid, _ = st.columns([1, 2, 1])
@@ -37,18 +36,15 @@ with mid:
             st.switch_page("pages/report.py")
 
     st.subheader("Recent reports")
-    reports = saved_reports()[:12]
+    try:
+        reports = get_services().store.recent_reports(12)
+    except Exception as exc:  # a database problem should not hide the search
+        reports = []
+        st.warning(f"Could not load saved reports: {exc}")
     if not reports:
-        st.caption("No reports yet. Completed reports appear here and open instantly from disk (no API cost).")
-    for path in reports:
-        try:
-            rep = load(path)
-        except Exception:  # an unreadable old file should not break the page
-            continue
-        vd = rep.model.verdict if rep.model else None
-        text = (f"{rep.ticker} · {rep.created_at[:16].replace('T', ' ')} · "
-                + (f"{vd.verdict} (fair value ${vd.fair_value:,.2f})" if vd and vd.fair_value else (rep.stopped or "incomplete"))
-                + (f" · {rep.md.rating}" if rep.md else ""))
-        if st.button(text, key=f"open_{path.stem}", width="stretch"):
-            st.session_state.open_path = path
+        st.caption("No reports yet. Completed reports appear here and open instantly (no API cost).")
+    for r in reports:
+        text = f"{r['ticker']} · {r['created_at'][:16].replace('T', ' ')} · {r['headline']}"
+        if st.button(text, key=f"open_{r['report_id']}", width="stretch"):
+            st.session_state.open_id = r["report_id"]
             st.switch_page("pages/report.py")

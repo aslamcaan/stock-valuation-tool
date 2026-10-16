@@ -49,3 +49,12 @@ def historicals_for(ticker: str):
     from data_desk.xbrl import extract
     d = load_edgar_fixture(ticker)
     return standardise(extract(d["companyfacts"], d["fetched_at"]))
+
+
+@pytest.fixture(autouse=True)
+def _isolated_database(tmp_path_factory, monkeypatch):
+    """Tests never touch the real data/vt.sqlite or a hosted database."""
+    monkeypatch.setenv("VT_DB_PATH", str(tmp_path_factory.mktemp("db") / "vt.sqlite"))
+    monkeypatch.setenv("DATABASE_URL", "")
+    monkeypatch.setenv("APP_PASSWORD", "")
+    monkeypatch.setenv("VT_IGNORE_SECRETS", "1")

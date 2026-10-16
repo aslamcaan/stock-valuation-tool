@@ -95,7 +95,7 @@ Without `APP_PASSWORD` the deployed app stays locked. The theme is in `.streamli
 ## Tests
 
 ```bash
-pytest              # offline: 185 tests, recorded fixtures, no network
+pytest              # offline: 187 tests, recorded fixtures, no network
 pytest -m live      # live API smoke tests (uses your keys and quotas)
 ```
 

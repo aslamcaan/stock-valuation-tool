@@ -24,9 +24,32 @@ def offline_env(tmp_path, monkeypatch):
 
 
 def test_home_renders(offline_env):
-    at = AppTest.from_file("../app.py", default_timeout=30).run()
+    at = AppTest.from_file("../app.py", default_timeout=30)
+    at.session_state["authenticated"] = True
+    at.run()
     assert not at.exception
     assert any("Stock Valuation Tool" in m.value for m in at.markdown)
+    assert [s.value for s in at.subheader] == ["Recent reports"]
+
+
+def test_login_required_when_password_set(offline_env, monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD", "a long test password")
+    at = AppTest.from_file("../app.py", default_timeout=30).run()
+    assert not at.subheader and len(at.text_input) == 1  # only the login form
+    at.text_input[0].input("wrong")
+    at.button[0].click().run()
+    assert [e.value for e in at.error] == ["Wrong password."] and not at.subheader
+    at.text_input[0].input("a long test password")
+    at.button[0].click().run()
+    assert not at.exception and [s.value for s in at.subheader] == ["Recent reports"]
+
+
+def test_deployed_without_password_stays_locked(offline_env, monkeypatch, tmp_path):
+    import ui.auth
+    monkeypatch.setattr(ui.auth, "PROJECT_ROOT", tmp_path)  # no .env: looks like a deployment
+    at = AppTest.from_file("../app.py", default_timeout=30).run()
+    assert not at.subheader and not at.text_input
+    assert "APP_PASSWORD is not set" in at.error[0].value
 
 
 def test_debug_page_runs_data_desk(offline_env):

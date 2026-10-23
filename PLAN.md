@@ -219,3 +219,9 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - KO fair value $36.05 (2026-10-15) vs $45.94 (2026-10-16): the earlier run had no historical-multiples leg
   because the free price quotas were used up; today it is $80.71 and enters the blend. DCF 28.84 -> 30.44, comps
   48.07 -> 48.58.
+- 2026-10-23 security fix: the deployed app (no secrets saved yet) let visitors past the gate. Cause: Streamlit
+  auto-builds a sidebar menu from a `pages/` folder whenever st.navigation has not been called, and the gate
+  stopped the script before st.navigation, so that menu appeared on the locked screen and opened pages directly.
+  Fix: pages/ renamed views/; app.py calls st.navigation (hidden until logged in) and stops before nav.run().
+  Tests: direct page URLs while locked or logged out (AppTest switch_page), no pages/ folder; checked in Chromium
+  against a local server (/, /track_record, /debug, /report all show only the login form).

@@ -47,7 +47,7 @@ flowchart LR
 | `engine/` | **Pure** valuation engine: classification, forecast, WACC, DCF, scenarios, comps, history multiples, verdict, rubric, bridge |
 | `desks/` | AI client (structured outputs, cost caps, response cache), number guard, research / review / MD desks, modelling desk, pipeline |
 | `exports/` | Excel model with live formulas, PDF report, formula verifier |
-| `pages/`, `ui/` | Streamlit app: password gate, search, run screen and report, Track Record, debug page |
+| `views/`, `ui/` | Streamlit app: password gate, search, run screen and report, Track Record, debug page |
 
 ## Setup
 

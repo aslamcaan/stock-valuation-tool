@@ -36,12 +36,17 @@ def test_login_required_when_password_set(offline_env, monkeypatch):
     monkeypatch.setenv("APP_PASSWORD", "a long test password")
     at = AppTest.from_file("../app.py", default_timeout=30).run()
     assert not at.subheader and len(at.text_input) == 1  # only the login form
+    at.switch_page("views/track_record.py").run()
+    assert not at.title and len(at.text_input) == 1      # a direct page URL still gets the login form
     at.text_input[0].input("wrong")
     at.button[0].click().run()
     assert [e.value for e in at.error] == ["Wrong password."] and not at.subheader
     at.text_input[0].input("a long test password")
     at.button[0].click().run()
-    assert not at.exception and [s.value for s in at.subheader] == ["Recent reports"]
+    assert not at.exception and not at.text_input           # logged in: the requested page shows
+    assert [t.value for t in at.title] == ["Track Record"]
+    at.switch_page("views/home.py").run()
+    assert [s.value for s in at.subheader] == ["Recent reports"]
 
 
 def test_deployed_without_password_stays_locked(offline_env, monkeypatch, tmp_path):
@@ -50,10 +55,20 @@ def test_deployed_without_password_stays_locked(offline_env, monkeypatch, tmp_pa
     at = AppTest.from_file("../app.py", default_timeout=30).run()
     assert not at.subheader and not at.text_input
     assert "APP_PASSWORD is not set" in at.error[0].value
+    for page in ("views/home.py", "views/track_record.py", "views/debug.py", "views/report.py"):
+        at.switch_page(page).run()  # opening a page's URL directly must not get past the gate
+        assert not at.subheader and not at.title and not at.dataframe, page
+        assert "APP_PASSWORD is not set" in at.error[0].value
+
+
+def test_no_pages_folder():
+    """A pages/ folder makes Streamlit add its own sidebar menu, which would bypass the password gate."""
+    from pathlib import Path
+    assert not (Path(__file__).resolve().parent.parent / "pages").exists()
 
 
 def test_debug_page_runs_data_desk(offline_env):
-    at = AppTest.from_file("../pages/debug.py", default_timeout=60)
+    at = AppTest.from_file("../views/debug.py", default_timeout=60)
     at.session_state["selected"] = offline_env
     at.run()
     assert not at.exception

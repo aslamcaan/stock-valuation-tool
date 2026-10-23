@@ -44,18 +44,21 @@ def _login_screen(password: str) -> None:
             st.error("Wrong password.")
 
 
-def require_password() -> None:
-    """Stops the page unless the visitor has entered the password this session."""
+def require_password(stop: bool = True) -> bool:
+    """True once the visitor has entered the password this session. Otherwise shows the login (or locked) screen
+    and returns False, or stops the script when `stop` is True."""
     if st.session_state.get("authenticated"):
-        return
+        return True
     password = load_settings().app_password
     if not password:
         if (PROJECT_ROOT / ".env").exists():
-            return  # local development without a password
+            return True  # local development without a password
         st.error("This app is locked: APP_PASSWORD is not set in the Streamlit secrets.")
+    else:
+        _login_screen(password)
+    if stop:
         st.stop()
-    _login_screen(password)
-    st.stop()
+    return False
 
 
 def logout_button() -> None:

@@ -33,7 +33,7 @@ with mid:
         st.markdown(f"**{label(picked)}**")
         if st.button("Analyse", type="primary", width="stretch"):
             st.session_state.start_ticker = picked["ticker"]
-            st.switch_page("pages/report.py")
+            st.switch_page("views/report.py")
 
     st.subheader("Recent reports")
     try:
@@ -47,4 +47,4 @@ with mid:
         text = f"{r['ticker']} · {r['created_at'][:16].replace('T', ' ')} · {r['headline']}"
         if st.button(text, key=f"open_{r['report_id']}", width="stretch"):
             st.session_state.open_id = r["report_id"]
-            st.switch_page("pages/report.py")
+            st.switch_page("views/report.py")

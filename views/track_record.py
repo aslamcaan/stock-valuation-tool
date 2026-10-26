@@ -8,6 +8,7 @@ import streamlit as st
 
 from engine.history_multiples import price_on_or_before
 from engine.track import HORIZONS, evaluate, hit_rates
+from ui.format import money
 from ui.state import get_services
 
 svc = get_services()
@@ -45,10 +46,10 @@ def p(x):
 
 
 rows = [{"Ticker": r.call["ticker"], "Date": r.call["call_date"], "Time": r.call["call_time"],
-         "Price at call": r.call["price"], "Fair value": r.call["fair_value"], "Verdict": r.call["verdict"],
+         "Price at call": money(r.call["price"]), "Fair value": money(r.call["fair_value"]), "Verdict": r.call["verdict"],
          "Rating": r.call["rating"] or "–", "Conviction": r.call["conviction"] or "–",
-         "Confidence": r.call["confidence"], "Toolkit": r.call["toolkit"], "Stage": r.call["stage"],
-         "Price now": r.price_now, "Return": p(r.ret), "S&P 500": p(r.spy_ret),
+         "Confidence": r.call["confidence"], "Toolkit": r.call["toolkit"], "Stage": (r.call["stage"] or "").replace("_", " "),
+         "Price now": money(r.price_now), "Return": p(r.ret), "S&P 500": p(r.spy_ret),
          f"Sector ETF": f"{p(r.sector_ret)} ({r.call['sector_etf']})",
          "Moved toward fair value": {True: "yes", False: "no", None: "–"}[r.toward_fair_value]} for r in results]
 st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
@@ -65,7 +66,7 @@ for group, by_h in hr.items():
     table.append(row)
 st.dataframe(pd.DataFrame(table), hide_index=True)
 st.caption("A Buy is a hit if it beat the S&P 500 over the horizon; a Sell is a hit if it lagged. Horizons appear as "
-           "calls age. Storage is local SQLite; the deployed version will use a hosted database (Phase 16).")
+           "calls age.")
 toward = [r.toward_fair_value for r in results if r.toward_fair_value is not None]
 if toward:
     st.markdown(f"Price moved toward the fair value in **{sum(toward)} of {len(toward)}** calls.")

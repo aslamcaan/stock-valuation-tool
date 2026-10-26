@@ -225,3 +225,8 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   Fix: pages/ renamed views/; app.py calls st.navigation (hidden until logged in) and stops before nav.run().
   Tests: direct page URLs while locked or logged out (AppTest switch_page), no pages/ folder; checked in Chromium
   against a local server (/, /track_record, /debug, /report all show only the login form).
+- 2026-10-26 DEPLOYED and verified: https://aslamanalysis.streamlit.app (public link, APP_PASSWORD gate, Neon
+  Postgres). Checked in a headless browser: login on every page URL, saved reports load from Neon, Track Record
+  fetches live prices, SEC search works. Live KO report run by the user on the site: all six desks done, Overvalued,
+  fair value $46.99 vs $92.70, MD Hold (Medium), AI $0.188, saved to Neon with its track-record row; number guard
+  dropped 1 sentence. Remaining: design pass (user's choice of timing), Release 2, Release 3.

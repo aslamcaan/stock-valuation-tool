@@ -44,6 +44,13 @@ def _login_screen(password: str) -> None:
             st.error("Wrong password.")
 
 
+def _secret_count() -> str:
+    try:
+        return str(len(st.secrets))
+    except Exception as exc:  # missing or unreadable secrets; the type says which, without any contents
+        return f"0 ({type(exc).__name__})"
+
+
 def require_password(stop: bool = True) -> bool:
     """True once the visitor has entered the password this session. Otherwise shows the login (or locked) screen
     and returns False, or stops the script when `stop` is True."""
@@ -54,6 +61,8 @@ def require_password(stop: bool = True) -> bool:
         if (PROJECT_ROOT / ".env").exists():
             return True  # local development without a password
         st.error("This app is locked: APP_PASSWORD is not set in the Streamlit secrets.")
+        st.caption(f"Settings the app can see in its secrets: {_secret_count()}. "
+                   "If this is 0, the secrets have not been saved for this app.")
     else:
         _login_screen(password)
     if stop:

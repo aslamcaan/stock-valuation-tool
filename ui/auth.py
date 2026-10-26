@@ -45,6 +45,10 @@ def _login_screen(password: str) -> None:
 
 
 def _secret_count() -> str:
+    import os
+
+    if os.environ.get("VT_IGNORE_SECRETS"):  # tests: reading st.secrets would load a local secrets.toml
+        return "0 (ignored in tests)"
     try:
         return str(len(st.secrets))
     except Exception as exc:  # missing or unreadable secrets; the type says which, without any contents

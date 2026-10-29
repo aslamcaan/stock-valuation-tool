@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
@@ -65,6 +66,9 @@ def price_of(model: str, input_tokens: int, output_tokens: int, cache_read: int 
             + output_tokens * pout) / 1e6 + searches * WEB_SEARCH_PER_CALL
 
 
+RESERVE_WAIT = 240  # seconds a call waits for in-flight calls to settle before a cap refusal
+
+
 class CostLedger:
     """Per-report and per-day AI spend, persisted in the database so the daily cap survives restarts."""
 
@@ -74,7 +78,7 @@ class CostLedger:
         self.db = as_database(target)
         self.per_report_cap, self.per_day_cap = per_report_cap, per_day_cap
         # Calls in flight (desks run in parallel): their estimates count against the caps until they are logged.
-        self._lock = threading.Lock()
+        self._lock = threading.Condition()
         self._pending: dict[str, float] = {}
         self.db.execute("CREATE TABLE IF NOT EXISTS ai_calls (report_id TEXT, day TEXT, at TEXT, desk TEXT, model TEXT, "
                         "input_tokens INT, output_tokens INT, cache_read INT, searches INT, cost REAL, cached INT, "
@@ -97,10 +101,21 @@ class CostLedger:
             raise CostCapExceeded(f"Today's AI spend is ${day:.3f}; the next call (up to ${estimate:.3f}) would exceed "
                                   f"MAX_COST_PER_DAY ${self.per_day_cap:.2f}.")
 
-    def reserve(self, report_id: str, estimate: float) -> None:
-        """Check the caps and hold `estimate` against them until `release`, atomically across threads."""
+    def reserve(self, report_id: str, estimate: float, wait: float = RESERVE_WAIT) -> None:
+        """Check the caps and hold `estimate` against them until `release`, atomically across threads.
+        Reservations are pessimistic (e.g. every allowed web search), so when a cap is breached only because of
+        calls still in flight, wait for them to settle and check again on what they actually cost."""
+        deadline = time.monotonic() + wait
         with self._lock:
-            self.check(report_id, estimate)
+            while True:
+                try:
+                    self.check(report_id, estimate)
+                    break
+                except CostCapExceeded:
+                    left = deadline - time.monotonic()
+                    if not self._pending or left <= 0:
+                        raise
+                    self._lock.wait(left)
             self._pending[report_id] = self._pending.get(report_id, 0.0) + estimate
 
     def release(self, report_id: str, estimate: float) -> None:
@@ -110,6 +125,7 @@ class CostLedger:
                 self._pending[report_id] = left
             else:
                 self._pending.pop(report_id, None)
+            self._lock.notify_all()
 
     def log(self, report_id: str, rec: CallRecord) -> None:
         self.db.execute("INSERT INTO ai_calls VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",

@@ -9,7 +9,7 @@ import pytest
 
 from core.cache import Cache
 from data_desk.exposure import build_exposure
-from desks.ai import HAIKU, SONNET, AIClient, CostLedger
+from desks.ai import HAIKU, SONNET, AIClient, CallRecord, CostLedger
 from desks.news import (is_quote_page, normalise_url, parse_page_age, run_news, source_quality, verify_items)
 
 NOW = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
@@ -344,9 +344,23 @@ def test_parallel_reservations_respect_the_report_cap(tmp_path):
     led = CostLedger(tmp_path / "d.sqlite", 0.30, 5.0)
     led.reserve("r", 0.20)                 # news desk in flight
     with pytest.raises(CostCapExceeded):   # a parallel review call can't also pass the check
-        led.reserve("r", 0.15)
+        led.reserve("r", 0.15, wait=0.05)
     led.release("r", 0.20)
     led.reserve("r", 0.15)
+
+
+def test_a_call_waits_for_in_flight_reservations_to_settle(tmp_path):
+    """Reservations are pessimistic: the review desk waits for the news desk's real cost, not its worst case."""
+    import threading
+    led = CostLedger(tmp_path / "d.sqlite", 0.30, 5.0)
+    led.reserve("r", 0.20)  # news desk in flight, worst case
+
+    def news_finishes():
+        led.log("r", CallRecord("News desk", "m", 0, 0, 0, 0, 0.05, False))  # it actually cost $0.05
+        led.release("r", 0.20)
+    threading.Timer(0.2, news_finishes).start()
+    led.reserve("r", 0.15, wait=5)  # blocks, then passes: 0.05 + 0.15 <= 0.30
+    assert led.spent_on_report("r") == pytest.approx(0.05)
 
 
 def test_exposure_us_state_is_not_a_country():

@@ -141,7 +141,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
             p("Research desk", SKIPPED, "AI desks switched off")
             return None
         p("Research desk", RUNNING, "Reading the annual report: business, segments, risk factors, MD&A…")
-        filing = latest_annual_report(svc, cd.profile.cik)
+        filing = latest_annual_report(svc, cd.profile.statements_cik)
         if filing is None:
             p("Research desk", FAILED, "No annual report found on EDGAR")
             return None
@@ -463,7 +463,7 @@ def refresh_news(rep: FullReport, svc) -> FullReport:
     run_id = f"{rep.report_id}/news-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
     filing = None
     try:
-        filing = latest_annual_report(svc, rep.company.profile.cik)
+        filing = latest_annual_report(svc, rep.company.profile.statements_cik)
     except (DataSourceError, CacheMiss, KeyError):
         pass
     sources = _sources_text(rep.research, filing)

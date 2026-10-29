@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone
 
 from core.cache import CacheMiss
 from core.http import DataSourceError
-from data_desk import checks
+from data_desk import checks, lineage
 from data_desk.adr import adr_ratio, implied_ratio
 from data_desk.fmp_statements import annual_values, ltm_from_quarters
 from data_desk.fx import FxRates, FxSeries, to_usd
@@ -42,6 +42,11 @@ class Profile:
     foreign_filer: bool
     tickers: list[str]
     country: str | None = None
+    predecessor_cik: int | None = None  # successor issuer: annual history and annual reports are under this CIK
+
+    @property
+    def statements_cik(self) -> int:
+        return getattr(self, "predecessor_cik", None) or self.cik
 
 
 @dataclass
@@ -111,7 +116,21 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
     sub = svc.edgar.submissions(cik).payload
     log("Fetching XBRL financial statements (companyfacts)")
     facts = svc.edgar.companyfacts(cik)
-    h = standardise(extract(facts.payload, facts.fetched_at_iso))
+    payload, pred = facts.payload, None
+    if lineage.annual_fact_count(payload) == 0:  # e.g. a new holding company (successor issuer) with no 10-K yet
+        pred, how = lineage.find_predecessor(svc, cik, sub)
+        if pred:
+            log(f"New registrant: reading the predecessor's history (CIK {pred})")
+            merged, check = lineage.merge_facts(payload, svc.edgar.companyfacts(pred).payload, pred)
+            if merged is None:
+                raise DataDeskError(f"{ticker}'s registrant (CIK {cik}) is a successor issuer of CIK {pred} ({how}), "
+                                    f"but their reported figures do not agree: {check}.")
+            payload = merged
+            flags.append(Flag(INFO, "history_stitched", "History joined across two SEC registrants",
+                              f"{sub.get('name', ticker)} (CIK {cik}) became the registrant through a holding-company "
+                              f"reorganisation; annual history comes from the predecessor (CIK {pred}). Found via "
+                              f"{how}. {check}.", None, {"predecessor_cik": pred}))
+    h = standardise(extract(payload, facts.fetched_at_iso))
     if not h.periods:
         raise DataDeskError(f"No annual financial statements found in SEC XBRL data for {ticker}.")
     log(f"Extracted {len(h.fy_labels)} fiscal years ({h.fy_labels[0]}-{h.fy_labels[-1]})"
@@ -126,10 +145,11 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
         foreign_filer=any(f in {"20-F", "40-F"} for f in sub["filings"]["recent"]["form"][:200]),
         tickers=list(sub.get("tickers") or [ticker]),
         country=(sub.get("addresses", {}).get("business", {}) or {}).get("stateOrCountryDescription"),
+        predecessor_cik=pred,
     )
 
     # --- LTM fallback from FMP quarters (foreign filers have no interim XBRL) -----------------------
-    annual = svc.edgar.filings(cik, forms={"10-K", "20-F", "40-F"})
+    annual = svc.edgar.filings(profile.statements_cik, forms={"10-K", "20-F", "40-F"})
     if annual and annual[0].report_date:
         newest = date.fromisoformat(annual[0].report_date)
         last_fy_end = [p for p in h.periods if p.kind == "FY"][-1].end

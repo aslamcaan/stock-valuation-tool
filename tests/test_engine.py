@@ -309,3 +309,22 @@ def test_bridge_flags_a_debt_figure_from_an_earlier_date():
     v = value_company(i)
     f = next(x for x in v.flags if x.code == "bridge_mixed_periods")
     assert ltm in f.message and "debt for valuation from FY" in f.message
+
+
+def test_long_term_investments_join_the_bridge_unless_ebit_already_holds_them():
+    import copy
+    from engine.valuation import value_company
+    from engine.values import MILLIONS, Value
+    from tests.engine_fixtures import engine_inputs
+    i = copy.deepcopy(engine_inputs("KO"))
+    ltm = i.historicals.ltm.label
+    i.historicals.lines["long_term_investments"] = {ltm: Value(20403.0, "USD", MILLIONS, ltm, "EDGAR",
+                                                                tag="us-gaap:EquityMethodInvestments")}
+    v = value_company(i)
+    assert ("Long-term investments", 20403.0) in [(n, x.value) for n, x in v.bridge]
+    op = i.historicals.lines["operating_income"][ltm]
+    i.historicals.lines["operating_income"][ltm] = Value(op.value, "USD", MILLIONS, ltm, "calculated",
+                                                         formula="pretax_income + interest_expense (EBIT proxy)")
+    v2 = value_company(i)
+    assert "Long-term investments" not in [n for n, _ in v2.bridge]
+    assert any(f.code == "investments_in_ebit" for f in v2.flags)

@@ -10,7 +10,7 @@ from statistics import median
 from engine.analysis import Analysis
 from engine.classify import CYCLICAL, DECLINING, Classification, classify, cycle_position
 from engine.dcf import DCFError, DCFInputs, DCFResult, run_dcf
-from engine.flags import AMBER, HARD_STOP, Flag
+from engine.flags import AMBER, HARD_STOP, INFO, Flag
 from engine.forecast import ConsensusYear, ForecastPlan, build_plan, to_dcf_inputs
 from engine.model import Historicals
 from engine.scenarios import (DEFAULT_SCENARIOS, ScenarioResult, grid_growth_margin, grid_wacc_growth, reverse_dcf,
@@ -146,11 +146,21 @@ def value_company(i: EngineInputs) -> Valuation:
     debt = at_bs("debt_for_valuation") or Value(0.0, "USD", MILLIONS, bs_p, "assumed zero")
     minority = at_bs("minority_interest")
     preferred = at_bs("preferred_equity")
+    investments = at_bs("long_term_investments")
     if mixed:
         flags.append(Flag(AMBER, "bridge_mixed_periods", "Equity bridge mixes balance-sheet dates",
                           f"Cash is at {bs_p}, but {', '.join(mixed)} (not reported at {bs_p}).", bs_p,
                           {"items": mixed}))
     bridge: list[tuple[str, Value]] = [("Debt", _neg(debt, "debt")), ("Cash and investments", cash)]
+    op_formula = (h.get("operating_income", cur_p).formula or "") if h.get("operating_income", cur_p) else ""
+    if investments is not None and investments.value:
+        if "EBIT proxy" in op_formula:  # pre-tax income already holds the investment income: no double count
+            flags.append(Flag(INFO, "investments_in_ebit", "Investments valued through operating income",
+                              f"Operating income is an EBIT proxy (pre-tax income + interest), which includes income "
+                              f"from investments, so long-term investments ({investments.value:,.0f}m at "
+                              f"{investments.period}) are not added again in the equity bridge.", cur_p, {}))
+        else:
+            bridge.append(("Long-term investments", investments))
     if minority is not None and minority.value:
         bridge.append(("Minority interests", _neg(minority, "minority_interest")))
     if preferred is not None and preferred.value:

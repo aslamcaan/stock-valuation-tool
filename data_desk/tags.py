@@ -155,6 +155,15 @@ LINES: dict[str, Line] = {
                           (G, "RedeemableNoncontrollingInterestEquityCarryingAmount")),
     "parent_equity": L("Shareholders' equity", "BS", "instant",
                        (G, "StockholdersEquity"), (I, "EquityAttributableToOwnersOfParent")),
+    # investments outside operating income (equity-method stakes, non-current securities): added in the equity
+    # bridge, since their income is not in the operating income the DCF values
+    "long_term_investments": L("Long-term investments (incl. equity-method)", "BS", "instant",
+                               (G, "LongTermInvestments"),
+                               opt((G, "EquityMethodInvestments"), (G, "MarketableSecuritiesNoncurrent")),
+                               (G, "MarketableSecuritiesNoncurrent"),
+                               opt((I, "InvestmentsAccountedForUsingEquityMethod"),
+                                   (I, "NoncurrentInvestmentsOtherThanInvestmentsAccountedForUsingEquityMethod")),
+                               (I, "NoncurrentInvestmentsOtherThanInvestmentsAccountedForUsingEquityMethod")),
     "depreciation": L("Depreciation (excluding amortisation)", "CF", "duration",
                       (G, "Depreciation"), (G, "DepreciationNonproduction"), (I, "AdjustmentsForDepreciationExpense"),
                       (I, "DepreciationExpense"), (I, "DepreciationPropertyPlantAndEquipment")),

@@ -1,6 +1,8 @@
 """Full report layout (PROMPT.md section 6, corporate companies). Every number is traceable on hover."""
 from __future__ import annotations
 
+import re
+
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -472,11 +474,63 @@ SECTIONS = [
     ("8. Estimate revisions", revisions), ("9. WACC", wacc), ("10. DCF", dcf), ("11. Sum of the parts", sotp),
     ("12. Comps and historical multiples", comps), ("13. Reverse DCF", reverse_dcf),
     ("14. Scenarios and sensitivity", scenarios), ("15. Football field", football),
-    ("16. News and impact analysis", lambda rep: st.caption("Arrives in Release 2.")),
+    ("16. News and impact analysis", lambda rep: news_section(rep)),
     ("17. Ownership and insider activity", lambda rep: st.caption("Arrives in Release 2.")),
     ("18. Review desk notes", review_notes), ("19. Main risks", risks), ("20. Flags", flags),
     ("21. Assumptions table and data provenance", provenance),
 ]
+
+
+def md_text(x: str) -> str:
+    """Fetched text shown as plain words: no LaTeX from "$5bn ... $4bn", no stray links or emphasis."""
+    return re.sub(r"([\\`*_\[\]<>#|$~])", r"\\\1", x or "")
+
+
+QUALITY_BADGE = {"Trusted": "🟢 Trusted", "Established": "🔵 Established", "Unverified": "🟠 Unverified"}
+
+
+def news_section(rep) -> None:
+    from desks.news import MAX_AGE_DAYS, TIER_LABEL, TIERS
+
+    exp = getattr(rep, "exposure", None)
+    news = getattr(rep, "news", None)
+    if exp is not None:
+        st.markdown("**Exposure profile** (how outside events reach the business; macro news must hit one of these)")
+        st.dataframe([{"Category": e.category, "Channel": e.channel, "Detail": e.detail, "Source": e.source}
+                      for e in exp.items], hide_index=True, width="stretch")
+        for n in exp.notes:
+            st.caption(n)
+    if news is None:
+        st.caption("The news desk did not run for this report.")
+        return
+    if news.error:
+        st.warning(f"The news desk failed: {news.error}")
+        return
+    st.markdown(f"**News as of {news.as_of[:16].replace('T', ' ')} UTC**")
+    for t in TIERS:
+        items = news.tier(t)
+        st.markdown(f"##### {TIER_LABEL[t]}")
+        if not items:
+            st.caption(f"No material news in the last {MAX_AGE_DAYS[t]} days.")
+        for i in items:
+            url = i.url.replace("(", "%28").replace(")", "%29").replace(" ", "%20")
+            st.markdown(f"**[{md_text(i.headline)}]({url})**  \n"
+                        f"{TIER_LABEL[i.tier]} · {i.published} · {md_text(i.source)} · "
+                        f"{QUALITY_BADGE.get(i.quality, i.quality)}"
+                        + (f" · channel: {md_text(i.channel)}" if i.channel else "")
+                        + (" · latest earnings release" if i.earnings_release else ""))
+            if i.summary:
+                st.markdown(md_text(i.summary))
+            if i.why_material:
+                st.caption(f"Why it matters: {md_text(i.why_material)}")
+            st.caption(f"Date verified from: {i.date_basis} ({i.origin})")
+    if any(i.quality == "Unverified" for i in news.items):
+        st.caption("Unverified sources can be discussed but never change model numbers unless a Trusted or "
+                   "Established source corroborates them.")
+    if news.dropped:
+        with st.expander(f"{len(news.dropped)} items dropped by the freshness and verification rules"):
+            for d in news.dropped:
+                st.caption(d)
 
 
 def render_report(rep) -> None:

@@ -89,6 +89,25 @@ class EdgarClient:
         out.sort(key=lambda f: f.filing_date, reverse=True)
         return out
 
+    def recent_filings_fresh(self, cik: int, forms: set[str]) -> tuple[list[dict], str]:
+        """Recent filings for the news desk, cached at most an hour (the 30-day filings cache would hide new 8-Ks).
+        Returns ([{form, filing_date, items, description, url}], fetched_at), newest first."""
+        c = self._json("news", SUBMISSIONS_URL.format(cik=int(cik)))
+        b = c.payload["filings"]["recent"]
+        n = len(b["form"])
+        out = []
+        for i in range(n):
+            if b["form"][i] not in forms:
+                continue
+            f = Filing(form=b["form"][i], accession=b["accessionNumber"][i], filing_date=b["filingDate"][i],
+                       report_date=(b.get("reportDate") or [""] * n)[i] or "",
+                       primary_document=b["primaryDocument"][i],
+                       description=(b.get("primaryDocDescription") or [""] * n)[i] or "")
+            out.append({"form": f.form, "filing_date": f.filing_date, "items": (b.get("items") or [""] * n)[i] or "",
+                        "description": f.description, "url": f.url(cik)})
+        out.sort(key=lambda x: x["filing_date"], reverse=True)
+        return out, c.fetched_at_iso
+
     def document(self, cik: int, filing: Filing) -> Cached:
         """Raw text/HTML of a filing's primary document (cached 30 days)."""
         url = filing.url(cik)

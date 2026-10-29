@@ -12,22 +12,27 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
 from core.config import PROJECT_ROOT
 from data_desk.builder import CompanyData, DataDeskError, build_company_data
+from data_desk.exposure import ExposureProfile, build_exposure
 from data_desk.filings import latest_annual_report
 from data_desk.peers import gather_peers
+from core.cache import CacheMiss
+from core.http import DataSourceError
 from desks.ai import AIError, CostCapExceeded
 from desks.md import MDResult, run_md
 from desks.modelling import ValuationReport, run_modelling
+from desks.news import NewsResult, run_news
 from desks.research import ResearchResult, run_research
 from desks.review import STAGES, run_review
 from desks.summary import build_summary
 from engine.valuation import ValuationError
 
-DESKS = ["Data desk", "Data checks", "Research desk", "Modelling desk", "Review desk", "MD"]
+DESKS = ["Data desk", "Data checks", "Research desk", "News desk", "Modelling desk", "Review desk", "MD"]
 WAITING, RUNNING, DONE, FAILED, SKIPPED = "waiting", "running", "done", "failed", "skipped"
 REPORTS_DIR = PROJECT_ROOT / "data" / "reports"
 
@@ -57,6 +62,8 @@ class FullReport:
     ai_cost: float = 0.0
     desk_status: dict[str, tuple[str, str]] = field(default_factory=dict)
     save_error: str | None = None
+    exposure: ExposureProfile | None = None
+    news: NewsResult | None = None
     overrides: dict = field(default_factory=dict)
     peers_pool: list = field(default_factory=list)   # all peer candidates (reused when assumptions are edited)
     peer_notes: list[str] = field(default_factory=list)
@@ -155,62 +162,115 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         peers, peer_notes = f_peers.result()
     rep.research = research
     rep.peers_pool, rep.peer_notes = peers, peer_notes
-
-    # --- modelling desk --------------------------------------------------------------------------------------------
-    p("Modelling desk", RUNNING, "Building the forecast, WACC, DCF, comps and verdict…")
     try:
-        model = run_modelling(cd, svc, today, rep.overrides, progress=lambda m: p("Modelling desk", RUNNING, m),
-                              peers=peers, research=research.data if research else None)
-    except ValuationError as exc:
-        p("Modelling desk", FAILED, str(exc))
-        rep.stopped = str(exc)
-        return _finish(rep, p, cost(), svc.store)
-    model.notes += peer_notes
-    rep.model = model
-    vd = model.verdict
-    p("Modelling desk", DONE, f"{model.valuation.classification.stage_label}; fair value "
-                              f"{'n/a' if vd.fair_value is None else f'${vd.fair_value:,.2f}'} → {vd.verdict}")
-    if not use_ai:
-        for d in ("Review desk", "MD"):
-            p(d, SKIPPED, "AI desks switched off" if not rep.stopped else "Stopped: AI cost cap reached")
-        log_to_track_record(rep, svc.store)
-        return _finish(rep, p, cost(), svc.store)
+        rep.exposure = build_exposure(cd, research)
+    except Exception as exc:  # the exposure profile only feeds the news desk; it must not break the valuation
+        rep.exposure = ExposureProfile(notes=[f"The exposure profile could not be built: {type(exc).__name__}: {exc}"])
+    news_pool = ThreadPoolExecutor(max_workers=1)
+    news_future = news_pool.submit(_news_job, svc, rid, cd, rep.exposure, peers, p, use_ai, cost, rep.stopped)
 
-    sources = _sources_text(research, filing)
-    research_view = _research_for_ai(research)
-    # --- review desk -----------------------------------------------------------------------------------------------
+    def value_review_and_md() -> None:
+        # --- modelling desk ---
+        p("Modelling desk", RUNNING, "Building the forecast, WACC, DCF, comps and verdict…")
+        try:
+            model = run_modelling(cd, svc, today, rep.overrides, progress=lambda m: p("Modelling desk", RUNNING, m),
+                                  peers=peers, research=research.data if research else None)
+        except ValuationError as exc:
+            p("Modelling desk", FAILED, str(exc))
+            rep.stopped = str(exc)
+            return
+        model.notes += peer_notes
+        rep.model = model
+        vd = model.verdict
+        p("Modelling desk", DONE, f"{model.valuation.classification.stage_label}; fair value "
+                                  f"{'n/a' if vd.fair_value is None else f'${vd.fair_value:,.2f}'} → {vd.verdict}")
+        if not use_ai:
+            for d in ("Review desk", "MD"):
+                p(d, SKIPPED, "AI desks switched off" if not rep.stopped else "Stopped: AI cost cap reached")
+            log_to_track_record(rep, svc.store)
+            return
+
+        sources = _sources_text(research, filing)
+        research_view = _research_for_ai(research)
+        # --- review desk ---
+        try:
+            p("Review desk", RUNNING, "Challenging assumptions and writing the bear case…")
+            review, log = run_review(svc.ai, rid, build_summary(model, research_view), sources)
+            rep.guard_log += log
+            sr = review.get("stage_review", {})
+            if not sr.get("agree", True) and sr.get("suggested_stage") in STAGES and \
+                    sr["suggested_stage"] != model.valuation.classification.stage and "stage" not in rep.overrides:
+                rep.overrides.update(stage=sr["suggested_stage"], stage_reason=f"Review desk: {sr.get('reason', '')}")
+                p("Review desk", RUNNING, f"Stage overridden to {sr['suggested_stage']}: re-running the model…")
+                model = run_modelling(cd, svc, today, rep.overrides, peers=peers,
+                                      research=research.data if research else None)
+                model.notes += peer_notes
+                rep.model = model
+            rep.review = review
+            p("Review desk", DONE, f"{len(review.get('challenges', []))} challenges; bear case written", cost())
+
+            p("MD", RUNNING, "Scoring the rubric and writing the investment view…")
+            md = run_md(svc.ai, rid, model, build_summary(model, research_view), review, sources)
+            rep.md = md
+            rep.guard_log += md.guard_log
+            p("MD", DONE, f"{md.rating} (conviction {md.conviction})", cost())
+            log_to_track_record(rep, svc.store)
+        except CostCapExceeded as exc:
+            rep.stopped = str(exc)
+            for d in ("Review desk", "MD"):
+                if p.status[d][0] in (WAITING, RUNNING):
+                    p(d, FAILED, str(exc))
+        except AIError as exc:
+            for d in ("Review desk", "MD"):
+                if p.status[d][0] in (WAITING, RUNNING):
+                    p(d, FAILED, str(exc))
+
     try:
-        p("Review desk", RUNNING, "Challenging assumptions and writing the bear case…")
-        review, log = run_review(svc.ai, rid, build_summary(model, research_view), sources)
-        rep.guard_log += log
-        sr = review.get("stage_review", {})
-        if not sr.get("agree", True) and sr.get("suggested_stage") in STAGES and \
-                sr["suggested_stage"] != model.valuation.classification.stage and "stage" not in rep.overrides:
-            rep.overrides.update(stage=sr["suggested_stage"], stage_reason=f"Review desk: {sr.get('reason', '')}")
-            p("Review desk", RUNNING, f"Stage overridden to {sr['suggested_stage']}: re-running the model…")
-            model = run_modelling(cd, svc, today, rep.overrides, peers=peers,
-                                  research=research.data if research else None)
-            model.notes += peer_notes
-            rep.model = model
-        rep.review = review
-        p("Review desk", DONE, f"{len(review.get('challenges', []))} challenges; bear case written", cost())
-
-        p("MD", RUNNING, "Scoring the rubric and writing the investment view…")
-        md = run_md(svc.ai, rid, model, build_summary(model, research_view), review, sources)
-        rep.md = md
-        rep.guard_log += md.guard_log
-        p("MD", DONE, f"{md.rating} (conviction {md.conviction})", cost())
-        log_to_track_record(rep, svc.store)
-    except CostCapExceeded as exc:
-        rep.stopped = str(exc)
-        for d in ("Review desk", "MD"):
-            if p.status[d][0] in (WAITING, RUNNING):
-                p(d, FAILED, str(exc))
-    except AIError as exc:
-        for d in ("Review desk", "MD"):
-            if p.status[d][0] in (WAITING, RUNNING):
-                p(d, FAILED, str(exc))
+        value_review_and_md()
+    finally:  # whatever happens above, the news thread is joined (with a time limit) before the report is saved
+        rep.news = _collect(news_future, news_pool, p)
     return _finish(rep, p, cost(), svc.store)
+
+
+NEWS_TIMEOUT = 180  # seconds to wait for the news desk after the MD finishes
+
+
+def _news_job(svc, rid, cd, exposure, peers, p, use_ai, cost, stopped=None) -> NewsResult | None:
+    if not use_ai:
+        p("News desk", SKIPPED, "Stopped: AI cost cap reached" if stopped else "AI desks switched off")
+        return None
+    p("News desk", RUNNING, "Searching macro, industry and company news: " + "; ".join(exposure.search_topics[:3]) + "…")
+    try:
+        names = [getattr(x, "name", None) or getattr(x, "ticker", "") for x in peers][:6]
+        res = run_news(svc.ai, svc, rid, cd, exposure, [n for n in names if n])
+    except CostCapExceeded as exc:
+        p("News desk", FAILED, str(exc))
+        return None
+    except (AIError, DataSourceError, CacheMiss) as exc:
+        p("News desk", FAILED, f"{type(exc).__name__}: {exc}")
+        return None
+    except Exception as exc:  # never leave the desk showing "running"; the report carries on without news
+        p("News desk", FAILED, f"Unexpected error: {type(exc).__name__}: {exc}")
+        raise
+    counts = ", ".join(f"{len(res.tier(t))} {t}" for t in ("macro", "micro", "industry", "company"))
+    p("News desk", DONE, f"{counts} items" + (f" ({len(res.dropped)} dropped: unverified date, too old or "
+                                              f"off-profile)" if res.dropped else ""), cost())
+    return res
+
+
+def _collect(future, pool, p) -> NewsResult | None:
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    try:
+        return future.result(timeout=NEWS_TIMEOUT)
+    except FuturesTimeout:
+        future.cancel()
+        msg = f"timed out after waiting {NEWS_TIMEOUT} seconds"
+        p("News desk", FAILED, msg.capitalize())
+        return NewsResult(as_of=now, error=msg)
+    except Exception as exc:  # the news desk must never break the valuation report
+        return NewsResult(as_of=now, error=f"{type(exc).__name__}: {exc}")
+    finally:
+        pool.shutdown(wait=False)
 
 
 def _research_for_ai(research: ResearchResult | None) -> dict:

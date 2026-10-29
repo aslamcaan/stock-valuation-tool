@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
@@ -72,6 +73,9 @@ class CostLedger:
 
         self.db = as_database(target)
         self.per_report_cap, self.per_day_cap = per_report_cap, per_day_cap
+        # Calls in flight (desks run in parallel): their estimates count against the caps until they are logged.
+        self._lock = threading.Lock()
+        self._pending: dict[str, float] = {}
         self.db.execute("CREATE TABLE IF NOT EXISTS ai_calls (report_id TEXT, day TEXT, at TEXT, desk TEXT, model TEXT, "
                         "input_tokens INT, output_tokens INT, cache_read INT, searches INT, cost REAL, cached INT, "
                         "served_by TEXT)")
@@ -84,13 +88,28 @@ class CostLedger:
         return float(self.db.scalar("SELECT COALESCE(SUM(cost),0) FROM ai_calls WHERE report_id=?", (report_id,)) or 0)
 
     def check(self, report_id: str, estimate: float) -> None:
-        rep, day = self.spent_on_report(report_id), self.spent_today()
+        rep = self.spent_on_report(report_id) + self._pending.get(report_id, 0.0)
+        day = self.spent_today() + sum(self._pending.values())
         if rep + estimate > self.per_report_cap:
             raise CostCapExceeded(f"This report has used ${rep:.3f} of AI spend; the next call (up to ${estimate:.3f}) "
                                   f"would exceed MAX_COST_PER_REPORT ${self.per_report_cap:.2f}.")
         if day + estimate > self.per_day_cap:
             raise CostCapExceeded(f"Today's AI spend is ${day:.3f}; the next call (up to ${estimate:.3f}) would exceed "
                                   f"MAX_COST_PER_DAY ${self.per_day_cap:.2f}.")
+
+    def reserve(self, report_id: str, estimate: float) -> None:
+        """Check the caps and hold `estimate` against them until `release`, atomically across threads."""
+        with self._lock:
+            self.check(report_id, estimate)
+            self._pending[report_id] = self._pending.get(report_id, 0.0) + estimate
+
+    def release(self, report_id: str, estimate: float) -> None:
+        with self._lock:
+            left = self._pending.get(report_id, 0.0) - estimate
+            if left > 1e-12:
+                self._pending[report_id] = left
+            else:
+                self._pending.pop(report_id, None)
 
     def log(self, report_id: str, rec: CallRecord) -> None:
         self.db.execute("INSERT INTO ai_calls VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -119,48 +138,111 @@ class AIClient:
         return sum(r.cost for r in self.records.get(report_id, []))
 
     def call(self, *, report_id: str, desk: str, model: str, system: str, content: str, schema: dict,
-             effort: str = "low", max_tokens: int = 16000, web_search_uses: int = 0, force: bool = False) -> dict:
-        """One structured call. Returns the parsed JSON (validated against `schema`)."""
+             effort: str = "low", max_tokens: int = 16000, web_search_uses: int = 0, force: bool = False,
+             cache_category: str = "ai", with_sources: bool = False) -> dict:
+        """One structured call. Returns the parsed JSON (validated against `schema`).
+
+        With `with_sources`, returns {"data", "sources", "searched_at"} where `sources` are the web search results the
+        model actually saw ({url, title, page_age}); code uses them to verify links and publish dates.
+        `cache_category="news"` keeps the cached answer for at most an hour (news freshness rule)."""
         request = {"model": model, "system": system + "\n\n" + DATA_NOT_INSTRUCTIONS, "content": content,
                    "schema": schema, "effort": effort, "web_search_uses": web_search_uses}
         key = "ai:" + hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
         if not force:
-            hit = self.cache.read("ai", key, allow_stale=True)
+            hit = self.cache.read(cache_category, key, allow_stale=cache_category == "ai")
             if hit is not None:
                 rec = CallRecord(desk, model, 0, 0, 0, 0, 0.0, True, hit.payload.get("served_by"))
                 self.records.setdefault(report_id, []).append(rec)
                 self.ledger.log(report_id, rec)
-                return hit.payload["data"]
-        est_in = len(request["system"] + content) // 3
+                return _result(hit.payload, with_sources)
+        # Each search adds its results to the context (roughly 15k tokens), and the model re-reads them per turn.
+        est_in = len(request["system"] + content) // 3 + SEARCH_TOKENS * web_search_uses
         estimate = price_of(model, est_in, max_tokens, searches=web_search_uses)
-        self.ledger.check(report_id, estimate)
+        self.ledger.reserve(report_id, estimate)
+        try:
+            return self._call(request, key, report_id, desk, model, content, schema, effort, max_tokens,
+                              web_search_uses, cache_category, with_sources)
+        finally:
+            self.ledger.release(report_id, estimate)
 
+    def _call(self, request, key, report_id, desk, model, content, schema, effort, max_tokens, web_search_uses,
+              cache_category, with_sources) -> dict:
+
+        messages = [{"role": "user", "content": content}]
         kwargs = dict(model=model, max_tokens=max_tokens, system=request["system"],
-                      messages=[{"role": "user", "content": content}],
                       output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}})
         if web_search_uses:
-            kwargs["tools"] = [{"type": "web_search_20260209", "name": "web_search", "max_uses": web_search_uses}]
+            # Haiku takes the basic web search tool; the dynamic-filtering version needs Sonnet or Opus.
+            tool = "web_search_20250305" if model == HAIKU else "web_search_20260209"
+            kwargs["tools"] = [{"type": tool, "name": "web_search", "max_uses": web_search_uses}]
         client = self._anthropic()
-        if model == SONNET:
-            resp = client.beta.messages.create(betas=["server-side-fallback-2026-07-01"], fallbacks="default", **kwargs)
-        else:
-            resp = client.messages.create(**kwargs)
+        searched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        usage = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0, "searches": 0}
+        cost = 0.0
+        sources: list[dict] = []
+        for _ in range(MAX_CONTINUATIONS + 1):
+            if model == SONNET:
+                resp = client.beta.messages.create(betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+                                                   messages=messages, **kwargs)
+            else:
+                resp = client.messages.create(messages=messages, **kwargs)
+            u = resp.usage
+            step = {"in": u.input_tokens, "out": u.output_tokens,
+                    "cache_read": getattr(u, "cache_read_input_tokens", 0) or 0,
+                    "cache_write": getattr(u, "cache_creation_input_tokens", 0) or 0,
+                    "searches": getattr(getattr(u, "server_tool_use", None), "web_search_requests", 0) or 0}
+            for k, v in step.items():
+                usage[k] += v
+            # priced per request: the long-context threshold applies to each request, not the sum
+            cost += price_of(model, step["in"], step["out"], step["cache_read"], step["cache_write"], step["searches"])
+            sources += _search_results(resp.content)
+            if resp.stop_reason != "pause_turn":  # a long server-side search loop pauses; resume it as is
+                break
+            messages = [{"role": "user", "content": content}, {"role": "assistant", "content": resp.content}]
         if resp.stop_reason == "refusal":
             raise AIError(f"{desk}: the model declined the request")
         if resp.stop_reason == "max_tokens":
             raise AIError(f"{desk}: the response was cut off at {max_tokens} tokens")
-        text = next((b.text for b in resp.content if b.type == "text"), None)
-        if text is None:
+        if resp.stop_reason == "pause_turn":
+            raise AIError(f"{desk}: the web search did not finish after {MAX_CONTINUATIONS} continuations")
+        # With server tools the structured answer is the text after the last search result (possibly several blocks).
+        blocks = list(resp.content)
+        last_tool = max((i for i, b in enumerate(blocks) if b.type != "text"), default=-1)
+        answer = "".join(b.text for b in blocks[last_tool + 1:] if b.type == "text").strip()
+        if not answer:
             raise AIError(f"{desk}: no text in the response")
-        data = json.loads(text)
-        jsonschema.validate(data, schema)
-        u = resp.usage
-        searches = getattr(getattr(u, "server_tool_use", None), "web_search_requests", 0) or 0
-        cost = price_of(model, u.input_tokens, u.output_tokens, getattr(u, "cache_read_input_tokens", 0) or 0,
-                        getattr(u, "cache_creation_input_tokens", 0) or 0, searches)
-        rec = CallRecord(desk, model, u.input_tokens, u.output_tokens, getattr(u, "cache_read_input_tokens", 0) or 0,
-                         searches, cost, False, getattr(resp, "model", model))
+        try:
+            data = json.loads(answer)
+            jsonschema.validate(data, schema)
+        except (json.JSONDecodeError, jsonschema.ValidationError) as exc:
+            raise AIError(f"{desk}: the response was not valid JSON for the schema ({type(exc).__name__})") from exc
+        rec = CallRecord(desk, model, usage["in"], usage["out"], usage["cache_read"], usage["searches"], cost, False,
+                         getattr(resp, "model", model))
         self.records.setdefault(report_id, []).append(rec)
         self.ledger.log(report_id, rec)
-        self.cache.write("ai", key, {"data": data, "served_by": rec.served_by, "usage": rec.__dict__})
-        return data
+        payload = {"data": data, "served_by": rec.served_by, "usage": rec.__dict__, "sources": sources,
+                   "searched_at": searched_at}
+        self.cache.write(cache_category, key, payload)
+        return _result(payload, with_sources)
+
+
+MAX_CONTINUATIONS = 3
+SEARCH_TOKENS = 15_000
+
+
+def _result(payload: dict, with_sources: bool) -> dict:
+    if not with_sources:
+        return payload["data"]
+    return {"data": payload["data"], "sources": payload.get("sources", []), "searched_at": payload.get("searched_at")}
+
+
+def _search_results(content) -> list[dict]:
+    """The web search results in a response: [{url, title, page_age}]. Error results (an object, not a list) skipped."""
+    out = []
+    for b in content:
+        if getattr(b, "type", None) == "web_search_tool_result" and isinstance(getattr(b, "content", None), list):
+            for x in b.content:
+                if getattr(x, "type", "web_search_result") == "web_search_result" and getattr(x, "url", None):
+                    out.append({"url": x.url, "title": getattr(x, "title", "") or "",
+                                "page_age": getattr(x, "page_age", None)})
+    return out

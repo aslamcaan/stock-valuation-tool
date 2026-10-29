@@ -78,7 +78,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [ ] **CHECKPOINT 4:** Release 1 summary + run command; wait for user
 
 ## RELEASE 2: news, ownership, comparison
-- [ ] Phase 10 — exposure profile, news desk (four tiers, freshness, source labels)
+- [x] Phase 10 — exposure profile, news desk (four tiers, freshness, source labels)
 - [ ] Phase 11 — impact analyst, priced-in, news-adjusted fair value, MD news summary, Refresh news, rubric feed
 - [ ] Phase 12 — ownership, Form 4, short interest, Beneish M, Altman Z
 - [ ] Phase 13 — Compare page
@@ -230,3 +230,17 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   fetches live prices, SEC search works. Live KO report run by the user on the site: all six desks done, Overvalued,
   fair value $46.99 vs $92.70, MD Hold (Medium), AI $0.188, saved to Neon with its track-record row; number guard
   dropped 1 sentence. Remaining: design pass (user's choice of timing), Release 2, Release 3.
+- 2026-10-29 Phase 10 done (design pass deferred to the end, user 2026-10-29). Exposure profile in code
+  (data_desk/exposure.py): geography, commodities (filing, else SIC default, labelled), rates (verified quote + XBRL
+  debt/interest), FX, customers/suppliers/regulators (labelled AI-extracted, names only). News desk (desks/news.py):
+  Haiku + web search (basic tool for Haiku), candidates from SEC 8-K/6-K (1-hour fetch) and Finnhub, all rules in
+  code: link must be a search result or candidate; date from search page_age (coarse ages read as oldest possible),
+  SEC filing date or Finnhub time, else dropped; tier limits 7/14/14/30 days; latest earnings release always kept
+  (8-K Item 2.02, 6-K by document name); macro items must name an exposure channel exactly; quote pages and future
+  dates dropped; headlines from the source, not the AI; SEC items carry no AI summary (text not read); labels
+  Trusted/Established/Unverified by domain; fetched text escaped. News cache 1 hour; "News as of" is the search
+  time. Runs in parallel with modelling/review/MD, joined with a 180 s limit before save; never breaks the report.
+  AI client: pause_turn resumed, answer = text after the last search result, per-request pricing, spend reserved
+  under a lock so parallel desks can't overshoot the cap. Independent review: 13 findings, all fixed with tests.
+  Live: CVX 10 items (4 macro on US/oil/rates channels), GRAB 9 items (Thailand/Philippines/Vietnam macro, 6-K
+  earnings release); about $0.11 per news run. Full CVX report with news: 115 s, AI $0.232.

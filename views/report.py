@@ -43,8 +43,13 @@ def progress_panel(status: dict, started: float, cost: float) -> str:
 def start_run(ticker: str, overrides: dict | None = None) -> None:
     q: queue.Queue = queue.Queue()
     holder: dict = {}
-    t = threading.Thread(target=lambda: holder.update(final=run_report(ticker, svc, q, overrides=overrides,
-                                                                       holder=holder)), daemon=True)
+
+    def work():
+        try:
+            holder["final"] = run_report(ticker, svc, q, overrides=overrides, holder=holder)
+        except Exception as exc:  # shown on the page instead of silently returning to "Pick a stock"
+            holder["error"] = f"{type(exc).__name__}: {exc}"
+    t = threading.Thread(target=work, daemon=True)
     t.start()
     st.session_state.run = {"ticker": ticker, "q": q, "holder": holder, "thread": t, "started": time.time(),
                             "status": {d: ("waiting", "Waiting") for d in DESKS}}
@@ -77,6 +82,8 @@ def watch_run() -> None:
             break
         time.sleep(0.4)
     final = run["holder"].get("final")
+    if final is None and run["holder"].get("error"):
+        st.session_state.run_error = run["holder"]["error"]
     st.session_state.report = final
     st.session_state.pop("run", None)
     st.rerun()
@@ -143,6 +150,8 @@ elif st.session_state.get("open_id"):
 rep = st.session_state.get("edited") or st.session_state.get("report")
 if rep is None:
     st.title("Report")
+    if st.session_state.get("run_error"):
+        st.error(f"The report could not be completed: {st.session_state.pop('run_error')}")
     st.info("Pick a stock on the Search page to run a report, or open a recent one.")
     st.stop()
 

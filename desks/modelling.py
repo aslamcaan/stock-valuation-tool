@@ -3,9 +3,11 @@ revisions, verdict, confidence, football field, assumptions and provenance). Cod
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
+from data_desk import checks
 from data_desk.builder import CompanyData
 from data_desk.history_data import price_series, week52, year_points
 from data_desk.peers import gather_peers, latest_period, metrics_from, next_fy_eps, peer_metrics
@@ -81,6 +83,18 @@ def segments_from_research(svc, cd: CompanyData, research: dict, notes: list[str
     return out
 
 
+def kpi_flags(cd: CompanyData, vk: dict) -> list[Flag]:
+    """Revenue growth vs the reported volume KPI (e.g. Gross Bookings), from figures verified in the filing."""
+    series = {}
+    for x in vk.get("values") or []:
+        m = re.search(r"(19|20)\d{2}", x.get("fiscal_year") or "")
+        if m and f"FY{m.group(0)}" in cd.historicals.fy_labels and x.get("value_millions"):
+            series[f"FY{m.group(0)}"] = float(x["value_millions"])
+    if len(series) < 2 or not vk.get("name"):
+        return []
+    return checks.kpi_divergence(cd.historicals, vk["name"], series)
+
+
 def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, overrides: dict | None = None,
                   progress=None, peers: list[CompanyMetrics] | None = None, research: dict | None = None
                   ) -> ValuationReport:
@@ -101,6 +115,7 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
             extra_flags.append(Flag(AMBER, "convertible_debt", "Convertible debt outstanding",
                                     f"The annual report describes convertible notes: \"{conv.get('quote', '')[:200]}\". "
                                     "Conversion would dilute shareholders beyond the diluted share count.", None, {}))
+        extra_flags += kpi_flags(cd, research.get("volume_kpi") or {})
         sc = research.get("share_classes") or {}
         if sc.get("multiple") and not any(f.code == "multiple_share_classes" for f in cd.flags):
             extra_flags.append(Flag(AMBER, "multiple_share_classes", "Multiple share classes",

@@ -93,3 +93,29 @@ def test_consensus_and_revisions_read_the_nearest_year_first(tmp_path):
     now = [{"fiscal_year_end": f"{y}-12-31", "revenue_avg": 100.0 + y - 2025, "eps_avg": 1.0} for y in (2030, 2026, 2025)]
     rev = store.revisions("X", date(2026, 9, 5), now)[90]
     assert list(rev["changes"]) == ["2026-12-31", "2030-12-31"]  # FY2025 has ended: not a revision signal
+
+
+def test_volume_kpi_from_the_filing_drives_the_divergence_flag():
+    """UBER: Gross Bookings 162,773 -> 193,454 (+18.8%) vs revenue 43,978 -> 52,017 (+18.3%): no flag;
+    a KPI growing 30% would be 11.7 points apart: flag."""
+    from types import SimpleNamespace
+    from desks.modelling import kpi_flags
+    h = hist(revenue={"FY2024": 43978, "FY2025": 52017})
+    cd = SimpleNamespace(historicals=h)
+    ok = {"name": "Gross Bookings", "values": [{"fiscal_year": "2024", "value_millions": 162773},
+                                               {"fiscal_year": "fiscal 2025", "value_millions": 193454}]}
+    assert kpi_flags(cd, ok) == []
+    off = {"name": "Gross Bookings", "values": [{"fiscal_year": "FY2024", "value_millions": 100},
+                                                {"fiscal_year": "FY2025", "value_millions": 130}]}
+    assert [f.code for f in kpi_flags(cd, off)] == ["kpi_divergence"]
+
+
+def test_volume_kpi_values_must_be_in_the_filing():
+    from desks.research import verify
+    src = "Gross Bookings were $193.5 billion in 2025 and $162,773 million in 2024."
+    data = {"volume_kpi": {"name": "Gross Bookings", "quote": "Gross Bookings were $193.5 billion in 2025",
+                           "values": [{"fiscal_year": "2025", "value_millions": 193500},
+                                      {"fiscal_year": "2024", "value_millions": 162773},
+                                      {"fiscal_year": "2023", "value_millions": 137865}]}}
+    out, dropped = verify(data, src)
+    assert [x["fiscal_year"] for x in out["volume_kpi"]["values"]] == ["2025", "2024"] and dropped

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from desks.ai import SONNET, AIClient
-from desks.guarded import guarded_call
+from desks.guarded import DATE_OK, guarded_call
 from desks.research import _arr, _obj
 from engine.rubric import (AI_CRITERIA, LABELS, Score, apply_notch, conflicts_with_verdict, rating_from,
                            score_business_quality, score_financial_strength, score_revisions, score_valuation_gap)
@@ -87,7 +87,10 @@ def run_md(ai: AIClient, report_id: str, report, summary: dict, review: dict, so
         payload["news"] = news
     data, log = guarded_call(ai, report_id=report_id, desk="MD", model=SONNET, system=SYSTEM, payload=payload,
                              schema=SCHEMA, sources=sources, effort="medium", max_tokens=MAX_TOKENS,
-                             instructions="Sign off this report.")
+                             instructions="Sign off this report.", skip={"date"})
+    for c in data.get("catalysts", []):  # dates skip the number check, so they must be dates
+        if not DATE_OK.match(c["date"].strip()):
+            c["date"] = "date not disclosed"
     ai_scores = []
     seen = set()
     for s in data["ai_scores"]:

@@ -156,3 +156,18 @@ def test_refusal_raises(tmp_path):
     client = AIClient("k", Cache(tmp_path / "c"), CostLedger(tmp_path / "d.sqlite", 1, 1), client=fake)
     with pytest.raises(AIError, match="declined"):
         client.call(report_id="r", desk="d", model=HAIKU, system="s", content="c", schema=SCHEMA)
+
+
+def test_md_catalyst_dates_are_kept_and_prose_dates_replaced():
+    from desks.guarded import DATE_OK
+    assert DATE_OK.match("28 January 2027") and DATE_OK.match("date not disclosed")
+    assert not DATE_OK.match("once revenue passes $5bn")
+
+
+def test_research_numbers_must_be_whole_tokens_in_the_filing():
+    from desks.research import verify
+    src = "Revenue in Europe was $1,180 million in 2018 and the margin was 18.5%."
+    data = {"geographic_mix": [{"region": "Europe", "revenue_millions": 1180, "quote": ""},
+                               {"region": "Asia", "revenue_millions": 18, "quote": ""}]}
+    out, dropped = verify(data, src)
+    assert [g["region"] for g in out["geographic_mix"]] == ["Europe"] and "Asia" in dropped[0]

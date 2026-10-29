@@ -32,6 +32,8 @@ PARTS = {
         "geographic_mix": _arr(_obj({"region": _S, "share_of_revenue_pct": _N, "revenue_millions": _N,
                                      "quote": _S})),
         "kpis": _arr(_obj({"name": _S, "value_text": _S, "period": _S, "quote": _S})),
+        "volume_kpi": _obj({"name": _S, "values": _arr(_obj({"fiscal_year": _S, "value_millions": _N})),
+                            "quote": _S}),
     }),
     "risks": _obj({
         "risk_factors": _arr(_obj({"title": _S, "summary": _S, "quote": _S})),
@@ -49,7 +51,7 @@ PARTS = {
         "fx_exposure": _obj({"text": _S, "quote": _S}),
     }),
 }
-PART_FOCUS = {"business": "Extract only: business_summary, business_quote, segments, geographic_mix, kpis.",
+PART_FOCUS = {"business": "Extract only: business_summary, business_quote, segments, geographic_mix, kpis, volume_kpi.",
               "risks": "Extract only: risk_factors, one_off_items, guidance.",
               "structure": "Extract only: convertible_debt, share_classes, key customers / suppliers / regulators, "
                            "commodity_sensitivities, interest_rate_sensitivity, fx_exposure."}
@@ -64,6 +66,10 @@ report and extract facts for the analysts. Rules:
   (e.g. Segment Adjusted EBITDA), and up to 3 US-listed companies whose business best matches each segment (tickers).
 - geographic_mix: revenue by country or region for the latest year as disclosed.
 - kpis: operating KPIs the company reports (e.g. Gross Bookings, users, take rate), latest values with period.
+- volume_kpi: the one money-volume metric revenue is earned on, if the company reports it (Gross Bookings, GMV,
+  total payment volume, gross transaction value), with its value for EACH fiscal year the filing shows, in millions
+  of the reporting currency, and a verbatim quote containing at least one of the values. Empty name and values if
+  the company reports no such metric.
 - risk_factors: the 6 most material risks for valuation, each with a verbatim quote.
 - one_off_items: impairments, restructuring, litigation, gains or losses on investments or disposals, and similar
   items called out as unusual, with the amount (positive number), whether it reduced profit ("charge") or
@@ -91,7 +97,9 @@ def _numbers(s: str) -> list[str]:
 def verify(data: dict, source_text: str) -> tuple[dict, list[str]]:
     """Drop items whose quote is not verbatim in the source, or whose numbers do not appear in the source."""
     src = _norm(source_text)
-    src_digits = re.sub(r",", "", src)
+    # whole number tokens in the filing ("1,180" -> "1180"; "18" does not match inside "2018" or "1,180")
+    src_tokens = {t.replace(",", "") for t in re.findall(r"(?<![\d.,])\d[\d,]*(?:\.\d+)?(?![\d])", src)}
+    src_tokens |= {t.rstrip("0").rstrip(".") for t in src_tokens if "." in t}
     dropped: list[str] = []
 
     def quote_ok(q: str) -> bool:
@@ -103,11 +111,12 @@ def verify(data: dict, source_text: str) -> tuple[dict, list[str]]:
                 continue
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 txt = f"{v:g}"
-                alts = {txt, f"{v:,.0f}".replace(",", ""), f"{v:.1f}", f"{v * 1000:,.0f}".replace(",", "")}
-                if not any(a in src_digits for a in alts):
+                alts = {txt, f"{v:,.0f}".replace(",", ""), f"{v:.1f}", f"{v * 1000:,.0f}".replace(",", ""),
+                        f"{v / 1000:g}", f"{v / 1000:.1f}"}  # the filing may state it in billions
+                if not any(a in src_tokens for a in alts):
                     return False
             elif isinstance(v, str) and k.endswith("_text"):
-                if any(n not in src_digits for n in _numbers(v)):
+                if any(n not in src_tokens for n in _numbers(v)):
                     return False
         return True
 
@@ -133,6 +142,18 @@ def verify(data: dict, source_text: str) -> tuple[dict, list[str]]:
             if "multiple" in item:
                 item["multiple"] = False
         out[key] = item
+    vk = dict(data.get("volume_kpi") or {})
+    if vk.get("values"):
+        if not vk.get("quote") or not quote_ok(vk["quote"]):
+            dropped.append(f"volume_kpi: '{vk.get('name')}' quote not found in the filing")
+            vk["values"] = []
+        else:
+            good = [x for x in vk["values"] if x.get("value_millions") is not None and nums_ok(x)]
+            if len(good) < len(vk["values"]):
+                dropped.append(f"volume_kpi: {len(vk['values']) - len(good)} '{vk.get('name')}' values not found "
+                               "in the filing")
+            vk["values"] = good
+    out["volume_kpi"] = vk
     if not quote_ok(data.get("business_quote", "")):
         out["business_quote"] = ""
         dropped.append("business_quote not found in the filing")

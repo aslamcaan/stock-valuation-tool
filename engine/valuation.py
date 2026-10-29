@@ -127,12 +127,29 @@ def value_company(i: EngineInputs) -> Valuation:
                           {"percentile": cyc["percentile"], "current_margin": cyc["current_margin"]}))
 
     # --- balance sheet for the bridge: latest reported -----------------------------------------------------
-    bs_p = cur_p
-    debt = _latest(h, "debt_for_valuation") or Value(0.0, "USD", MILLIONS, bs_p, "assumed zero")
+    # one balance-sheet date: the latest period with cash; each other item from that period where it is reported,
+    # else its latest earlier value, flagged so a stale figure is never mixed in silently
+    cash = _latest(h, "cash_and_investments")
+    bs_p = cash.period if cash is not None and cash.period in [x.label for x in h.periods] else cur_p
+    cash = cash or Value(0.0, "USD", MILLIONS, bs_p, "assumed zero")
     bs_date = next(p.end for p in h.periods if p.label == bs_p)
-    cash = _latest(h, "cash_and_investments") or Value(0.0, "USD", MILLIONS, bs_p, "assumed zero")
-    minority = _latest(h, "minority_interest")
-    preferred = _latest(h, "preferred_equity")
+    mixed = []
+
+    def at_bs(line: str) -> Value | None:
+        v = h.get(line, bs_p)
+        if v is not None and v.value is not None:
+            return v
+        v = _latest(h, line)
+        if v is not None and v.period != bs_p:
+            mixed.append(f"{line.replace('_', ' ')} from {v.period}")
+        return v
+    debt = at_bs("debt_for_valuation") or Value(0.0, "USD", MILLIONS, bs_p, "assumed zero")
+    minority = at_bs("minority_interest")
+    preferred = at_bs("preferred_equity")
+    if mixed:
+        flags.append(Flag(AMBER, "bridge_mixed_periods", "Equity bridge mixes balance-sheet dates",
+                          f"Cash is at {bs_p}, but {', '.join(mixed)} (not reported at {bs_p}).", bs_p,
+                          {"items": mixed}))
     bridge: list[tuple[str, Value]] = [("Debt", _neg(debt, "debt")), ("Cash and investments", cash)]
     if minority is not None and minority.value:
         bridge.append(("Minority interests", _neg(minority, "minority_interest")))

@@ -284,3 +284,28 @@ def test_a_model_hard_stop_refuses_to_value(monkeypatch):
         Flag(HARD_STOP, "dcf_invalid", "DCF cannot be computed", "terminal growth 9.0% >= WACC 8.5%", None, {})]))
     with pytest.raises(ValuationError, match="terminal growth 9.0% >= WACC 8.5%"):
         m.run_modelling(SimpleNamespace(flags=[]), None)
+
+
+def test_a_margin_at_a_five_year_record_is_above_the_90th_percentile():
+    from types import SimpleNamespace
+    import engine.classify as c
+    h = SimpleNamespace()
+    orig = c.margins
+    try:
+        c.margins = lambda _h: [(f"FY{y}", m) for y, m in zip(range(2021, 2026), (0.10, 0.12, 0.11, 0.13, 0.15))]
+        assert c.cycle_position(h, 0.15)["above_90th"]
+        assert not c.cycle_position(h, 0.13)["above_90th"]
+    finally:
+        c.margins = orig
+
+
+def test_bridge_flags_a_debt_figure_from_an_earlier_date():
+    import copy
+    from engine.valuation import value_company
+    from tests.engine_fixtures import engine_inputs
+    i = copy.deepcopy(engine_inputs("KO"))
+    ltm = i.historicals.ltm.label
+    i.historicals.lines["debt_for_valuation"].pop(ltm)
+    v = value_company(i)
+    f = next(x for x in v.flags if x.code == "bridge_mixed_periods")
+    assert ltm in f.message and "debt for valuation from FY" in f.message

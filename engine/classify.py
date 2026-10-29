@@ -89,10 +89,15 @@ def cycle_position(h: Historicals, current_margin: float | None) -> dict:
     below = sum(1 for m in ms if m < current_margin)
     equal = sum(1 for m in ms if m == current_margin)
     pct = (below + 0.5 * equal) / len(ms)
+    # the 90th percentile of the range by linear interpolation: a margin at a 5-year record is above it,
+    # where a rank of (below + half the ties) / n would give exactly 0.90 and miss it
+    s = sorted(ms)
+    k = 0.9 * (len(s) - 1)
+    p90 = s[int(k)] + (s[min(int(k) + 1, len(s) - 1)] - s[int(k)]) * (k - int(k))
     return {"available": True, "years": len(ms), "current_margin": current_margin, "percentile": pct,
-            "mid_cycle_margin": mean(ms), "min_margin": min(ms), "max_margin": max(ms),
+            "p90_margin": p90, "mid_cycle_margin": mean(ms), "min_margin": min(ms), "max_margin": max(ms),
             "margin_std": pstdev(ms), "volatile": pstdev(ms) > VOLATILE_MARGIN,
-            "above_90th": pct > 0.9}
+            "above_90th": current_margin >= p90 and current_margin > min(ms)}
 
 
 def classify(h: Historicals, sic: str, current_margin: float | None = None) -> Classification:

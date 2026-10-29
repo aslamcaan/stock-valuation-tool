@@ -12,13 +12,12 @@ The MD then writes "What the news means" from those computed figures. All AI tex
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from data_desk.sector_etf import sector_etf
 from desks.ai import SONNET, AIClient
-from desks.guarded import guarded_call
+from desks.guarded import DATE_OK, guarded_call
 from desks.news import TIER_LABEL, NewsItem, NewsResult
 from desks.research import _arr, _obj
 from engine.news_impact import (BOUNDS, DRIVER_LABEL, DRIVERS, MARKET_ETF, UNIT, Change, PricedIn, Repriced,
@@ -26,8 +25,6 @@ from engine.news_impact import (BOUNDS, DRIVER_LABEL, DRIVERS, MARKET_ETF, UNIT,
 
 MAX_ITEMS = 10
 # A "what to watch" date must be a date or period, not prose that could carry an unchecked number.
-DATE_OK = re.compile(r"^(not disclosed|\d{4}-\d{2}(-\d{2})?|(Q[1-4]|H[12]|FY) ?\d{4}|"
-                     r"(early|mid|late) \d{4}|\d{1,2} [A-Z][a-z]+ \d{4}|[A-Z][a-z]+ \d{4})$")
 _S = {"type": "string"}
 SKIP = {"item_id", "driver", "duration", "more_convincing", "corroborated_by", "date", "scenario_shift", "tier",
         "published", "quality", "url", "channel", "verdict", "window"}

@@ -173,10 +173,13 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
             p("Research desk", FAILED, str(exc))
             research, use_ai = None, False
             rep.stopped = str(exc)
-        except AIError as exc:
-            p("Research desk", FAILED, str(exc))
+        except Exception as exc:  # AIError, or the filing could not be fetched: the valuation goes on without it
+            p("Research desk", FAILED, f"{type(exc).__name__}: {exc}")
             research = None
-        peers, peer_notes = f_peers.result()
+        try:
+            peers, peer_notes = f_peers.result()
+        except Exception as exc:
+            peers, peer_notes = [], [f"Peers could not be gathered: {type(exc).__name__}: {exc}"]
         rep.ownership = f_own.result()
     rep.research = research
     rep.peers_pool, rep.peer_notes = peers, peer_notes

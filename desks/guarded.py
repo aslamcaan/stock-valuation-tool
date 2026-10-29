@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from desks.ai import AIClient, CostCapExceeded
 from desks.number_guard import apply_cleaning, check_fields, flatten_numbers, numbers_from_text, strings_in
@@ -17,6 +18,10 @@ def _without(data, keys):
     return data
 
 
+# A date field must be a date or period, not prose that could carry an unchecked number. Date fields are skipped by
+# the number check, so they are validated here instead.
+DATE_OK = re.compile(r"^((date )?not disclosed|\d{4}-\d{2}(-\d{2})?|(Q[1-4]|H[12]|FY) ?\d{4}|"
+                     r"(early|mid|late) \d{4}|\d{1,2} [A-Z][a-z]+ \d{4}|[A-Z][a-z]+ \d{1,2},? \d{4}|[A-Z][a-z]+ \d{4})$")
 CODE_TEXT = ("flags", "insider_activity", "forensic", "major_holders", "short_interest")
 
 def allowed_numbers(payload: dict, quotable=()) -> list[float]:

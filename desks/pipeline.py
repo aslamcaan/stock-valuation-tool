@@ -221,6 +221,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         def summary_of(m):  # computed results for the AI desks, with ownership and forensic scores
             return {**build_summary(m, research_view), **extras_for_ai(rep)}
         # --- review desk ---
+        svc.ai.ledger.hold(rid, MD_HOLD)  # the review and impact desks may not spend the MD's budget
         try:
             p("Review desk", RUNNING, "Challenging assumptions and writing the bear case…")
             review, log = run_review(svc.ai, rid, summary_of(model), sources)
@@ -246,6 +247,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
                 rep.guard_log += rep.impact.guard_log
 
             p("MD", RUNNING, "Scoring the rubric and writing the investment view…")
+            svc.ai.ledger.unhold(rid)
             md = run_md(svc.ai, rid, model, summary_of(model), review, sources, news=news_view)
             rep.md = md
             rep.guard_log += md.guard_log
@@ -272,6 +274,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
     try:
         value_review_and_md()
     finally:  # whatever happens above, the news thread is joined (with a time limit) before the report is saved
+        svc.ai.ledger.unhold(rid)  # never leave the MD's set-aside counting against the daily cap
         rep.news = news_now()
         if rep.impact is None and p.status["Impact analyst"][0] == WAITING:
             p("Impact analyst", SKIPPED, "No valuation or AI desks off" if rep.model is None or not use_ai
@@ -302,6 +305,7 @@ def _impact_job(svc, rid, model, news, exposure, summary, sources, p, cost) -> I
     return res
 
 
+MD_HOLD = 0.15  # US$ set aside for the MD from the review desk on (its worst case at MAX_TOKENS is about $0.14)
 NEWS_TIMEOUT = 180  # seconds to wait for the news desk after the MD finishes
 
 

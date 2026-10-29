@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from desks.ai import AIClient
+from desks.ai import AIClient, CostCapExceeded
 from desks.number_guard import apply_cleaning, check_fields, flatten_numbers, numbers_from_text, strings_in
 
 SKIP_KEYS = {"criterion", "stage", "suggested_stage", "view", "severity", "side", "conviction", "code", "level"}
@@ -40,11 +40,15 @@ def guarded_call(ai: AIClient, *, report_id: str, desk: str, model: str, system:
         retry = (content + "\n\nYour previous answer used numbers that are not in the computed results or the quoted "
                  f"sources: {', '.join(nums[:20])}. Rewrite it using only numbers that appear in the computed results, "
                  "rounded as shown, or verbatim quotes from the sources.")
-        data = ai.call(report_id=report_id, desk=desk, model=model, system=system, content=retry, schema=schema,
-                       effort=effort, max_tokens=max_tokens)
-        results = check_fields(_without(data, skip_keys), allowed, sources)
-        bad = {k: r for k, r in results.items() if not r.ok}
-        log.append(f"{desk}: regenerated once because of unsupported numbers ({', '.join(nums[:8])})")
+        try:
+            data = ai.call(report_id=report_id, desk=desk, model=model, system=system, content=retry, schema=schema,
+                           effort=effort, max_tokens=max_tokens)
+        except CostCapExceeded:  # no budget to regenerate: keep the first answer without the failing sentences
+            log.append(f"{desk}: not regenerated (AI cost cap); unsupported sentences dropped instead")
+        else:
+            results = check_fields(_without(data, skip_keys), allowed, sources)
+            bad = {k: r for k, r in results.items() if not r.ok}
+            log.append(f"{desk}: regenerated once because of unsupported numbers ({', '.join(nums[:8])})")
         if bad:
             for k, r in bad.items():
                 for s in r.bad_sentences:

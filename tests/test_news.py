@@ -377,3 +377,31 @@ def test_unverified_disclosure_text_is_not_shown():
     assert "$45m" not in rates.detail and rates.source == "EDGAR XBRL"
     assert not any(e.channel == "Foreign exchange" for e in prof.items)
     assert next(e for e in prof.items if e.category == "Regulators").source.startswith("AI-extracted")
+
+
+def test_held_budget_is_not_spent_by_earlier_desks_and_not_waited_on(tmp_path):
+    from desks.ai import CostCapExceeded
+    led = CostLedger(tmp_path / "d.sqlite", 0.30, 5.0)
+    led.hold("r", 0.15)                    # set aside for the MD
+    with pytest.raises(CostCapExceeded):   # refused at once: a hold is not an in-flight call
+        led.reserve("r", 0.20, wait=5)
+    led.unhold("r")
+    led.reserve("r", 0.20)
+
+
+def test_guard_drops_sentences_when_the_cap_blocks_regeneration(tmp_path):
+    from desks.ai import CostCapExceeded
+    from desks.guarded import guarded_call
+
+    class OneShot:
+        calls = 0
+
+        def call(self, **k):
+            OneShot.calls += 1
+            if OneShot.calls > 1:
+                raise CostCapExceeded("cap")
+            return {"text": "Revenue was $5bn. Margins are healthy."}
+    data, log = guarded_call(OneShot(), report_id="r", desk="MD", model="m", system="s", payload={"x": 1},
+                             schema={}, sources="", instructions="i")
+    assert "$5bn" not in data["text"] and "healthy" in data["text"]
+    assert any("not regenerated" in x for x in log)

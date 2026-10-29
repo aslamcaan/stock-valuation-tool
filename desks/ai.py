@@ -79,7 +79,8 @@ class CostLedger:
         self.per_report_cap, self.per_day_cap = per_report_cap, per_day_cap
         # Calls in flight (desks run in parallel): their estimates count against the caps until they are logged.
         self._lock = threading.Condition()
-        self._pending: dict[str, float] = {}
+        self._pending: dict[str, float] = {}  # calls in flight (worst case), released when they finish
+        self._held: dict[str, float] = {}     # budget set aside for a later desk (e.g. the MD's rating)
         self.db.execute("CREATE TABLE IF NOT EXISTS ai_calls (report_id TEXT, day TEXT, at TEXT, desk TEXT, model TEXT, "
                         "input_tokens INT, output_tokens INT, cache_read INT, searches INT, cost REAL, cached INT, "
                         "served_by TEXT)")
@@ -92,8 +93,8 @@ class CostLedger:
         return float(self.db.scalar("SELECT COALESCE(SUM(cost),0) FROM ai_calls WHERE report_id=?", (report_id,)) or 0)
 
     def check(self, report_id: str, estimate: float) -> None:
-        rep = self.spent_on_report(report_id) + self._pending.get(report_id, 0.0)
-        day = self.spent_today() + sum(self._pending.values())
+        rep = self.spent_on_report(report_id) + self._pending.get(report_id, 0.0) + self._held.get(report_id, 0.0)
+        day = self.spent_today() + sum(self._pending.values()) + sum(self._held.values())
         if rep + estimate > self.per_report_cap:
             raise CostCapExceeded(f"This report has used ${rep:.3f} of AI spend; the next call (up to ${estimate:.3f}) "
                                   f"would exceed MAX_COST_PER_REPORT ${self.per_report_cap:.2f}.")
@@ -117,6 +118,18 @@ class CostLedger:
                         raise
                     self._lock.wait(left)
             self._pending[report_id] = self._pending.get(report_id, 0.0) + estimate
+
+    def hold(self, report_id: str, amount: float) -> None:
+        """Set `amount` aside for a later, more important call: earlier calls are refused rather than spend it.
+        Not waited on (a hold is released by the pipeline, not by a call finishing)."""
+        with self._lock:
+            self._held[report_id] = amount
+            self._lock.notify_all()
+
+    def unhold(self, report_id: str) -> None:
+        with self._lock:
+            self._held.pop(report_id, None)
+            self._lock.notify_all()
 
     def release(self, report_id: str, estimate: float) -> None:
         with self._lock:

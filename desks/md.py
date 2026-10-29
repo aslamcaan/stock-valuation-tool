@@ -62,6 +62,8 @@ class MDResult:
     guard_log: list[str] = field(default_factory=list)
 
 
+MAX_TOKENS = 6000  # the sign-off is about 2,200 tokens; the cap sets the worst-case cost reservation
+
 def code_scores(report) -> list[Score]:
     cd, v, vd = report.company, report.valuation, report.verdict
     h = cd.historicals_usd
@@ -84,7 +86,8 @@ def run_md(ai: AIClient, report_id: str, report, summary: dict, review: dict, so
     if news:
         payload["news"] = news
     data, log = guarded_call(ai, report_id=report_id, desk="MD", model=SONNET, system=SYSTEM, payload=payload,
-                             schema=SCHEMA, sources=sources, effort="medium", instructions="Sign off this report.")
+                             schema=SCHEMA, sources=sources, effort="medium", max_tokens=MAX_TOKENS,
+                             instructions="Sign off this report.")
     ai_scores = []
     seen = set()
     for s in data["ai_scores"]:

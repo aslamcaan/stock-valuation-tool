@@ -178,7 +178,7 @@ def run_impact(ai: AIClient, svc, report_id: str, report, news: NewsResult, summ
                "exposure_profile": exposure.for_ai() if exposure else [],
                "driver_limits": {k: f"{v:g} {UNIT.get(k, 'percentage points')}" for k, v in BOUNDS.items()}}
     data, log = guarded_call(ai, report_id=report_id, desk="Impact analyst", model=SONNET, system=SYSTEM,
-                             payload=payload, schema=SCHEMA, sources=sources, effort="medium", max_tokens=8000,
+                             payload=payload, schema=SCHEMA, sources=sources, effort="medium", max_tokens=6000,
                              instructions="Analyse the impact of each news item.", skip=SKIP,
                              quotable=_news_text(items))
     res.guard_log += log

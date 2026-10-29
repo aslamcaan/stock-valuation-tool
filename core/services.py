@@ -12,6 +12,7 @@ from datasources.damodaran import DamodaranClient
 from datasources.edgar import EdgarClient
 from datasources.finnhub import FinnhubClient
 from datasources.fmp import FmpClient
+from datasources.finra import FinraClient
 from datasources.fred import FredClient
 from datasources.market import MarketData
 from datasources.tiingo import TiingoClient
@@ -31,6 +32,7 @@ class Services:
     store: Store
     ai: AIClient
     db: Database
+    finra: FinraClient | None = None
 
 
 def build_services(settings: Settings | None = None) -> Services:
@@ -54,4 +56,5 @@ def build_services(settings: Settings | None = None) -> Services:
         store=Store(db),
         ai=AIClient(s.anthropic_api_key, cache, CostLedger(db, s.max_cost_per_report, s.max_cost_per_day)),
         db=db,
+        finra=FinraClient(cache),
     )

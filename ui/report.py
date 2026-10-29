@@ -192,7 +192,7 @@ def analysis(rep) -> None:
                 st.caption("Earnings beat/miss history not available.")
         for line in a.commentary.get(section, []):
             st.markdown(f"- {line}")
-    st.caption("Beneish M-score and Altman Z-score arrive in Release 2.")
+    forensic_block(getattr(rep, "forensic", None))
 
 
 def benchmarking(rep) -> None:
@@ -478,7 +478,7 @@ SECTIONS = [
     ("12. Comps and historical multiples", comps), ("13. Reverse DCF", reverse_dcf),
     ("14. Scenarios and sensitivity", scenarios), ("15. Football field", football),
     ("16. News and impact analysis", lambda rep: news_section(rep)),
-    ("17. Ownership and insider activity", lambda rep: st.caption("Arrives in Release 2.")),
+    ("17. Ownership and insider activity", lambda rep: ownership_section(rep)),
     ("18. Review desk notes", review_notes), ("19. Main risks", risks), ("20. Flags", flags),
     ("21. Assumptions table and data provenance", provenance),
 ]
@@ -490,6 +490,82 @@ def md_text(x: str) -> str:
 
 
 QUALITY_BADGE = {"Trusted": "🟢 Trusted", "Established": "🔵 Established", "Unverified": "🟠 Unverified"}
+
+
+def forensic_block(fs) -> None:
+    st.markdown("**Forensic scores** (code, from reported statement lines)")
+    if not fs or not (fs.get("beneish") or fs.get("altman")):
+        st.caption("Forensic scores not available for this report"
+                   + (f": {fs['error']}" if fs and fs.get("error") else "."))
+        return
+    rows = []
+    for s_ in fs.get("beneish", [])[-4:] + fs.get("altman", [])[-4:]:
+        rows.append({"Score": s_.name, "Year": s_.period, "Value": "n/a" if s_.value is None else f"{s_.value:.2f}",
+                     "Reading": s_.reading,
+                     "Components": ", ".join(f"{k} {v:.2f}" for k, v in s_.components.items())})
+    st.dataframe(rows, hide_index=True, width="stretch")
+    latest = [x for x in (fs.get("beneish") or [])[-1:] + (fs.get("altman") or [])[-1:]]
+    for x in latest:
+        st.caption(f"{x.name} ({x.model}): " + "; ".join(x.notes) if x.notes else f"{x.name}: {x.model}.")
+    with st.expander("Forensic score inputs (line, period, value, source)"):
+        for x in latest:
+            st.markdown(f"**{x.name} {x.period}**")
+            st.dataframe([{"Line": i["line"], "Period": i["period"], "Value (US$m)": f"{i['value']:,.1f}",
+                           "Source": i["source"]} for i in x.inputs], hide_index=True, width="stretch")
+
+
+def ownership_section(rep) -> None:
+    own = getattr(rep, "ownership", None)
+    if own is None:
+        st.caption("Ownership data was not gathered for this report.")
+        return
+    s_ = own.summary()
+    st.markdown(f"**Insider activity, last {s_['window_days']} days** (SEC Form 4, as of {own.as_of})")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Open-market buys", f"{s_['buys']} ({s_['buyers']} insiders)", help="Form 4 code P")
+    c2.metric("Open-market sells", f"{s_['sells']} ({s_['sellers']} insiders)",
+              help=f"Form 4 code S; {s_['planned_sells']} under pre-arranged Rule 10b5-1 plans")
+    c3.metric("Net (buys − sells), US$m", f"{s_['net_value'] / 1e6:+,.2f}",
+              help="Shares × reported price, summed by code")
+    st.caption(f"Bought US${s_['buy_value'] / 1e6:,.2f}m; sold US${s_['sell_value'] / 1e6:,.2f}m (shares × "
+               "reported price).")
+    if s_["sells"]:
+        st.caption(f"{s_['planned_sells']} of {s_['sells']} sales were under Rule 10b5-1 plans (scheduled in "
+                   "advance, a weaker signal than discretionary sales). Option exercises, grants and tax "
+                   "withholding are listed but not counted as buying or selling.")
+    if own.trades:
+        st.dataframe([{"Date": t.date, "Insider": t.owner, "Role": t.role, "Transaction": t.action,
+                       "Shares": f"{t.shares:,.0f}", "Price": money(t.price) if t.price else "",
+                       "Value (US$m)": f"{t.value / 1e6:,.2f}" if t.value else "",
+                       "10b5-1": "yes" if t.plan_10b5_1 else "", "Filed": t.filed, "Link": t.url}
+                      for t in own.trades[:40]], hide_index=True, width="stretch",
+                     column_config={"Link": st.column_config.LinkColumn("Form 4", display_text="filing")})
+    st.markdown("**Major holders** (5% filers, latest Schedule 13D/13G per filer)")
+    if own.holders:
+        st.dataframe([{"Holder": h.name, "% of class": "n/a" if h.percent is None else
+                       f"{h.percent:g}%" + (" (below 5%: exit or update filing)" if h.percent < 5 else ""),
+                       "Shares": "" if h.shares is None else f"{h.shares:,.0f}", "As of": h.event_date,
+                       "Class": getattr(h, "security", ""), "Form": h.form, "Filed": h.filed, "Link": h.url}
+                      for h in own.holders],
+                     hide_index=True, width="stretch",
+                     column_config={"Link": st.column_config.LinkColumn("Filing", display_text="filing")})
+    else:
+        st.caption("No Schedule 13D/13G filings in the SEC's XML format in the last 3 years.")
+    if own.institutional:
+        st.markdown(f"**Institutional holders** (FMP, from 13F filings for {own.institutional_period})")
+        st.dataframe(own.institutional[:15], hide_index=True, width="stretch")
+    st.markdown("**Short interest** (FINRA, twice-monthly settlement dates)")
+    if own.short:
+        st.dataframe([{"Settlement date": r["settlement_date"],
+                       "Short shares": "" if r["short_shares"] is None else f"{r['short_shares']:,.0f}",
+                       "% of shares outstanding": "n/a" if r["pct_of_shares"] is None else f"{r['pct_of_shares']:.2%}",
+                       "Change": "n/a" if r["change_pct"] is None else f"{r['change_pct']:+.1%}",
+                       "Days to cover": "" if r["days_to_cover"] is None else f"{r['days_to_cover']:.2f}"}
+                      for r in reversed(own.short)], hide_index=True, width="stretch")
+        st.caption("% of shares outstanding uses the latest reported share count (code). Days to cover is FINRA's: "
+                   "short shares ÷ average daily volume.")
+    for n in own.notes:
+        st.caption(n)
 
 
 def _pct(x: float | None) -> str:

@@ -4,6 +4,8 @@ SEC fair-access policy: declare a User-Agent with name and email, max 10 request
 """
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 
 from core.cache import Cache, Cached
@@ -107,6 +109,14 @@ class EdgarClient:
                         "description": f.description, "url": f.url(cik)})
         out.sort(key=lambda x: x["filing_date"], reverse=True)
         return out, c.fetched_at_iso
+
+    def raw_xml(self, url: str) -> Cached:
+        """A filing's raw XML (Form 4, Schedule 13D/G), cached 30 days. EDGAR lists the rendered form
+        (.../xslF345X05/doc.xml); the raw XML is the same path without the xsl folder."""
+        url = re.sub(r"/xsl[^/]+/", "/", url)
+        return self.cache.get_or_fetch(
+            "filings", cache_key(url),
+            lambda: get(SOURCE, url, headers=self._headers(), limiter=_LIMITER, timeout=60).text)
 
     def document(self, cik: int, filing: Filing) -> Cached:
         """Raw text/HTML of a filing's primary document (cached 30 days)."""

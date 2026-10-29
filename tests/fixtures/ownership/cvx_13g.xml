@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?><edgarSubmission xmlns="http://www.sec.gov/edgar/schedule13g" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <schemaVersion>X0202</schemaVersion>
+<headerData>
+    <submissionType>SCHEDULE 13G/A</submissionType>
+    <filerInfo>
+      <filer>
+        <filerCredentials>
+          <cik>0001067983</cik>
+          <ccc>XXXXXXXX</ccc>
+        </filerCredentials>
+      </filer>
+      <liveTestFlag>LIVE</liveTestFlag>
+
+
+
+    </filerInfo>
+  </headerData>
+  <formData>
+    <coverPageHeader>
+      <amendmentNo>2</amendmentNo>
+      <securitiesClassTitle>Common Stock</securitiesClassTitle>
+      <eventDateRequiresFilingThisStatement>03/31/2026</eventDateRequiresFilingThisStatement>
+      <issuerInfo>
+        <issuerCik>0000093410</issuerCik>
+        <issuerName>CHEVRON CORPORATION</issuerName>
+        <issuerCusips>
+          <issuerCusipNumber>166764100</issuerCusipNumber>
+        </issuerCusips>
+        <issuerPrincipalExecutiveOfficeAddress>
+          <street1 xmlns="http://www.sec.gov/edgar/common">1400 Smith Street</street1>
+          <city xmlns="http://www.sec.gov/edgar/common">Houston</city>
+          <stateOrCountry xmlns="http://www.sec.gov/edgar/common">TX</stateOrCountry>
+          <zipCode xmlns="http://www.sec.gov/edgar/common">77002</zipCode>
+        </issuerPrincipalExecutiveOfficeAddress>
+      </issuerInfo>
+      <designateRulesPursuantThisScheduleFiled>
+        <designateRulePursuantThisScheduleFiled>Rule 13d-1(b)</designateRulePursuantThisScheduleFiled>
+      </designateRulesPursuantThisScheduleFiled>
+    </coverPageHeader>
+    <coverPageHeaderReportingPersonDetails>
+
+
+      <reportingPersonName>Warren E. Buffett</reportingPersonName>
+      <memberGroup>a</memberGroup>
+      <citizenshipOrOrganization>X1</citizenshipOrOrganization>
+      <reportingPersonBeneficiallyOwnedNumberOfShares>
+        <soleVotingPower>0</soleVotingPower>
+        <sharedVotingPower>84375856</sharedVotingPower>
+        <soleDispositivePower>0</soleDispositivePower>
+        <sharedDispositivePower>84375856</sharedDispositivePower>
+      </reportingPersonBeneficiallyOwnedNumberOfShares>
+      <reportingPersonBeneficiallyOwnedAggregateNumberOfShares>84375856</reportingPersonBeneficiallyOwnedAggregateNumberOfShares>
+      <aggregateAmountExcludesCertainSharesFlag>N</aggregateAmountExcludesCertainSharesFlag>
+      <classPercent>4.2</classPercent>
+      <typeOfReportingPerson>IN</typeOfReportingPerson>
+    </coverPageHeaderReportingPersonDetails>
+    <coverPageHeaderReportingPersonDetails>
+
+
+      <reportingPersonName>Berkshire Hathaway Inc.</reportingPersonName>
+      <memberGroup>a</memberGroup>
+      <citizenshipOrOrganization>DE</citizenshipOrOrganization>
+      <reportingPersonBeneficiallyOwnedNumberOfShares>
+        <soleVotingPower>0</soleVotingPower>
+        <sharedVotingPower>84375856</sharedVotingPower>
+        <soleDispositivePower>0</soleDispositivePower>
+        <sharedDispositivePower>84375856</sharedDispositivePower>
+      </reportingPersonBeneficiallyOwnedNumberOfShares>
+      <reportingPersonBeneficiallyOwnedAggregateNumberOfShares>84375856</reportingPersonBeneficiallyOwnedAggregateNumberOfShares>
+      <aggregateAmountExcludesCertainSharesFlag>N</aggregateAmountExcludesCertainSharesFlag>
+      <classPercent>4.2</classPercent>
+      <typeOfReportingPerson>HC</typeOfReportingPerson>
+      <typeOfReportingPerson>CO</typeOfReportingPerson>
+    </coverPageHeaderReportingPersonDetails>
+    <coverPageHeaderReportingPersonDetails>
+
+
+      <reportingPersonName>National Indemnity Company</reportingPersonName>
+      <memberGroup>a</memberGroup>
+      <citizenshipOrOrganization>NE</citizenshipOrOrganization>
+      <reportingPersonBeneficiallyOwnedNumberOfShares>
+        <soleVotingPower>0</soleVotingPower>
+        <sharedVotingPower>75183685</sharedVotingPower>
+        <soleDispositivePower>0</soleDispositivePower>
+        <sharedDispositivePower>75183685</sharedDispositivePower>
+      </reportingPersonBeneficiallyOwnedNumberOfShares>
+      <reportingPersonBeneficiallyOwnedAggregateNumberOfShares>75183685</reportingPersonBeneficiallyOwnedAggregateNumberOfShares>
+      <aggregateAmountExcludesCertainSharesFlag>N</aggregateAmountExcludesCertainSharesFlag>
+      <classPercent>3.8</classPercent>
+      <typeOfReportingPerson>IC</typeOfReportingPerson>
+      <typeOfReportingPerson>CO</typeOfReportingPerson>
+    </coverPageHeaderReportingPersonDetails>
+    <coverPageHeaderReportingPersonDetails>
+
+
+      <reportingPersonName>GEICO Corporation</reportingPersonName>
+      <memberGroup>a</memberGroup>
+      <citizenshipOrOrganization>DE</citizenshipOrOrganization>
+      <reportingPersonBeneficiallyOwnedNumberOfShares>
+        <soleVotingPower>0</soleVotingPower>
+        <sharedVotingPower>13477678</sharedVotingPower>
+        <soleDispositivePower>0</soleDispositivePower>
+        <sharedDispositivePower>13477678</sharedDispositivePower>
+      </reportingPersonBeneficiallyOwnedNumberOfShares>
+      <reportingPersonBeneficiallyOwnedAggregateNumberOfShares>13477678</reportingPersonBeneficiallyOwnedAggregateNumberOfShares>
+      <aggregateAmountExcludesCertainSharesFlag>N</aggregateAmountExcludesCertainSharesFlag>
+      <classPercent>0.7</classPercent>
+      <typeOfReportingPerson>HC</typeOfReportingPerson>
+      <typeOfReportingPerson>CO</typeOfReportingPerson>
+    </coverPageHeaderReportingPersonDetails>
+    <coverPageHeaderReportingPersonDetails>
+
+
+      <reportingPersonName>Government Employees Insurance Company</reportingPersonName>
+      <memberGroup>a</memberGroup>
+      <citizenshipOrOrganization>NE</citizenshipOrOrganization>
+      <reportingPersonBeneficiallyOwnedNumberOfShares>
+        <soleVotingPower>0</soleVotingPower>
+        <sharedVotingPower>13477678</sharedVotingPower>
+        <soleDispositivePower>0</soleDispositivePower>
+        <sharedDispositivePower>13477678</sharedDispositivePower>
+      </reportingPersonBeneficiallyOwnedNumberOfShares>
+      <reportingPersonBeneficiallyOwnedAggregateNumberOfShares>13477678</reportingPersonBeneficiallyOwnedAggregateNumberOfShares>
+      <aggregateAmountExcludesCertainSharesFlag>N</aggregateAmountExcludesCertainSharesFlag>
+      <classPercent>0.7</classPercent>
+      <typeOfReportingPerson>IC</typeOfReportingPerson>
+      <typeOfReportingPerson>CO</typeOfReportingPerson>
+    </coverPageHeaderReportingPersonDetails>
+    <coverPageHeaderReportingPersonDetails>
+
+
+      <reportingPersonName>Columbia Insurance Company</reportingPersonName>
+      <memberGroup>a</memberGroup>
+      <citizenshipOrOrganization>NE</citizenshipOrOrganization>
+      <reportingPersonBeneficiallyOwnedNumberOfShares>
+        <soleVotingPower>0</soleVotingPower>
+        <sharedVotingPower>9192171</sharedVotingPower>
+        <soleDispositivePower>0</soleDispositivePower>
+        <sharedDispositivePower>9192171</sharedDispositivePower>
+      </reportingPersonBeneficiallyOwnedNumberOfShares>
+      <reportingPersonBeneficiallyOwnedAggregateNumberOfShares>9192171</reportingPersonBeneficiallyOwnedAggregateNumberOfShares>
+      <aggregateAmountExcludesCertainSharesFlag>N</aggregateAmountExcludesCertainSharesFlag>
+      <classPercent>0.5</classPercent>
+      <typeOfReportingPerson>IC</typeOfReportingPerson>
+      <typeOfReportingPerson>CO</typeOfReportingPerson>
+    </coverPageHeaderReportingPersonDetails>
+    <items>
+      <item1>
+        <issuerName>CHEVRON CORPORATION</issuerName>
+        <issuerPrincipalExecutiveOfficeAddress>1400 Smith Street, Houston, Texas 77002</issuerPrincipalExecutiveOfficeAddress>
+      </item1>
+      <item2>
+        <filingPersonName>Warren E. Buffett
+Berkshire Hathaway Inc.
+National Indemnity Company
+GEICO Corporation
+Government Employees Insurance Company
+Columbia Insurance Company</filingPersonName>
+        <principalBusinessOfficeOrResidenceAddress>Warren E. Buffett
+3555 Farnam Street
+Omaha, Nebraska 68131
+
+Berkshire Hathaway Inc.
+3555 Farnam Street
+Omaha, Nebraska 68131
+
+National Indemnity Company
+1314 Douglas Street
+Omaha, Nebraska 68102
+
+GEICO Corporation
+One GEICO Plaza
+Washington, DC 20076
+
+Government Employees Insurance Company
+One GEICO Plaza
+Washington, DC 20076
+
+Columbia Insurance Company
+1314 Douglas Street
+Omaha, Nebraska 68102</principalBusinessOfficeOrResidenceAddress>
+        <citizenship>Warren E. Buffett (United States Citizen); Berkshire Hathaway Inc. (State of Delaware); National Indemnity Company (State of Nebraska); GEICO Corporation (State of Delaware); Government Employees Insurance Company (State of Nebraska); Columbia Insurance Company (State of Nebraska).</citizenship>
+      </item2>
+      <item3>
+        <notApplicableFlag>N</notApplicableFlag>
+        <typeOfPersonFiling>IC</typeOfPersonFiling>
+        <typeOfPersonFiling>HC</typeOfPersonFiling>
+      </item3>
+      <item4>
+        <amountBeneficiallyOwned>See the Cover Pages for each of the Reporting Persons.</amountBeneficiallyOwned>
+        <classPercent>See the Cover Pages for each of the Reporting Persons.</classPercent>
+        <numberOfSharesPersonHas>
+          <solePowerOrDirectToVote>See the Cover Pages for each of the Reporting Persons.</solePowerOrDirectToVote>
+          <sharedPowerOrDirectToVote>See the Cover Pages for each of the Reporting Persons.</sharedPowerOrDirectToVote>
+          <solePowerOrDirectToDispose>See the Cover Pages for each of the Reporting Persons.</solePowerOrDirectToDispose>
+          <sharedPowerOrDirectToDispose>See the Cover Pages for each of the Reporting Persons.</sharedPowerOrDirectToDispose>
+        </numberOfSharesPersonHas>
+      </item4>
+      <item5>
+        <notApplicableFlag>N</notApplicableFlag>
+        <classOwnership5PercentOrLess>Y</classOwnership5PercentOrLess>
+      </item5>
+      <item6>
+        <notApplicableFlag>Y</notApplicableFlag>
+      </item6>
+      <item7>
+        <notApplicableFlag>N</notApplicableFlag>
+        <subsidiaryIdentificationAndClassification>See Exhibit A.</subsidiaryIdentificationAndClassification>
+      </item7>
+      <item8>
+        <notApplicableFlag>N</notApplicableFlag>
+        <identificationAndClassificationOfGroupMembers>See Exhibit A.</identificationAndClassificationOfGroupMembers>
+      </item8>
+      <item9>
+        <notApplicableFlag>Y</notApplicableFlag>
+      </item9>
+      <item10>
+        <notApplicableFlag>N</notApplicableFlag>
+        <certifications>By signing below I certify that, to the best of my knowledge and belief, the securities referred to above were acquired and are held in the ordinary course of business and were not acquired and are not held for the purpose of or with the effect of changing or influencing the control of the issuer of the securities and were not acquired and are not held in connection with or as a participant in any transaction having that purpose or effect, other than activities solely in connection with a nomination under ?? 240.14a-11.
+</certifications>
+      </item10>
+    </items>
+    <signatureInformation>
+      <reportingPersonName>Warren E. Buffett</reportingPersonName>
+      <signatureDetails>
+        <signature>/s/ Warren E. Buffett</signature>
+        <title>Warren E. Buffett</title>
+        <date>05/15/2026</date>
+      </signatureDetails>
+    </signatureInformation>
+    <signatureInformation>
+      <reportingPersonName>Berkshire Hathaway Inc.</reportingPersonName>
+      <signatureDetails>
+        <signature>/s/ Warren E. Buffett</signature>
+        <title>Warren E. Buffett, Chairman of the Board</title>
+        <date>05/15/2026</date>
+      </signatureDetails>
+    </signatureInformation>
+    <signatureInformation>
+      <reportingPersonName>National Indemnity Company</reportingPersonName>
+      <signatureDetails>
+        <signature>/s/ Warren E. Buffett</signature>
+        <title>Warren E. Buffett, Attorney-in-Fact</title>
+        <date>05/15/2026</date>
+      </signatureDetails>
+    </signatureInformation>
+    <signatureInformation>
+      <reportingPersonName>GEICO Corporation</reportingPersonName>
+      <signatureDetails>
+        <signature>/s/ Warren E. Buffett</signature>
+        <title>Warren E. Buffett, Attorney-in-Fact</title>
+        <date>05/15/2026</date>
+      </signatureDetails>
+    </signatureInformation>
+    <signatureInformation>
+      <reportingPersonName>Government Employees Insurance Company</reportingPersonName>
+      <signatureDetails>
+        <signature>/s/ Warren E. Buffett</signature>
+        <title>Warren E. Buffett, Attorney-in-Fact</title>
+        <date>05/15/2026</date>
+      </signatureDetails>
+    </signatureInformation>
+    <signatureInformation>
+      <reportingPersonName>Columbia Insurance Company</reportingPersonName>
+      <signatureDetails>
+        <signature>/s/ Warren E. Buffett</signature>
+        <title>Warren E. Buffett, Attorney-in-Fact</title>
+        <date>05/15/2026</date>
+      </signatureDetails>
+    </signatureInformation>
+  </formData>
+
+</edgarSubmission>

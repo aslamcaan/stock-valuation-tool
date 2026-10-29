@@ -80,8 +80,8 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 ## RELEASE 2: news, ownership, comparison
 - [x] Phase 10 — exposure profile, news desk (four tiers, freshness, source labels)
 - [x] Phase 11 — impact analyst, priced-in, news-adjusted fair value, MD news summary, Refresh news, rubric feed
-- [ ] Phase 12 — ownership, Form 4, short interest, Beneish M, Altman Z
-- [ ] Phase 13 — Compare page
+- [x] Phase 12 — ownership, Form 4, short interest, Beneish M, Altman Z
+- [x] Phase 13 — Compare page
 - [ ] **CHECKPOINT 5:** news demo on CVX and GRAB
 
 ## RELEASE 3: financial-sector toolkits
@@ -258,3 +258,18 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   the refresh. Guard: news headlines from Trusted/Established sources are quotable; summaries are not. Independent
   review: 10 bugs + nits, all fixed with tests. Live CVX refresh: 9 items, 2 quantified, base $151.51 ->
   news-adjusted $150.86, Overvalued, Hold unchanged; refresh about $0.19-0.22.
+- 2026-10-29 Phase 12 done (code only, no AI). Ownership (data_desk/ownership.py): Form 4 (180 days, latest 60
+  filings; window shortened and stated when capped), open-market P/S counted, exercises/grants/withholding listed
+  only, 10b5-1 flag, 4/A restatements counted once; Schedule 13D/13G XML (3 years, latest 40, one row per filer CIK
+  and share class; pre-2024 text filings counted and noted); filings about other issuers (the company as an owner,
+  e.g. Berkshire's stakes) excluded by issuer CIK; FINRA short interest (free API, share-class symbols as BRKB),
+  % of US-listed shares (ordinary / ADR ratio); FMP 13F for the last quarter past its 45-day deadline (restricted
+  on the current plan: noted). Each section isolated; runs in parallel with research and never stops the report.
+  Forensic (engine/forensic.py): Beneish 8-variable M (-1.78) and Altman Z (SIC 2000-3999, market equity) / Z''
+  (others, book equity), on reporting-currency statements (market cap converted at the period-end FRED rate),
+  financials skipped, every input traced, accumulated-deficit caveat. Numbers passed to the AI desks as numbers.
+  Independent review: 11 bugs + nits, fixed. Live: CVX 26 sells / 0 buys, State Street 7.5%; GRAB CEO buys
+  $30.7m, Z'' -1.47 explained by the -17,470m accumulated deficit with net cash.
+- 2026-10-29 Phase 13 done. Compare page (views/compare.py): two saved reports (latest per ticker) side by side:
+  price, fair value, verdict, MD rating, news-adjusted fair value, stage/toolkit/WACC, key metrics (LTM, latest
+  FY fallback labelled), multiples vs peer medians, both football fields. Saved reports only: no API cost.

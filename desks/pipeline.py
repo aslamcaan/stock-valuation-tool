@@ -22,6 +22,7 @@ from core.http import DataSourceError
 from data_desk.builder import CompanyData, DataDeskError, build_company_data
 from data_desk.exposure import ExposureProfile, build_exposure
 from data_desk.filings import latest_annual_report
+from data_desk.ownership import Ownership, build_ownership
 from data_desk.peers import gather_peers
 from desks.ai import AIError, CostCapExceeded
 from desks.impact import ImpactResult, impact_payload, run_impact, run_news_view
@@ -31,6 +32,7 @@ from desks.news import NewsResult, run_news
 from desks.research import ResearchResult, run_research
 from desks.review import STAGES, run_review
 from desks.summary import build_summary
+from engine.forensic import ForensicScore, forensic_scores
 from engine.valuation import ValuationError
 
 DESKS = ["Data desk", "Data checks", "Research desk", "News desk", "Modelling desk", "Review desk", "Impact analyst",
@@ -67,6 +69,8 @@ class FullReport:
     exposure: ExposureProfile | None = None
     news: NewsResult | None = None
     impact: ImpactResult | None = None
+    ownership: Ownership | None = None
+    forensic: dict[str, list[ForensicScore]] | None = None
     overrides: dict = field(default_factory=dict)
     peers_pool: list = field(default_factory=list)   # all peer candidates (reused when assumptions are edited)
     peer_notes: list[str] = field(default_factory=list)
@@ -151,8 +155,17 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         p("Modelling desk", RUNNING, "Gathering comparable companies…")
         return gather_peers(svc, cd.profile.ticker, progress=lambda m: p("Modelling desk", RUNNING, m))
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        f_res, f_peers = pool.submit(research_job), pool.submit(peers_job)
+    def ownership_job():  # code only (SEC Form 4 and 13D/G, FINRA); never stops the report
+        try:
+            m = cd.market  # FINRA counts US-listed shares: ordinary shares / ADR ratio
+            shares = m.shares.value / (m.adr_ratio or 1) if m.shares and m.shares.value else None
+            return build_ownership(svc, cd.profile.cik, cd.profile.ticker, shares, today)
+        except Exception as exc:
+            return Ownership(as_of=today.isoformat(), notes=[f"Ownership data unavailable: {type(exc).__name__}: "
+                                                             f"{exc}"])
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_res, f_peers, f_own = pool.submit(research_job), pool.submit(peers_job), pool.submit(ownership_job)
         try:
             research = f_res.result()
         except CostCapExceeded as exc:
@@ -163,6 +176,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
             p("Research desk", FAILED, str(exc))
             research = None
         peers, peer_notes = f_peers.result()
+        rep.ownership = f_own.result()
     rep.research = research
     rep.peers_pool, rep.peer_notes = peers, peer_notes
     try:
@@ -191,6 +205,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
             return
         model.notes += peer_notes
         rep.model = model
+        rep.forensic = _forensic(cd, model)
         vd = model.verdict
         p("Modelling desk", DONE, f"{model.valuation.classification.stage_label}; fair value "
                                   f"{'n/a' if vd.fair_value is None else f'${vd.fair_value:,.2f}'} → {vd.verdict}")
@@ -202,10 +217,13 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
 
         sources = _sources_text(research, filing)
         research_view = _research_for_ai(research)
+
+        def summary_of(m):  # computed results for the AI desks, with ownership and forensic scores
+            return {**build_summary(m, research_view), **extras_for_ai(rep)}
         # --- review desk ---
         try:
             p("Review desk", RUNNING, "Challenging assumptions and writing the bear case…")
-            review, log = run_review(svc.ai, rid, build_summary(model, research_view), sources)
+            review, log = run_review(svc.ai, rid, summary_of(model), sources)
             rep.guard_log += log
             sr = review.get("stage_review", {})
             if not sr.get("agree", True) and sr.get("suggested_stage") in STAGES and \
@@ -216,18 +234,19 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
                                       research=research.data if research else None)
                 model.notes += peer_notes
                 rep.model = model
+                rep.forensic = _forensic(cd, model)
             rep.review = review
             p("Review desk", DONE, f"{len(review.get('challenges', []))} challenges; bear case written", cost())
 
             rep.news = news_now()
-            rep.impact = _impact_job(svc, rid, model, rep.news, rep.exposure, build_summary(model, research_view),
+            rep.impact = _impact_job(svc, rid, model, rep.news, rep.exposure, summary_of(model),
                                      sources, p, cost)
             news_view = impact_payload(rep.impact) if rep.impact and not rep.impact.error else None
             if rep.impact:
                 rep.guard_log += rep.impact.guard_log
 
             p("MD", RUNNING, "Scoring the rubric and writing the investment view…")
-            md = run_md(svc.ai, rid, model, build_summary(model, research_view), review, sources, news=news_view)
+            md = run_md(svc.ai, rid, model, summary_of(model), review, sources, news=news_view)
             rep.md = md
             rep.guard_log += md.guard_log
             if rep.impact and rep.impact.items and not rep.impact.error:
@@ -324,6 +343,58 @@ def _collect(future, pool, p) -> NewsResult | None:
         pool.shutdown(wait=False)
 
 
+def _forensic(cd, model) -> dict:
+    """Scores on the reporting-currency statements. The original Z's market value of equity is converted from US$
+    at the period-end rate the statements were converted at (FRED), read off total assets."""
+    try:
+        h, hu = cd.historicals, cd.historicals_usd
+        mc = model.inputs.market_cap
+        mc = getattr(mc, "value", mc)
+        src = "computed market cap (price x shares / ADR ratio)"
+        if mc is not None and h.currency != "USD":
+            last = h.fy_labels[-1]
+            local, usd = h.v("total_assets", last), hu.v("total_assets", last) if hu else None
+            if local and usd:
+                mc, src = mc * local / usd, f"{src}, US$ converted to {h.currency} at the {last} period-end FRED rate"
+            else:
+                mc, src = None, f"no {h.currency}/US$ rate to convert the market cap"
+        return forensic_scores(h, cd.profile.sic, mc, src)
+    except Exception as exc:  # a forensic score is a cross-check; it must never stop the valuation
+        return {"beneish": [], "altman": [], "error": f"{type(exc).__name__}: {exc}"}
+
+
+def extras_for_ai(rep: FullReport) -> dict:
+    """Ownership and forensic figures for the AI desks (all computed by code; rounded as shown in the report)."""
+    out: dict = {}
+    own = getattr(rep, "ownership", None)
+    if own is not None:
+        s = own.summary()
+        out["insider_activity"] = {"as_of": own.as_of, "window_days": s["window_days"],
+                                   "open_market_buys": s["buys"], "open_market_sells": s["sells"],
+                                   "buy_value_usd_m": round(s["buy_value"] / 1e6, 2),
+                                   "sell_value_usd_m": round(s["sell_value"] / 1e6, 2),
+                                   "sells_under_10b5_1_plans": s["planned_sells"], "distinct_buyers": s["buyers"],
+                                   "distinct_sellers": s["sellers"], "notes": own.notes}
+        out["major_holders"] = [{"name": h.name, "percent": h.percent, "as_of": h.event_date}
+                                for h in own.holders[:5]]
+        if own.short:
+            last = own.short[-1]
+            out["short_interest"] = {"settlement_date": last["settlement_date"],
+                                     "pct_of_shares": None if last["pct_of_shares"] is None
+                                     else round(last["pct_of_shares"], 4),
+                                     "days_to_cover": last["days_to_cover"]}
+    fs = getattr(rep, "forensic", None)
+    if fs:
+        b = next((x for x in reversed(fs.get("beneish", [])) if x.value is not None), None)
+        a = next((x for x in reversed(fs.get("altman", [])) if x.value is not None), None)
+
+        def view(x):  # notes contain figures as text; they are passed as numbers too, so they can be quoted
+            return {"model": x.name, "period": x.period, "score": round(x.value, 2), "reading": x.reading,
+                    "notes": x.notes, **getattr(x, "figures", {})}
+        out["forensic"] = {"beneish_m": None if b is None else view(b), "altman": None if a is None else view(a)}
+    return out
+
+
 def _research_for_ai(research: ResearchResult | None) -> dict:
     if not research:
         return {}
@@ -389,7 +460,7 @@ def refresh_news(rep: FullReport, svc) -> FullReport:
         raise RuntimeError(f"the news search failed ({type(exc).__name__}: {exc}); the saved news is unchanged") \
             from exc
     p("News desk", DONE, f"Refreshed: {len(rep.news.items)} items")
-    summary = build_summary(rep.model, _research_for_ai(rep.research))
+    summary = {**build_summary(rep.model, _research_for_ai(rep.research)), **extras_for_ai(rep)}
     try:
         rep.impact = _impact_job(svc, run_id, rep.model, rep.news, exposure, summary, sources, p,
                                  lambda: svc.ai.report_cost(run_id))

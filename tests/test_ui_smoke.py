@@ -55,7 +55,7 @@ def test_deployed_without_password_stays_locked(offline_env, monkeypatch, tmp_pa
     at = AppTest.from_file("../app.py", default_timeout=30).run()
     assert not at.subheader and not at.text_input
     assert "APP_PASSWORD is not set" in at.error[0].value
-    for page in ("views/home.py", "views/track_record.py", "views/debug.py", "views/report.py"):
+    for page in ("views/home.py", "views/track_record.py", "views/debug.py", "views/report.py", "views/compare.py"):
         at.switch_page(page).run()  # opening a page's URL directly must not get past the gate
         assert not at.subheader and not at.title and not at.dataframe, page
         assert "APP_PASSWORD is not set" in at.error[0].value
@@ -77,3 +77,9 @@ def test_debug_page_runs_data_desk(offline_env):
     assert not at.exception
     assert len(at.dataframe) >= 2  # historicals + analysis
     assert any("Net income far above operating income" in m.value for m in at.markdown)
+
+
+def test_compare_needs_two_saved_reports(offline_env):
+    at = AppTest.from_file("../views/compare.py", default_timeout=30).run()
+    assert not at.exception and [t.value for t in at.title] == ["Compare"]
+    assert "at least two companies" in at.info[0].value

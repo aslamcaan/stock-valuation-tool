@@ -155,6 +155,8 @@ LINES: dict[str, Line] = {
                           (G, "RedeemableNoncontrollingInterestEquityCarryingAmount")),
     "parent_equity": L("Shareholders' equity", "BS", "instant",
                        (G, "StockholdersEquity"), (I, "EquityAttributableToOwnersOfParent")),
+    "retained_earnings": L("Retained earnings (accumulated deficit)", "BS", "instant",
+                           (G, "RetainedEarningsAccumulatedDeficit"), (I, "RetainedEarnings")),
     "minority_interest": L("Non-controlling interests", "BS", "instant",
                            (G, "MinorityInterest"), (I, "NoncontrollingInterests")),
     "total_equity": L("Total equity (incl. NCI)", "BS", "instant",

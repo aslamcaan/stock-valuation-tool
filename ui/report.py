@@ -59,6 +59,9 @@ def verdict_card(rep) -> None:
     with c2:
         _metric("Fair value", m.trace.get("fair_value"), money(vd.fair_value),
                 delta=None if vd.gap is None else f"{vd.gap:+.1%} vs price")
+        imp = getattr(rep, "impact", None)
+        if imp is not None and not imp.error and imp.adjusted is not None:
+            st.caption(f"News-adjusted: {money(imp.adjusted_fair_value)} (base stays news-free; see section 16)")
     with c3:
         colour = {"Undervalued": GREEN, "Overvalued": RED}.get(vd.verdict, AMBER)
         html(f"<div class='vt-muted'>Verdict</div><div class='vt-verdict' style='color:{colour}'>{vd.verdict}</div>"
@@ -489,6 +492,75 @@ def md_text(x: str) -> str:
 QUALITY_BADGE = {"Trusted": "🟢 Trusted", "Established": "🔵 Established", "Unverified": "🟠 Unverified"}
 
 
+def _pct(x: float | None) -> str:
+    return "n/a" if x is None else f"{x:+.1%}"
+
+
+def news_meaning(imp) -> None:
+    """The MD's 'What the news means': news-adjusted fair value next to the (news-free) base fair value."""
+    st.markdown("#### What the news means")
+    if imp.error:
+        st.warning(f"The impact analysis failed: {imp.error}")
+        return
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Base fair value (news-free)", money(imp.base_fair_value), help="The reproducible valuation; news "
+              "never changes it.")
+    adj = imp.adjusted_fair_value
+    delta = None if adj is None or not imp.base_fair_value else f"{adj / imp.base_fair_value - 1:+.1%} vs base"
+    c2.metric("News-adjusted fair value", money(adj), delta=delta,
+              help="The base model repriced with every quantified news effect (computed by code).")
+    c3.metric("Verdict after news", (imp.adjusted.verdict if imp.adjusted else imp.base_verdict) or "n/a",
+              help=f"Base verdict: {imp.base_verdict}")
+    v = imp.view
+    if v:
+        st.markdown(md_text(v.get("what_news_means", "")))
+        shift = {"bull": "more likely the bull case", "bear": "more likely the bear case",
+                 "neither": "neither scenario more likely"}.get(v.get("scenario_shift"), "")
+        st.markdown(f"**Scenarios:** news makes {shift}. {md_text(v.get('scenario_why', ''))}")
+        st.markdown(f"**Rating:** {'changed by the news' if v.get('changes_rating') else 'unchanged by the news'}. "
+                    f"{md_text(v.get('rating_why', ''))}")
+    if imp.benchmarks:
+        st.caption("Priced in? uses the abnormal return since each item: the stock vs "
+                   + " and ".join(x for x in (imp.benchmarks.get("market"), imp.benchmarks.get("sector")) if x)
+                   + " (daily closes), compared with the item's fair value effect as a share of the price.")
+    for n in imp.notes:
+        st.caption(n)
+
+
+def impact_block(x) -> None:
+    from engine.news_impact import DRIVER_LABEL, UNIT
+
+    lines = [f"**Impact analysis** ({x.duration}) · driver: {DRIVER_LABEL.get(x.driver, x.driver)}"]
+    if x.quantified:
+        unit = UNIT.get(x.driver, "percentage points")
+        eff = f"{money(x.fair_value_effect)} per share on fair value" if x.fair_value_effect is not None else ""
+        timed = x.driver in ("revenue_growth", "operating_margin")
+        eps = (f", {money(x.eps_effect)} on year-1 operating earnings per share (after tax, before interest)"
+               if x.eps_effect is not None and timed else "")
+        span = f" for {x.years} year{'s' if x.years != 1 else ''}" if timed else ""
+        lines.append(f"Size (code): {x.change:+g} {unit}{span} → {eff}{eps}"
+                     + (f". Disclosed sensitivity used: \"{md_text(x.sensitivity_quote)}\"" if x.sensitivity_quote
+                        else ""))
+    else:
+        lines.append(f"Size: qualitative only. {md_text(x.reason)}")
+    pr = x.priced
+    if pr is not None:
+        lines.append(f"Priced in? **{pr.verdict}**: stock {_pct(pr.stock_return)}; abnormal return "
+                     f"{_pct(pr.abnormal_vs_market)} vs the S&P 500"
+                     + (f", {_pct(pr.abnormal_vs_sector)} vs the sector ETF" if pr.abnormal_vs_sector is not None
+                        else "")
+                     + (f" ({pr.window})" if pr.window else "")
+                     + (f"; estimated effect {_pct(pr.estimated_impact)} of the price" if pr.estimated_impact is not None
+                        else "") + (f". {pr.note}" if pr.note and pr.verdict in ("too recent to judge", "no benchmark")
+                                   else ""))
+    lines.append(f"How it reaches the business: {md_text(x.chain)}")
+    lines.append(f"Bull: {md_text(x.bull)}  \nBear: {md_text(x.bear)}  \n"
+                 f"More convincing: **{x.more_convincing}**. {md_text(x.why)}")
+    if x.watch:
+        lines.append("What to watch: " + "; ".join(f"{md_text(w['event'])} ({md_text(w['date'])})" for w in x.watch))
+    st.markdown("  \n".join(lines))
+
+
 def news_section(rep) -> None:
     from desks.news import MAX_AGE_DAYS, TIER_LABEL, TIERS
 
@@ -507,6 +579,10 @@ def news_section(rep) -> None:
         st.warning(f"The news desk failed: {news.error}")
         return
     st.markdown(f"**News as of {news.as_of[:16].replace('T', ' ')} UTC**")
+    imp = getattr(rep, "impact", None)
+    by_item = {id(x.item): x for x in imp.items} if imp else {}
+    if imp is not None:
+        news_meaning(imp)
     for t in TIERS:
         items = news.tier(t)
         st.markdown(f"##### {TIER_LABEL[t]}")
@@ -524,6 +600,8 @@ def news_section(rep) -> None:
             if i.why_material:
                 st.caption(f"Why it matters: {md_text(i.why_material)}")
             st.caption(f"Date verified from: {i.date_basis} ({i.origin})")
+            if id(i) in by_item:
+                impact_block(by_item[id(i)])
     if any(i.quality == "Unverified" for i in news.items):
         st.caption("Unverified sources can be discussed but never change model numbers unless a Trusted or "
                    "Established source corroborates them.")

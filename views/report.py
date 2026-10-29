@@ -9,7 +9,7 @@ import time
 import streamlit as st
 
 from desks.modelling import run_modelling
-from desks.pipeline import DESKS, DONE, FAILED, RUNNING, SKIPPED, load, run_report
+from desks.pipeline import DESKS, DONE, FAILED, RUNNING, SKIPPED, load, refresh_news, run_report
 from exports.excel import export_bytes
 from exports.pdf import build_pdf
 from ui.format import CSS, STATE_COLOUR, STATE_ICON, money
@@ -112,6 +112,7 @@ def edit_form(rep) -> None:
                 edited.model = run_modelling(rep.company, svc, rep.valuation_date, ov, peers=rep.peers_pool,
                                              research=rep.research.data if rep.research else None)
                 edited.overrides = ov
+                edited.impact = None  # news effects were priced on the saved model, not on these assumptions
             st.session_state.edited = edited
             st.rerun()
 
@@ -135,21 +136,31 @@ if rep is None:
     st.info("Pick a stock on the Search page to run a report, or open a recent one.")
     st.stop()
 
-top = st.columns([3, 1, 1, 1])
+top = st.columns([2, 1, 1, 1, 1])
 top[0].caption(f"Saved report {rep.report_id}")
 if getattr(rep, "save_error", None):
     st.warning(rep.save_error)
 if top[1].button("Re-run (new version)"):
     start_run(rep.ticker, rep.overrides or None)
     st.rerun()
+if rep.model is not None and "edited" not in st.session_state and \
+        top[2].button("Refresh news", help="Re-runs the news desk only, then the impact analysis and the MD's news "
+                                           "summary. The base valuation and rating stay as they are."):
+    with st.spinner("Refreshing news: searching, verifying and analysing the impact (about a minute)…"):
+        try:
+            st.session_state.report = refresh_news(rep, svc)
+        except Exception as exc:  # the saved report is still shown
+            st.error(f"News refresh failed: {type(exc).__name__}: {exc}")
+        else:
+            st.rerun()
 if rep.model is not None and rep.model.valuation.dcf is not None:
     try:
-        top[2].download_button("Download Excel model", export_bytes(rep), file_name=f"{rep.report_id}.xlsx",
+        top[3].download_button("Download Excel model", export_bytes(rep), file_name=f"{rep.report_id}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        top[3].download_button("Download PDF report", build_pdf(rep), file_name=f"{rep.report_id}.pdf",
+        top[4].download_button("Download PDF report", build_pdf(rep), file_name=f"{rep.report_id}.pdf",
                                mime="application/pdf")
     except Exception as exc:  # an export problem must not hide the report
-        top[2].caption(f"Export unavailable: {exc}")
+        top[3].caption(f"Export unavailable: {exc}")
 if "edited" in st.session_state:
     st.info("Showing your edited assumptions (not saved). Use Re-run to save a new dated version with AI commentary.")
     if st.button("Back to the saved version"):

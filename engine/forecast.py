@@ -262,6 +262,10 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
         target, why = overrides["target_margin"], "user override"
         m_tail = _lerp(my2, target, rest) if stage != CYCLICAL else [target] * rest
     margin_path = m12 + m_tail
+    if "margin_shift" in overrides:  # news impact: temporary margin change per year, on top of the path
+        shift = list(overrides["margin_shift"])
+        margin_path = [m + (shift[k] if k < len(shift) else 0.0) for k, m in enumerate(margin_path)]
+        m_source += "; news adjustment applied"
     drivers["operating_margin"] = DriverRow(
         "operating_margin", "Operating margin", current_margin, m_cons, industry_margin,
         _v(target, f"target margin: {why}", "chosen"), margin_path, f"{m_source}; then {why}", m_conf)

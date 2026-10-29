@@ -18,17 +18,21 @@ def _without(data, keys):
 
 
 def guarded_call(ai: AIClient, *, report_id: str, desk: str, model: str, system: str, payload: dict, schema: dict,
-                 sources: str, instructions: str, effort: str = "medium", max_tokens: int = 16000
-                 ) -> tuple[dict, list[str]]:
-    """Returns (data, guard_log). `payload` holds the computed results the desk may quote."""
+                 sources: str, instructions: str, effort: str = "medium", max_tokens: int = 16000,
+                 skip: set[str] | frozenset = frozenset(), quotable: list[str] = ()) -> tuple[dict, list[str]]:
+    """Returns (data, guard_log). `payload` holds the computed results the desk may quote. `skip` names extra keys
+    that hold ids, enums or dates rather than prose (not number-checked). `quotable` is fetched text (news headlines
+    and summaries) whose own figures may be quoted, as the source says them."""
+    skip_keys = SKIP_KEYS | set(skip)
     allowed = flatten_numbers(payload)
     # figures in the research desk's extracts were verified against the filing, so they may be quoted
     allowed += [x for s in strings_in(payload.get("research", {})) for x in numbers_from_text(s)]
+    allowed += [x for s in quotable for x in numbers_from_text(s)]
     content = (f"{instructions}\n\n<document name=\"computed results\">\n{json.dumps(payload, default=str)}\n"
                f"</document>")
     data = ai.call(report_id=report_id, desk=desk, model=model, system=system, content=content, schema=schema,
                    effort=effort, max_tokens=max_tokens)
-    results = check_fields(_without(data, SKIP_KEYS), allowed, sources)
+    results = check_fields(_without(data, skip_keys), allowed, sources)
     bad = {k: r for k, r in results.items() if not r.ok}
     log: list[str] = []
     if bad:
@@ -38,14 +42,14 @@ def guarded_call(ai: AIClient, *, report_id: str, desk: str, model: str, system:
                  "rounded as shown, or verbatim quotes from the sources.")
         data = ai.call(report_id=report_id, desk=desk, model=model, system=system, content=retry, schema=schema,
                        effort=effort, max_tokens=max_tokens)
-        results = check_fields(_without(data, SKIP_KEYS), allowed, sources)
+        results = check_fields(_without(data, skip_keys), allowed, sources)
         bad = {k: r for k, r in results.items() if not r.ok}
         log.append(f"{desk}: regenerated once because of unsupported numbers ({', '.join(nums[:8])})")
         if bad:
             for k, r in bad.items():
                 for s in r.bad_sentences:
                     log.append(f"{desk}: dropped from {k}: \"{s[:160]}\" (unsupported: {', '.join(r.bad_numbers)})")
-            cleaned = apply_cleaning(_without(data, SKIP_KEYS), results)
+            cleaned = apply_cleaning(_without(data, skip_keys), results)
             data = _merge_back(data, cleaned)
     return data, log
 

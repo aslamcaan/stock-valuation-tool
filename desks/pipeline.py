@@ -16,14 +16,15 @@ from concurrent.futures import TimeoutError as FuturesTimeout
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
+from core.cache import CacheMiss
 from core.config import PROJECT_ROOT
+from core.http import DataSourceError
 from data_desk.builder import CompanyData, DataDeskError, build_company_data
 from data_desk.exposure import ExposureProfile, build_exposure
 from data_desk.filings import latest_annual_report
 from data_desk.peers import gather_peers
-from core.cache import CacheMiss
-from core.http import DataSourceError
 from desks.ai import AIError, CostCapExceeded
+from desks.impact import ImpactResult, impact_payload, run_impact, run_news_view
 from desks.md import MDResult, run_md
 from desks.modelling import ValuationReport, run_modelling
 from desks.news import NewsResult, run_news
@@ -32,7 +33,8 @@ from desks.review import STAGES, run_review
 from desks.summary import build_summary
 from engine.valuation import ValuationError
 
-DESKS = ["Data desk", "Data checks", "Research desk", "News desk", "Modelling desk", "Review desk", "MD"]
+DESKS = ["Data desk", "Data checks", "Research desk", "News desk", "Modelling desk", "Review desk", "Impact analyst",
+         "MD"]
 WAITING, RUNNING, DONE, FAILED, SKIPPED = "waiting", "running", "done", "failed", "skipped"
 REPORTS_DIR = PROJECT_ROOT / "data" / "reports"
 
@@ -64,6 +66,7 @@ class FullReport:
     save_error: str | None = None
     exposure: ExposureProfile | None = None
     news: NewsResult | None = None
+    impact: ImpactResult | None = None
     overrides: dict = field(default_factory=dict)
     peers_pool: list = field(default_factory=list)   # all peer candidates (reused when assumptions are edited)
     peer_notes: list[str] = field(default_factory=list)
@@ -169,6 +172,13 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
     news_pool = ThreadPoolExecutor(max_workers=1)
     news_future = news_pool.submit(_news_job, svc, rid, cd, rep.exposure, peers, p, use_ai, cost, rep.stopped)
 
+    joined: dict = {}
+
+    def news_now() -> NewsResult | None:  # joins the news thread once
+        if "news" not in joined:
+            joined["news"] = _collect(news_future, news_pool, p)
+        return joined["news"]
+
     def value_review_and_md() -> None:
         # --- modelling desk ---
         p("Modelling desk", RUNNING, "Building the forecast, WACC, DCF, comps and verdict…")
@@ -185,7 +195,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         p("Modelling desk", DONE, f"{model.valuation.classification.stage_label}; fair value "
                                   f"{'n/a' if vd.fair_value is None else f'${vd.fair_value:,.2f}'} → {vd.verdict}")
         if not use_ai:
-            for d in ("Review desk", "MD"):
+            for d in ("Review desk", "Impact analyst", "MD"):
                 p(d, SKIPPED, "AI desks switched off" if not rep.stopped else "Stopped: AI cost cap reached")
             log_to_track_record(rep, svc.store)
             return
@@ -209,27 +219,68 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
             rep.review = review
             p("Review desk", DONE, f"{len(review.get('challenges', []))} challenges; bear case written", cost())
 
+            rep.news = news_now()
+            rep.impact = _impact_job(svc, rid, model, rep.news, rep.exposure, build_summary(model, research_view),
+                                     sources, p, cost)
+            news_view = impact_payload(rep.impact) if rep.impact and not rep.impact.error else None
+            if rep.impact:
+                rep.guard_log += rep.impact.guard_log
+
             p("MD", RUNNING, "Scoring the rubric and writing the investment view…")
-            md = run_md(svc.ai, rid, model, build_summary(model, research_view), review, sources)
+            md = run_md(svc.ai, rid, model, build_summary(model, research_view), review, sources, news=news_view)
             rep.md = md
             rep.guard_log += md.guard_log
+            if rep.impact and rep.impact.items and not rep.impact.error:
+                p("MD", RUNNING, "Writing what the news means…")
+                n_log = len(rep.impact.guard_log)
+                try:
+                    run_news_view(svc.ai, rid, rep.impact, md.rating, md.conviction, sources)
+                except Exception as exc:  # the news summary is optional: the rating stands without it
+                    rep.impact.notes.append(f"The MD's news summary could not be written: {exc}")
+                rep.guard_log += rep.impact.guard_log[n_log:]
             p("MD", DONE, f"{md.rating} (conviction {md.conviction})", cost())
             log_to_track_record(rep, svc.store)
         except CostCapExceeded as exc:
             rep.stopped = str(exc)
-            for d in ("Review desk", "MD"):
+            for d in ("Review desk", "Impact analyst", "MD"):
                 if p.status[d][0] in (WAITING, RUNNING):
                     p(d, FAILED, str(exc))
         except AIError as exc:
-            for d in ("Review desk", "MD"):
+            for d in ("Review desk", "Impact analyst", "MD"):
                 if p.status[d][0] in (WAITING, RUNNING):
                     p(d, FAILED, str(exc))
 
     try:
         value_review_and_md()
     finally:  # whatever happens above, the news thread is joined (with a time limit) before the report is saved
-        rep.news = _collect(news_future, news_pool, p)
+        rep.news = news_now()
+        if rep.impact is None and p.status["Impact analyst"][0] == WAITING:
+            p("Impact analyst", SKIPPED, "No valuation or AI desks off" if rep.model is None or not use_ai
+              else "Not reached")
     return _finish(rep, p, cost(), svc.store)
+
+
+def _impact_job(svc, rid, model, news, exposure, summary, sources, p, cost) -> ImpactResult | None:
+    """The impact analyst never breaks the report: on any failure the MD carries on without the news analysis."""
+    if news is None or news.error or not news.items:
+        p("Impact analyst", SKIPPED, "No news to analyse" if news is None or not news.error
+          else "News desk failed")
+        return None
+    p("Impact analyst", RUNNING, f"Working through {min(len(news.items), 10)} news items: driver, size, priced in…")
+    try:
+        res = run_impact(svc.ai, svc, rid, model, news, summary, exposure, sources)
+    except CostCapExceeded as exc:  # optional desk: leave the remaining budget to the MD's rating
+        p("Impact analyst", FAILED, str(exc))
+        return None
+    except Exception as exc:
+        p("Impact analyst", FAILED, f"{type(exc).__name__}: {exc}")
+        return ImpactResult(news.as_of, model.verdict.fair_value, model.verdict.verdict, model.verdict.price,
+                            error=f"{type(exc).__name__}: {exc}")
+    q = sum(i.quantified for i in res.items)
+    adj = res.adjusted_fair_value
+    p("Impact analyst", DONE, f"{len(res.items)} items, {q} quantified; news-adjusted fair value "
+                              f"{'n/a' if adj is None else f'${adj:,.2f}'}", cost())
+    return res
 
 
 NEWS_TIMEOUT = 180  # seconds to wait for the news desk after the MD finishes
@@ -305,6 +356,66 @@ def log_to_track_record(rep: FullReport, store) -> None:
         "confidence": rep.model.verdict.confidence,
         "toolkit": rep.model.valuation.classification.toolkit, "stage": rep.model.valuation.classification.stage,
         "sector_etf": sector_etf(rep.company.profile.sic)})
+
+
+def refresh_news(rep: FullReport, svc) -> FullReport:
+    """Re-run the news desk only (fresh search), then the impact analysis and the MD's news summary, and re-save.
+    The base valuation, the rating and the rest of the report are unchanged."""
+    if rep.model is None or rep.company is None:
+        raise ValueError("This report has no valuation to analyse news against.")
+    import copy
+
+    old = rep
+    rep = copy.copy(rep)  # the shown report is untouched until the refresh succeeds
+    rep.guard_log = list(old.guard_log)
+    p = Progress(None)
+    p.status.update(rep.desk_status or {})
+    # A refresh is its own run for MAX_COST_PER_REPORT (the daily cap still covers it); its cost is added to the
+    # report's total below.
+    run_id = f"{rep.report_id}/news-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+    filing = None
+    try:
+        filing = latest_annual_report(svc, rep.company.profile.cik)
+    except (DataSourceError, CacheMiss, KeyError):
+        pass
+    sources = _sources_text(rep.research, filing)
+    exposure = rep.exposure or build_exposure(rep.company, rep.research)
+    rep.exposure = exposure
+    p("News desk", RUNNING, "Refreshing news…")
+    names = [getattr(x, "name", None) or getattr(x, "ticker", "") for x in rep.peers_pool][:6]
+    try:
+        rep.news = run_news(svc.ai, svc, run_id, rep.company, exposure, [n for n in names if n], force=True)
+    except Exception as exc:  # keep the saved news rather than replace it with a failure
+        raise RuntimeError(f"the news search failed ({type(exc).__name__}: {exc}); the saved news is unchanged") \
+            from exc
+    p("News desk", DONE, f"Refreshed: {len(rep.news.items)} items")
+    summary = build_summary(rep.model, _research_for_ai(rep.research))
+    try:
+        rep.impact = _impact_job(svc, run_id, rep.model, rep.news, exposure, summary, sources, p,
+                                 lambda: svc.ai.report_cost(run_id))
+    except CostCapExceeded as exc:
+        p("Impact analyst", FAILED, str(exc))
+        rep.impact = None
+    if rep.impact and rep.impact.items and not rep.impact.error:
+        try:
+            run_news_view(svc.ai, run_id, rep.impact, rep.md.rating if rep.md else None,
+                          rep.md.conviction if rep.md else None, sources)
+        except Exception as exc:
+            rep.impact.notes.append(f"The MD's news summary could not be written: {exc}")
+    if rep.impact:
+        rep.guard_log += rep.impact.guard_log
+        if rep.md:
+            rep.impact.notes.append(f"News refreshed on {rep.news.as_of[:16].replace('T', ' ')} UTC; the rating "
+                                    f"and rubric are from the original run ({rep.created_at[:16].replace('T', ' ')} "
+                                    "UTC).")
+    rep.ai_cost += svc.ai.report_cost(run_id)
+    rep.desk_status = dict(p.status)
+    try:
+        save(rep, svc.store)
+        rep.save_error = None
+    except Exception as exc:
+        rep.save_error = f"The refreshed news could not be saved ({type(exc).__name__}: {exc})."
+    return rep
 
 
 def headline(rep: FullReport) -> str:

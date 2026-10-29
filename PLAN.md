@@ -79,7 +79,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 
 ## RELEASE 2: news, ownership, comparison
 - [x] Phase 10 — exposure profile, news desk (four tiers, freshness, source labels)
-- [ ] Phase 11 — impact analyst, priced-in, news-adjusted fair value, MD news summary, Refresh news, rubric feed
+- [x] Phase 11 — impact analyst, priced-in, news-adjusted fair value, MD news summary, Refresh news, rubric feed
 - [ ] Phase 12 — ownership, Form 4, short interest, Beneish M, Altman Z
 - [ ] Phase 13 — Compare page
 - [ ] **CHECKPOINT 5:** news demo on CVX and GRAB
@@ -244,3 +244,17 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   under a lock so parallel desks can't overshoot the cap. Independent review: 13 findings, all fixed with tests.
   Live: CVX 10 items (4 macro on US/oil/rates channels), GRAB 9 items (Thailand/Philippines/Vietnam macro, 6-K
   earnings release); about $0.11 per news run. Full CVX report with news: 115 s, AI $0.232.
+- 2026-10-29 Phase 11 done. Impact analyst (desks/impact.py, Sonnet, number-guarded): 7-step analysis per item;
+  the AI proposes driver + size, code decides: per-item bounds (growth 10pt, margin 5pt, s2c 1.0x, WACC 1.5pt,
+  terminal growth 0.5pt, scenario probability 25pt), combined change per driver held to the same bound, Unverified
+  items never sized themselves (counted once through a Trusted/Established item on the same driver and sign),
+  sensitivity quotes must be verbatim from the filing. Code reprices (engine/news_impact.py: copy of the engine
+  inputs, value_company, same blend; comps/history held; SOTP scaled by the DCF change; refuses changes that break
+  the DCF or add a hard stop; shifts start at the first forecast year; builds on user overrides). Priced in: abnormal
+  return since the news vs SPY and the sector ETF (same mapping as the track record), one common window, 1% noise
+  floor. News-adjusted fair value shown next to the base (base stays news-free). MD: news feeds the catalysts
+  criterion; separate "What the news means" call after the rating. Refresh news button: own cost run id (per-report
+  cap; daily cap still applies), works on a copy, keeps saved news if the search fails, notes the rating predates
+  the refresh. Guard: news headlines from Trusted/Established sources are quotable; summaries are not. Independent
+  review: 10 bugs + nits, all fixed with tests. Live CVX refresh: 9 items, 2 quantified, base $151.51 ->
+  news-adjusted $150.86, Overvalued, Hold unchanged; refresh about $0.19-0.22.

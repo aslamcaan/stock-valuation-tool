@@ -35,7 +35,9 @@ valuation, the review desk's challenges with its bear and bull cases, the resear
 code-scored half of the rating rubric. Your job:
 1. Score the five qualitative criteria 1-5 (5 = best for shareholders) with specific evidence from the filing quotes
    or results: moat (competitive position), management (track record and capital allocation), governance (founder
-   control, dual-class shares, related parties), industry (outlook), catalysts (upcoming events and news flow).
+   control, dual-class shares, related parties), industry (outlook), catalysts (upcoming events and news flow: use
+   "news", the impact analyst's computed effects and whether each is priced in, when it is given; an effect that is
+   unquantified or from an Unverified source counts for less).
 2. The code maps the weighted score to a rating. You may propose moving it by one notch (-1, 0, +1) only with a
    specific written reason; otherwise 0.
 3. Write the investment view: a thesis, 3-4 short reasoning lines for the verdict card, which side of the bull/bear
@@ -72,11 +74,15 @@ def code_scores(report) -> list[Score]:
             score_revisions(report.revisions)]
 
 
-def run_md(ai: AIClient, report_id: str, report, summary: dict, review: dict, sources: str) -> MDResult:
+def run_md(ai: AIClient, report_id: str, report, summary: dict, review: dict, sources: str,
+           news: dict | None = None) -> MDResult:
+    """`news` is the impact analyst's computed payload (desks.impact.impact_payload), when the news desk ran."""
     codes = code_scores(report)
     payload = {**summary, "review_desk": review,
                "code_scores": [{"criterion": LABELS[s.criterion], "score": s.score, "evidence": s.evidence}
                                for s in codes]}
+    if news:
+        payload["news"] = news
     data, log = guarded_call(ai, report_id=report_id, desk="MD", model=SONNET, system=SYSTEM, payload=payload,
                              schema=SCHEMA, sources=sources, effort="medium", instructions="Sign off this report.")
     ai_scores = []

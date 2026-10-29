@@ -271,3 +271,16 @@ def test_value_company_end_to_end_ko():
     # cash generated after the latest balance sheet (3 Apr 2026) is counted
     assert v.dcf.inputs.timing[0][0] > 0.4
     assert 0.05 < v.wacc.wacc.value < 0.10
+
+
+def test_a_model_hard_stop_refuses_to_value(monkeypatch):
+    """Terminal growth at or above WACC must stop the valuation, not fall back to comps and history."""
+    from types import SimpleNamespace
+    import desks.modelling as m
+    from engine.flags import HARD_STOP, Flag
+    from engine.valuation import ValuationError
+    monkeypatch.setattr(m, "build_engine_inputs", lambda *a, **k: (SimpleNamespace(), []))
+    monkeypatch.setattr(m, "value_company", lambda ei: SimpleNamespace(flags=[
+        Flag(HARD_STOP, "dcf_invalid", "DCF cannot be computed", "terminal growth 9.0% >= WACC 8.5%", None, {})]))
+    with pytest.raises(ValuationError, match="terminal growth 9.0% >= WACC 8.5%"):
+        m.run_modelling(SimpleNamespace(flags=[]), None)

@@ -10,6 +10,7 @@ import streamlit as st
 
 from desks.modelling import run_modelling
 from desks.pipeline import DESKS, DONE, FAILED, RUNNING, SKIPPED, load, refresh_news, run_report
+from engine.valuation import ValuationError
 from exports.excel import export_bytes
 from exports.pdf import build_pdf
 from ui.format import CSS, STATE_COLOUR, STATE_ICON, money
@@ -87,8 +88,9 @@ def edit_form(rep) -> None:
     with st.form("edit"):
         st.markdown("Edit any assumption; the whole valuation recalculates (AI commentary keeps the original view).")
         c1, c2, c3 = st.columns(3)
-        g1 = c1.number_input("Revenue growth, year 1 (%)", value=round(plan.path("revenue_growth")[0] * 100, 2))
-        g2 = c1.number_input("Revenue growth, year 2 (%)", value=round(plan.path("revenue_growth")[1] * 100, 2))
+        gp = plan.path("revenue_growth")  # starts with any ended-but-unreported year, which is forecast too
+        g1 = c1.number_input(f"Revenue growth, {plan.labels[0]} (%)", value=round(gp[0] * 100, 2))
+        g2 = c1.number_input(f"Revenue growth, {plan.labels[1]} (%)", value=round(gp[1] * 100, 2))
         tm = c2.number_input("Target operating margin (%)", value=round(plan.drivers["operating_margin"].chosen.value * 100, 2))
         s2c = c2.number_input("Sales-to-capital (x)", value=round(plan.drivers["sales_to_capital"].chosen.value, 2))
         tg = c3.number_input("Terminal growth (%)", value=round(plan.terminal_growth.value * 100, 2))
@@ -96,10 +98,12 @@ def edit_form(rep) -> None:
         c4, c5 = st.columns(2)
         beta_choice = c4.selectbox("Beta", ["industry", "regression"],
                                    index=0 if rep.overrides.get("beta_choice", "industry") == "industry" else 1)
-        wacc = c4.number_input("WACC override (%, 0 = calculated)", value=0.0)
-        w_dcf = c5.number_input("Weight: DCF (%)", value=50.0)
-        w_comps = c5.number_input("Weight: comps (%)", value=30.0)
-        w_hist = c5.number_input("Weight: historical multiples (%)", value=20.0)
+        wacc = c4.number_input("WACC override (%, 0 = calculated)",
+                               value=round(rep.overrides["wacc"] * 100, 2) if rep.overrides.get("wacc") else 0.0)
+        bw = rep.overrides.get("blend_weights") or {"dcf": 0.5, "comps": 0.3, "history": 0.2}
+        w_dcf = c5.number_input("Weight: DCF (%)", value=round(bw.get("dcf", 0) * 100, 1))
+        w_comps = c5.number_input("Weight: comps (%)", value=round(bw.get("comps", 0) * 100, 1))
+        w_hist = c5.number_input("Weight: historical multiples (%)", value=round(bw.get("history", 0) * 100, 1))
         if st.form_submit_button("Recalculate"):
             ov = {**rep.overrides, "revenue_growth": [g1 / 100, g2 / 100], "target_margin": tm / 100,
                   "sales_to_capital": s2c, "terminal_growth": tg / 100, "terminal_roic": troic / 100,
@@ -107,14 +111,20 @@ def edit_form(rep) -> None:
                   "blend_weights": {"dcf": w_dcf / 100, "comps": w_comps / 100, "history": w_hist / 100}}
             if wacc > 0:
                 ov["wacc"] = wacc / 100
-            with st.spinner("Recalculating…"):
-                edited = copy.copy(rep)
-                edited.model = run_modelling(rep.company, svc, rep.valuation_date, ov, peers=rep.peers_pool,
-                                             research=rep.research.data if rep.research else None)
-                edited.overrides = ov
-                edited.impact = None  # news effects were priced on the saved model, not on these assumptions
-            st.session_state.edited = edited
-            st.rerun()
+            else:
+                ov.pop("wacc", None)  # 0 means "calculated": clear an earlier override
+            try:
+                with st.spinner("Recalculating…"):
+                    edited = copy.copy(rep)
+                    edited.model = run_modelling(rep.company, svc, rep.valuation_date, ov, peers=rep.peers_pool,
+                                                 research=rep.research.data if rep.research else None)
+                    edited.overrides = ov
+                    edited.impact = None  # news effects were priced on the saved model, not on these assumptions
+            except ValuationError as exc:
+                st.error(f"These assumptions cannot be valued, so the report is unchanged. {exc}")
+            else:
+                st.session_state.edited = edited
+                st.rerun()
 
 
 # --- page ------------------------------------------------------------------------------------------------------------

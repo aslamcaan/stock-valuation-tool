@@ -74,3 +74,22 @@ def test_net_income_rule_needs_both_conditions():
 def test_negative_fcf_flag():
     assert checks.negative_fcf(hist(fcf={"FY2025": -18}))[0].code == "negative_fcf"
     assert checks.negative_fcf(hist(fcf={"FY2025": 5})) == []
+
+
+def test_consensus_and_revisions_read_the_nearest_year_first(tmp_path):
+    """FMP lists the furthest fiscal year first; the engine and the rubric must use the nearest unended year."""
+    from datetime import date
+    from types import SimpleNamespace
+    from core.store import Store
+    from data_desk.valuation_inputs import consensus_rows
+    rows = [{"date": f"{y}-12-31", "revenueAvg": y * 1e6, "numAnalystsRevenue": 10} for y in (2030, 2028, 2026, 2027)]
+    svc = SimpleNamespace(market=SimpleNamespace(analyst_estimates=lambda t: SimpleNamespace(
+        available=True, data=rows, notes=[], fetched_at="t")))
+    out, _ = consensus_rows(svc, "X", "USD")
+    assert [c.fiscal_year_end.year for c in out] == [2026, 2027, 2028, 2030]
+    store = Store(tmp_path / "s.sqlite")
+    snap = [{"fiscal_year_end": f"{y}-12-31", "revenue_avg": 100.0, "eps_avg": 1.0} for y in (2030, 2026, 2025)]
+    store.save_snapshot("X", snap, date(2026, 6, 1))
+    now = [{"fiscal_year_end": f"{y}-12-31", "revenue_avg": 100.0 + y - 2025, "eps_avg": 1.0} for y in (2030, 2026, 2025)]
+    rev = store.revisions("X", date(2026, 9, 5), now)[90]
+    assert list(rev["changes"]) == ["2026-12-31", "2030-12-31"]  # FY2025 has ended: not a revision signal

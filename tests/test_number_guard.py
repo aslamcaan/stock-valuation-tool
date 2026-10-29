@@ -45,3 +45,32 @@ def test_verified_research_figures_allowed():
     assert check_text("Gross Bookings reached $193,454 million and MAPCs 202 million.", allowed).ok
     assert check_text("A $5.0bn tax benefit inflated earnings.", allowed).ok
     assert not check_text("Gross Bookings reached $210,000 million.", allowed).ok
+
+
+# --- holes found in the Release 2 sweep ----------------------------------------------------------------------------
+def test_small_numbers_with_a_currency_sign_or_decimal_are_checked():
+    from desks.number_guard import check_text
+    assert not check_text("Our fair value is $9 per share.", [2.4]).ok
+    assert not check_text("Fair value 9.0 per share.", [2.4]).ok
+    assert check_text("Three of 5 peers agree.", [2.4]).ok  # bare small counts stay exempt
+
+
+def test_comma_amounts_are_not_years():
+    from desks.number_guard import check_text
+    assert not check_text("Debt is $2,050m.", [1000.0]).ok
+    assert check_text("By 2030 margins converge.", [0.1]).ok
+
+
+def test_direction_must_match_the_sign():
+    from desks.number_guard import check_text
+    assert not check_text("The stock trades 12% above fair value.", [-0.12]).ok
+    assert check_text("Fair value is 12% below the price.", [-0.12]).ok
+    assert check_text("Revenue fell 5%.", [-0.05]).ok
+    assert check_text("Revenue grew 5%.", [0.05]).ok
+
+
+def test_other_currency_amounts_must_be_quoted_from_sources():
+    from desks.number_guard import check_text
+    assert not check_text("Revenue was €1.1bn.", [1110.0]).ok
+    assert check_text("Revenue was €1.1bn.", [1110.0], sources="Net sales were €1.1bn in the year.").ok
+    assert check_text("Revenue was $1.1bn.", [1110.0]).ok

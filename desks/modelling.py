@@ -14,7 +14,7 @@ from engine.sotp import Segment
 from engine.comps import CompanyMetrics, CompsResult, run_comps, select_peers
 from engine.flags import AMBER, INFO, RED, Flag, sort_flags
 from engine.history_multiples import HistoryResult, history_multiples, implied_price
-from engine.valuation import EngineInputs, Valuation, value_company
+from engine.valuation import EngineInputs, Valuation, ValuationError, value_company
 from engine.values import PER_SHARE, RATIO, Value
 from engine.verdict import Bar, Verdict, blend, confidence, football_field
 
@@ -107,6 +107,9 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
                                     f"{sc.get('description', '')} Quote: \"{sc.get('quote', '')[:200]}\"", None, {}))
     say("Classifying the company and building the forecast")
     v = value_company(ei)
+    stops = [f for f in v.flags if f.is_hard_stop]
+    if stops:  # e.g. terminal growth at or above WACC: refuse to value, naming the line that broke
+        raise ValuationError("Hard stop: " + "; ".join(f"{f.title}: {f.message}" for f in stops))
     flags: list[Flag] = list(cd.flags) + list(v.flags) + extra_flags
     adr = ei.adr_ratio
     shares = v.diluted_shares.value
@@ -157,7 +160,7 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
     pt = svc.market.price_target(cd.profile.ticker)
     targets = pt.data if pt.available else None
     disp = None
-    for c in ei.consensus[:1]:
+    for c in [c for c in ei.consensus if c.fiscal_year_end > today][:1]:  # the nearest year not yet ended
         if c.revenue and c.revenue_high and c.revenue_low:
             disp = (c.revenue_high - c.revenue_low) / c.revenue
     all_flags = sort_flags(flags)

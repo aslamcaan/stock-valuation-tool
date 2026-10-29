@@ -4,7 +4,12 @@ Matching normalises units and allows rounding to the precision shown in the text
 - "$1.1bn" matches 1,110 (US$ millions); "45.2m" matches 45.2 (millions); "2,799" matches 2,799.
 - "12.3%" matches a ratio of 0.123 (or a value already in percent); "2.4x" matches 2.4.
 - Tolerance is half a unit of the last shown digit (1.1 -> +/-0.05), with a 0.5% relative floor.
-Exempt: years (1990-2100), fiscal labels (FY2025, Q3, H1), and small counts (integers up to 10).
+Exempt: years (four digits, 1990-2100), fiscal labels (FY2025, Q3, H1), and small counts (bare whole numbers up to
+10, with no currency sign, decimal point or unit).
+Sign: an unsigned number may stand for a negative result only if the sentence says which way ("fell 5%",
+"12% below the price"); otherwise "12% above the price" would pass for a gap of -12%.
+Currency: an amount written in another currency (EUR, GBP, SGD) must appear verbatim in the sources, because the
+computed results are in US$.
 Numbers inside quotation marks are exempt only if the quote appears verbatim in the source text supplied.
 """
 from __future__ import annotations
@@ -18,6 +23,11 @@ NUM_RE = re.compile(
     r"(?P<unit>%|bps|bp|x|bn|billion|mn|million|m|k|thousand|trillion|tn)?(?![A-Za-z0-9])", re.IGNORECASE)
 LABEL_RE = re.compile(r"\b(?:FY|Q|H)\d{1,4}\b|\b(?:19|20)\d{2}[-/]\d{2}(?:[-/]\d{2})?\b", re.IGNORECASE)
 QUOTE_RE = re.compile(r"[\"“”']([^\"“”']{8,})[\"“”']")
+NEGATIVE_WORDS = re.compile(r"\b(fell|fall|falls|falling|down|declin\w*|below|lower|less|discount|cut\w*|drop\w*|"
+                            r"loss\w*|decreas\w*|negative|short of|under\w*|shrink\w*|shrank|contract\w*|"
+                            r"deficit|outflow\w*|overvalued|downside|reduc\w*|weak\w*|minus|deteriorat\w*|"
+                            r"slow\w*|worse|dilut\w*|trims?|trimm\w*|lowers?|erod\w*)\b", re.IGNORECASE)
+USD_SIGNS = (None, "$", "us$")
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
 
 
@@ -107,13 +117,16 @@ def _scaled_tol(tol: float, unit: str | None) -> list[float]:
     return [tol, tol / 100]
 
 
-def number_allowed(text_num: str, unit: str | None, allowed: list[float]) -> bool:
+def number_allowed(text_num: str, unit: str | None, allowed: list[float], cur: str | None = None,
+                   negative_ok: bool = True) -> bool:
     num = float(text_num.replace(",", ""))
-    if unit is None and float(num).is_integer() and (abs(num) <= 10 or 1990 <= num <= 2100):
+    bare = cur is None and unit is None and text_num.lstrip("-").isdigit()
+    if bare and (abs(num) <= 10 or (len(text_num) == 4 and 1990 <= num <= 2100)):
         return True
+    signs = (1, -1) if negative_ok and not text_num.startswith("-") else (1,)
     for cand, tol in zip(_candidates(num, unit), _scaled_tol(_tolerance(text_num, unit), unit)):
         for a in allowed:
-            for sign in (1, -1):  # "fell 5%" may describe -0.05
+            for sign in signs:  # "fell 5%" may describe -0.05
                 target = sign * a
                 if abs(cand - target) <= max(tol, 0.005 * abs(target)) + 1e-12:
                     return True
@@ -130,8 +143,16 @@ def check_text(text: str, allowed: list[float], sources: str = "") -> GuardResul
             if re.sub(r"\s+", " ", q).lower().strip() in src:
                 work = work.replace(q, " ")
         work = LABEL_RE.sub(" ", work)
-        bad_here = [m.group(0).strip() for m in NUM_RE.finditer(work)
-                    if not number_allowed(m.group("num"), m.group("unit"), allowed)]
+        neg = bool(NEGATIVE_WORDS.search(sentence))
+        bad_here = []
+        for m in NUM_RE.finditer(work):
+            cur = (m.group("cur") or None) and m.group("cur").lower()
+            if cur not in USD_SIGNS:
+                ok = re.sub(r"\s+", " ", m.group(0).strip()).lower() in src
+            else:
+                ok = number_allowed(m.group("num"), m.group("unit"), allowed, cur, neg)
+            if not ok:
+                bad_here.append(m.group(0).strip())
         if bad_here:
             bad_nums += bad_here
             bad_sents.append(sentence)

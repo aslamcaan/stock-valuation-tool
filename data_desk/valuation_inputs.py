@@ -111,6 +111,7 @@ def consensus_rows(svc, ticker: str, currency: str) -> tuple[list[ConsensusYear]
                                      int(row.get("numAnalystsRevenue") or 0), "FMP analyst estimates", r.fetched_at))
         except (KeyError, ValueError, TypeError):
             continue
+    out.sort(key=lambda c: c.fiscal_year_end)  # FMP returns the furthest year first; the engine reads nearest first
     return out, None
 
 

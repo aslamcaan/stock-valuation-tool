@@ -426,3 +426,11 @@ def test_guard_accepts_thresholds_and_code_written_flag_text():
     assert fake.n == 2  # $9bn is invented: regenerated, then dropped
     assert "80% limit" in data["text"] and "$9bn" not in data["text"]
     assert any("(unsupported: $9bn)" in x or "9bn" in x for x in log)
+
+
+def test_recheck_drops_figures_the_new_model_no_longer_has():
+    from desks.guarded import recheck
+    review = {"challenges": [{"challenge": "WACC of 9.1% looks low. Margins are fine.", "severity": "high"}]}
+    out, log = recheck(review, {"wacc": {"wacc": 0.095}}, "", "Review desk")
+    assert "9.1%" not in out["challenges"][0]["challenge"] and "Margins are fine." in out["challenges"][0]["challenge"]
+    assert log and "no longer in the results" in log[0]

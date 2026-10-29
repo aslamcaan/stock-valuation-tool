@@ -25,6 +25,7 @@ from data_desk.filings import latest_annual_report
 from data_desk.ownership import Ownership, build_ownership
 from data_desk.peers import gather_peers
 from desks.ai import AIError, CostCapExceeded
+from desks.guarded import recheck
 from desks.impact import ImpactResult, impact_payload, run_impact, run_news_view
 from desks.md import MDResult, run_md
 from desks.modelling import ValuationReport, run_modelling
@@ -231,11 +232,20 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
                     sr["suggested_stage"] != model.valuation.classification.stage and "stage" not in rep.overrides:
                 rep.overrides.update(stage=sr["suggested_stage"], stage_reason=f"Review desk: {sr.get('reason', '')}")
                 p("Review desk", RUNNING, f"Stage overridden to {sr['suggested_stage']}: re-running the model…")
-                model = run_modelling(cd, svc, today, rep.overrides, peers=peers,
-                                      research=research.data if research else None)
-                model.notes += peer_notes
-                rep.model = model
-                rep.forensic = _forensic(cd, model)
+                try:
+                    model = run_modelling(cd, svc, today, rep.overrides, peers=peers,
+                                          research=research.data if research else None)
+                except ValuationError as exc:  # the suggested stage cannot be valued: the code's stage stands
+                    rep.overrides.pop("stage", None)
+                    rep.overrides.pop("stage_reason", None)
+                    model.notes.append(f"The review desk suggested the {sr['suggested_stage']} stage, but that "
+                                       f"model could not be valued ({exc}); the code's classification stands.")
+                else:
+                    model.notes += peer_notes
+                    rep.model = model
+                    rep.forensic = _forensic(cd, model)
+                    review, relog = recheck(review, summary_of(model), sources, "Review desk")
+                    rep.guard_log += relog
             rep.review = review
             p("Review desk", DONE, f"{len(review.get('challenges', []))} challenges; bear case written", cost())
 

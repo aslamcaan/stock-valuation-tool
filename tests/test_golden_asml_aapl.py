@@ -89,3 +89,12 @@ def test_aapl_ltm_uses_matching_ytd_periods(aapl):
 
 def test_aapl_debt_includes_commercial_paper(aapl):
     assert aapl.v("total_debt_incl_leases", "FY2025") == pytest.approx(112_377, rel=0.005)
+
+
+def test_every_balance_sheet_derived_line_uses_the_period_end_rate():
+    """Debt for valuation is a balance-sheet amount: converting it at the average rate mis-states it by the FX move."""
+    from data_desk import fx
+    from data_desk.standardise import DERIVED_LABELS
+    instant = {"total_debt", "lease_liabilities", "total_debt_incl_leases", "debt_for_valuation",
+               "cash_and_investments", "net_debt"}
+    assert {l for l in DERIVED_LABELS if fx._is_instant(l)} == instant

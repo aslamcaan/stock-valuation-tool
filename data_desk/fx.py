@@ -13,7 +13,8 @@ from engine.dates import years_earlier
 from engine.model import Historicals, Period
 from engine.values import RATIO, SHARES_M, Value
 
-INSTANT_DERIVED = {"total_debt", "lease_liabilities", "total_debt_incl_leases", "cash_and_investments", "net_debt"}
+INSTANT_DERIVED = {"total_debt", "lease_liabilities", "total_debt_incl_leases", "debt_for_valuation", "cash_and_investments",
+                   "net_debt"}
 
 
 @dataclass(frozen=True)

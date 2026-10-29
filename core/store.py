@@ -111,8 +111,10 @@ class Store:
                 out[days] = {"available": False, "reason": f"no saved consensus from about {days} days ago yet"}
                 continue
             snap_date, old = snap
-            changes = {}
-            for r in current:
+            changes = {}  # nearest fiscal year first (FMP lists the furthest first); only years not yet ended
+            for r in sorted(current, key=lambda r: r["fiscal_year_end"]):
+                if r["fiscal_year_end"] <= today.isoformat():
+                    continue
                 o = old.get(r["fiscal_year_end"])
                 if not o:
                     continue

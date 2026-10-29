@@ -7,6 +7,12 @@ def _r(x, nd=4):
     return None if x is None else round(float(x), nd)
 
 
+RULE_THRESHOLDS = {"terminal_value_share_of_ev_max": 0.80, "whole_enterprise_value": 1.0, "wacc_min": 0.06,
+                   "wacc_max": 0.15, "terminal_growth_max": 0.04, "market_cap_tolerance": 0.03,
+                   "balance_sheet_tolerance": 0.005, "edgar_vs_fmp_tolerance": 0.02, "statement_sum_tolerance": 0.01,
+                   "kpi_divergence_points": 5, "stale_filing_days": 120, "cyclical_peak_percentile": 90,
+                   "beneish_m_threshold": -1.78}
+
 def build_summary(report, research: dict | None = None) -> dict:
     cd, v, vd = report.company, report.valuation, report.verdict
     h = cd.historicals_usd
@@ -65,5 +71,7 @@ def build_summary(report, research: dict | None = None) -> dict:
                     "weights": {k: _r(w) for k, w in vd.weights_used.items()}},
         "analyst_targets": report.analyst_targets,
         "flags": [{"level": f.level, "code": f.code, "message": f.message} for f in report.flags],
+        # the brief's own thresholds, so a desk may say "above the 80% limit" without failing the number guard
+        "rule_thresholds": RULE_THRESHOLDS,
         "research": research or {},
     }

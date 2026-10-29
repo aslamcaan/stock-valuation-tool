@@ -17,6 +17,8 @@ def _without(data, keys):
     return data
 
 
+CODE_TEXT = ("flags", "insider_activity", "forensic", "major_holders", "short_interest")
+
 def guarded_call(ai: AIClient, *, report_id: str, desk: str, model: str, system: str, payload: dict, schema: dict,
                  sources: str, instructions: str, effort: str = "medium", max_tokens: int = 16000,
                  skip: set[str] | frozenset = frozenset(), quotable: list[str] = ()) -> tuple[dict, list[str]]:
@@ -27,6 +29,8 @@ def guarded_call(ai: AIClient, *, report_id: str, desk: str, model: str, system:
     allowed = flatten_numbers(payload)
     # figures in the research desk's extracts were verified against the filing, so they may be quoted
     allowed += [x for s in strings_in(payload.get("research", {})) for x in numbers_from_text(s)]
+    # code-written text (flag messages, ownership and forensic notes) states computed figures, so they may be quoted
+    allowed += [x for k in CODE_TEXT for s in strings_in(payload.get(k, {})) for x in numbers_from_text(s)]
     allowed += [x for s in quotable for x in numbers_from_text(s)]
     content = (f"{instructions}\n\n<document name=\"computed results\">\n{json.dumps(payload, default=str)}\n"
                f"</document>")

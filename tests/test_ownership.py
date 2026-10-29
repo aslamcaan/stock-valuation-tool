@@ -192,3 +192,43 @@ def test_forensic_runs_in_reporting_currency_and_converts_market_cap(ko):
     z = out["altman"][0]
     mc_in = next(i for i in z.inputs if i["line"] == "market_cap")
     assert mc_in["value"] == pytest.approx(200.0) and "EUR" in mc_in["source"] and last in mc_in["source"]
+
+
+# --- FINRA client (recorded response) -------------------------------------------------------------------------------
+class _Resp:
+    def __init__(self, status, text):
+        self.status_code, self.text = status, text
+
+    def json(self):
+        import json
+        return json.loads(self.text)
+
+
+def test_finra_client_request_and_sorting(tmp_path, monkeypatch):
+    from datetime import date
+    import datasources.finra as fin
+    from core.cache import Cache
+    sent = {}
+
+    def post(url, json, headers, timeout):
+        sent.update(json)
+        return _Resp(200, (FIX / "finra_cvx.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(fin.requests, "post", post)
+    rows = fin.FinraClient(Cache(tmp_path)).short_interest("brk-b", date(2026, 10, 29)).payload
+    assert sent["compareFilters"][0]["fieldValue"] == "BRKB"
+    assert sent["dateRangeFilters"][0] == {"fieldName": "settlementDate", "startDate": "2026-07-01",
+                                           "endDate": "2026-10-29"}
+    dates = [r["settlementDate"] for r in rows]
+    assert dates == sorted(dates) and rows[-1]["currentShortPositionQuantity"] > 0
+
+
+@pytest.mark.parametrize("status,text", [(200, "<html>maintenance</html>"), (200, '{"error": "bad"}'),
+                                         (500, "oops")])
+def test_finra_client_bad_responses_raise_a_source_error(tmp_path, monkeypatch, status, text):
+    from datetime import date
+    import datasources.finra as fin
+    from core.cache import Cache
+    from core.http import DataSourceError
+    monkeypatch.setattr(fin.requests, "post", lambda *a, **k: _Resp(status, text))
+    with pytest.raises(DataSourceError):
+        fin.FinraClient(Cache(tmp_path)).short_interest("CVX", date(2026, 10, 29))

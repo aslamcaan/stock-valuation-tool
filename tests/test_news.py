@@ -405,3 +405,24 @@ def test_guard_drops_sentences_when_the_cap_blocks_regeneration(tmp_path):
                              schema={}, sources="", instructions="i")
     assert "$5bn" not in data["text"] and "healthy" in data["text"]
     assert any("not regenerated" in x for x in log)
+
+
+def test_guard_accepts_thresholds_and_code_written_flag_text():
+    from desks.guarded import guarded_call
+    from desks.summary import RULE_THRESHOLDS
+
+    class Fake:
+        def __init__(self):
+            self.n = 0
+
+        def call(self, **k):
+            self.n += 1
+            return {"text": "Terminal value is 87% of EV, above the 80% limit. Revenue may reach $9bn."}
+    fake = Fake()
+    payload = {"rule_thresholds": RULE_THRESHOLDS,
+               "flags": [{"level": "amber", "code": "tv_share_high", "message": "Terminal value is 87% of EV."}]}
+    data, log = guarded_call(fake, report_id="r", desk="MD", model="m", system="s", payload=payload, schema={},
+                             sources="", instructions="i")
+    assert fake.n == 2  # $9bn is invented: regenerated, then dropped
+    assert "80% limit" in data["text"] and "$9bn" not in data["text"]
+    assert any("(unsupported: $9bn)" in x or "9bn" in x for x in log)

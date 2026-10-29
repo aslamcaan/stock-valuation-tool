@@ -87,6 +87,8 @@ def beneish(h, sic: str | None, year: str, prior: str) -> ForensicScore:
         for line in ("revenue", "receivables", "cost_of_revenue", "gross_profit", "current_assets", "ppe_net",
                      "total_assets", "d_and_a", "sga", "current_liabilities", "long_term_debt", "net_income", "cfo"):
             d[line] = g(line, per)
+        # Beneish uses depreciation alone and income from continuing operations; fall back with a note
+        d["dep"], d["inc"] = g("depreciation", per), g("income_continuing", per)
         if d["cost_of_revenue"] is None and d["gross_profit"] is not None and d["revenue"] is not None:
             d["cost_of_revenue"] = d["revenue"] - d["gross_profit"]
     s.inputs = g.inputs
@@ -107,8 +109,14 @@ def beneish(h, sic: str | None, year: str, prior: str) -> ForensicScore:
         return None if d["current_assets"] is None or d["ppe_net"] is None else \
             1 - (d["current_assets"] + d["ppe_net"]) / d["total_assets"]
 
+    use_dep = t["dep"] is not None and p["dep"] is not None
+    dkey = "dep" if use_dep else "d_and_a"
+    if not use_dep:
+        s.notes.append("DEPI uses depreciation and amortisation: depreciation alone is not reported in both years")
+    inc = t["inc"] if t["inc"] is not None else t["net_income"]  # the same when there are no discontinued ops
+
     def dep(d):
-        return None if d["d_and_a"] is None or d["ppe_net"] is None else _div(d["d_and_a"], d["d_and_a"] + d["ppe_net"])
+        return None if d[dkey] is None or d["ppe_net"] is None or d[dkey] + d["ppe_net"] <= 0 else             _div(d[dkey], d[dkey] + d["ppe_net"])
 
     both_ltd = t["long_term_debt"] is not None and p["long_term_debt"] is not None
 
@@ -118,19 +126,20 @@ def beneish(h, sic: str | None, year: str, prior: str) -> ForensicScore:
 
     c = {
         "DSRI": _div(t["receivables"] / t["revenue"], p["receivables"] / p["revenue"]),
-        "GMI": _div(gm(p), gm(t)),
-        "AQI": _div(soft(t), soft(p)),
+        # a ratio of non-positive margins or asset shares has no meaning: such terms fall back to neutral
+        "GMI": _div(gm(p), gm(t)) if (gm(p) or 0) > 0 and (gm(t) or 0) > 0 else None,
+        "AQI": _div(soft(t), soft(p)) if soft(t) is not None and (soft(p) or 0) > 0.01 else None,
         "SGI": t["revenue"] / p["revenue"],
         "DEPI": _div(dep(p), dep(t)),
         "SGAI": _div(_div(t["sga"], t["revenue"]), _div(p["sga"], p["revenue"])),
         "LVGI": _div(lev(t), lev(p)),
-        "TATA": (t["net_income"] - t["cfo"]) / t["total_assets"],
+        "TATA": (inc - t["cfo"]) / t["total_assets"],
     }
     for k in list(c):
         if c[k] is None:
             if k in NEUTRAL:
                 c[k] = 1.0
-                s.notes.append(f"{k} set to the neutral 1.0: an input is missing or zero")
+                s.notes.append(f"{k} set to the neutral 1.0: an input is missing, zero or negative")
             else:
                 s.reading = f"not computed: {k} could not be calculated"
                 return s
@@ -206,13 +215,21 @@ def altman(h, sic: str | None, period: str, market_cap: float | None, market_cap
     return s
 
 
+
+def _consecutive(prior: str, year: str) -> bool:
+    """FY2024 -> FY2025: Beneish compares a year with the one before it, never across a gap."""
+    try:
+        return int(year[-4:]) - int(prior[-4:]) == 1
+    except ValueError:
+        return True
+
 def forensic_scores(h, sic: str | None, market_cap: float | None, market_cap_source: str = "market data"
                     ) -> dict[str, list[ForensicScore]]:
     """Scores for every fiscal year with a prior year (Beneish) and every fiscal year (Altman), oldest first.
     Altman's market-value term uses today's market cap, so only the latest year gets the original Z's X4 from
     market data; earlier years are shown only for Z'' (book equity)."""
     labels = list(h.fy_labels)
-    out = {"beneish": [beneish(h, sic, y, p) for p, y in zip(labels, labels[1:])]}
+    out = {"beneish": [beneish(h, sic, y, p) for p, y in zip(labels, labels[1:]) if _consecutive(p, y)]}
     if is_manufacturer(sic):
         out["altman"] = [altman(h, sic, labels[-1], market_cap, market_cap_source)] if labels else []
     else:

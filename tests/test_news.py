@@ -434,3 +434,15 @@ def test_recheck_drops_figures_the_new_model_no_longer_has():
     out, log = recheck(review, {"wacc": {"wacc": 0.095}}, "", "Review desk")
     assert "9.1%" not in out["challenges"][0]["challenge"] and "Margins are fine." in out["challenges"][0]["challenge"]
     assert log and "no longer in the results" in log[0]
+
+
+def test_no_waiting_when_settling_cannot_help(tmp_path):
+    import time as _t
+    from desks.ai import CostCapExceeded
+    led = CostLedger(tmp_path / "d.sqlite", 0.30, 5.0)
+    led.log("r", CallRecord("Review desk", "m", 0, 0, 0, 0, 0.25, False))  # already spent
+    led.reserve("other", 0.10)                                             # another report's call in flight
+    t0 = _t.monotonic()
+    with pytest.raises(CostCapExceeded):
+        led.reserve("r", 0.10, wait=5)
+    assert _t.monotonic() - t0 < 1

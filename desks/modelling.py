@@ -9,6 +9,7 @@ from datetime import date, timedelta
 
 from data_desk import checks
 from data_desk.builder import CompanyData
+from data_desk.xbrl import fy_label
 from data_desk.history_data import price_series, week52, year_points
 from data_desk.peers import gather_peers, latest_period, metrics_from, next_fy_eps, peer_metrics
 from data_desk.valuation_inputs import build_engine_inputs, crp_from_filing_geography, one_off_adjustments
@@ -83,13 +84,28 @@ def segments_from_research(svc, cd: CompanyData, research: dict, notes: list[str
     return out
 
 
+def _kpi_label(x: dict) -> str | None:
+    """FY label the tool uses for a KPI value: from the period-end date when given (non-December years are
+    named differently by different companies), else the last year in the fiscal-year text ("FY2024/25" -> 2025)."""
+    try:
+        return fy_label(date.fromisoformat((x.get("period_end") or "")[:10]))
+    except ValueError:
+        pass
+    t = x.get("fiscal_year") or ""
+    m = re.search(r"((?:19|20)\d{2})\s*[/-]\s*(\d{2})\b", t)
+    if m:
+        return f"FY{m.group(1)[:2]}{m.group(2)}"
+    ys = re.findall(r"(?:19|20)\d{2}", t)
+    return f"FY{ys[-1]}" if ys else None
+
+
 def kpi_flags(cd: CompanyData, vk: dict) -> list[Flag]:
     """Revenue growth vs the reported volume KPI (e.g. Gross Bookings), from figures verified in the filing."""
     series = {}
     for x in vk.get("values") or []:
-        m = re.search(r"(19|20)\d{2}", x.get("fiscal_year") or "")
-        if m and f"FY{m.group(0)}" in cd.historicals.fy_labels and x.get("value_millions"):
-            series[f"FY{m.group(0)}"] = float(x["value_millions"])
+        label = _kpi_label(x)
+        if label and label in cd.historicals.fy_labels and x.get("value_millions"):
+            series[label] = float(x["value_millions"])
     if len(series) < 2 or not vk.get("name"):
         return []
     return checks.kpi_divergence(cd.historicals, vk["name"], series)
@@ -128,7 +144,9 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
     flags: list[Flag] = list(cd.flags) + list(v.flags) + extra_flags
     adr = ei.adr_ratio
     shares = v.diluted_shares.value
-    bridge = sum(x.value for _, x in v.bridge)
+    # comps and historical multiples: peer and past EVs net only cash, so their multiples already price any
+    # investments; adding the company's investments again would count them twice
+    bridge = sum(x.value for n, x in v.bridge if n != "Long-term investments")
 
     # --- comps ----------------------------------------------------------------------------------------------
     say("Selecting peers and computing multiples")

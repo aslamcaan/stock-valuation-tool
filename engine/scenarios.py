@@ -118,7 +118,10 @@ def _solve(value_at, target: float, lo: float, hi: float, steps: int = 24, tol: 
             a, fa, b = prev_x, prev_f, x
             for _ in range(100):
                 m = (a + b) / 2
-                fm = value_at(m) - target
+                try:
+                    fm = value_at(m) - target
+                except DCFError:  # invalid inside the bracket: settle for the bracket's midpoint
+                    return m
                 if abs(fm) < tol or b - a < 1e-10:
                     return m
                 if fa * fm <= 0:

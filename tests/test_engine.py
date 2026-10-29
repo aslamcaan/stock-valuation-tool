@@ -328,3 +328,12 @@ def test_long_term_investments_join_the_bridge_unless_ebit_already_holds_them():
     v2 = value_company(i)
     assert "Long-term investments" not in [n for n, _ in v2.bridge]
     assert any(f.code == "investments_in_ebit" for f in v2.flags)
+
+
+def test_ebit_proxy_is_detected_through_fx_conversion():
+    from engine.valuation import _uses
+    from engine.values import MILLIONS, Value
+    local = Value(100.0, "EUR", MILLIONS, "FY2025", "calculated", formula="pretax_income + interest_expense (EBIT proxy)")
+    usd = Value(110.0, "USD", MILLIONS, "FY2025", "calculated", formula="operating_income (EUR) x period-average US$/EUR",
+                inputs=(local,))
+    assert _uses(usd, "EBIT proxy") and not _uses(local.__class__(1.0, "USD", MILLIONS, "x", "EDGAR"), "EBIT proxy")

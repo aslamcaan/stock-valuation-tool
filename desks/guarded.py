@@ -24,8 +24,13 @@ DATE_OK = re.compile(r"^((date )?not disclosed|\d{4}-\d{2}(-\d{2})?|(Q[1-4]|H[12
                      r"(early|mid|late) \d{4}|\d{1,2} [A-Z][a-z]+ \d{4}|[A-Z][a-z]+ \d{1,2},? \d{4}|[A-Z][a-z]+ \d{4})$")
 CODE_TEXT = ("flags", "insider_activity", "forensic", "major_holders", "short_interest")
 
+def thresholds(payload: dict) -> list[float]:
+    """The brief's rule limits: quotable only in a sentence that talks about a limit or threshold."""
+    return flatten_numbers(payload.get("rule_thresholds", {})) if isinstance(payload, dict) else []
+
+
 def allowed_numbers(payload: dict, quotable=()) -> list[float]:
-    allowed = flatten_numbers(payload)
+    allowed = flatten_numbers({k: v for k, v in payload.items() if k != "rule_thresholds"})
     # figures in the research desk's extracts were verified against the filing, so they may be quoted
     allowed += [x for s in strings_in(payload.get("research", {})) for x in numbers_from_text(s)]
     # code-written text (flag messages, ownership and forensic notes) states computed figures, so they may be quoted
@@ -38,7 +43,8 @@ def recheck(data: dict, payload: dict, sources: str, desk: str, skip=frozenset()
     """Check text written earlier against NEW computed results (e.g. after the model was re-run) and drop sentences
     whose numbers no longer exist. No regeneration."""
     skip_keys = SKIP_KEYS | set(skip)
-    results = check_fields(_without(data, skip_keys), allowed_numbers(payload), sources)
+    results = check_fields(_without(data, skip_keys), allowed_numbers(payload), sources,
+                           contextual=thresholds(payload))
     bad = {k: r for k, r in results.items() if not r.ok}
     log = [f"{desk}: dropped after the model was re-run, from {k}: \"{s[:160]}\" (no longer in the results: "
            f"{', '.join(r.bad_numbers)})" for k, r in bad.items() for s in r.bad_sentences]
@@ -55,11 +61,12 @@ def guarded_call(ai: AIClient, *, report_id: str, desk: str, model: str, system:
     and summaries) whose own figures may be quoted, as the source says them."""
     skip_keys = SKIP_KEYS | set(skip)
     allowed = allowed_numbers(payload, quotable)
+    sources = "\n".join([sources, *quotable])  # non-US$ amounts and quotes may come verbatim from the news too
     content = (f"{instructions}\n\n<document name=\"computed results\">\n{json.dumps(payload, default=str)}\n"
                f"</document>")
     data = ai.call(report_id=report_id, desk=desk, model=model, system=system, content=content, schema=schema,
                    effort=effort, max_tokens=max_tokens)
-    results = check_fields(_without(data, skip_keys), allowed, sources)
+    results = check_fields(_without(data, skip_keys), allowed, sources, contextual=thresholds(payload))
     bad = {k: r for k, r in results.items() if not r.ok}
     log: list[str] = []
     if bad:
@@ -73,7 +80,7 @@ def guarded_call(ai: AIClient, *, report_id: str, desk: str, model: str, system:
         except CostCapExceeded:  # no budget to regenerate: keep the first answer without the failing sentences
             log.append(f"{desk}: not regenerated (AI cost cap); unsupported sentences dropped instead")
         else:
-            results = check_fields(_without(data, skip_keys), allowed, sources)
+            results = check_fields(_without(data, skip_keys), allowed, sources, contextual=thresholds(payload))
             bad = {k: r for k, r in results.items() if not r.ok}
             log.append(f"{desk}: regenerated once because of unsupported numbers ({', '.join(nums[:8])})")
         if bad:

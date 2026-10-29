@@ -114,10 +114,20 @@ class CostLedger:
                     break
                 except CostCapExceeded:
                     left = deadline - time.monotonic()
-                    if not self._pending or left <= 0:
+                    if left <= 0 or not self._settling_could_pass(report_id, estimate):
                         raise
                     self._lock.wait(left)
             self._pending[report_id] = self._pending.get(report_id, 0.0) + estimate
+
+    def _settling_could_pass(self, report_id: str, estimate: float) -> bool:
+        """Waiting helps only if the breach is caused by calls in flight (which may cost less than reserved):
+        never because of spend already made or budget held for a later desk."""
+        rep_ok = self.spent_on_report(report_id) + self._held.get(report_id, 0.0) + estimate <= self.per_report_cap
+        day_ok = self.spent_today() + sum(self._held.values()) + estimate <= self.per_day_cap
+        rep_pending = self._pending.get(report_id, 0.0) > 0
+        rep_breach = (self.spent_on_report(report_id) + self._pending.get(report_id, 0.0)
+                      + self._held.get(report_id, 0.0) + estimate > self.per_report_cap)
+        return rep_ok and day_ok and (rep_pending if rep_breach else bool(self._pending))
 
     def hold(self, report_id: str, amount: float) -> None:
         """Set `amount` aside for a later, more important call: earlier calls are refused rather than spend it.

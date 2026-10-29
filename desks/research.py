@@ -32,7 +32,7 @@ PARTS = {
         "geographic_mix": _arr(_obj({"region": _S, "share_of_revenue_pct": _N, "revenue_millions": _N,
                                      "quote": _S})),
         "kpis": _arr(_obj({"name": _S, "value_text": _S, "period": _S, "quote": _S})),
-        "volume_kpi": _obj({"name": _S, "values": _arr(_obj({"fiscal_year": _S, "value_millions": _N})),
+        "volume_kpi": _obj({"name": _S, "values": _arr(_obj({"fiscal_year": _S, "period_end": _S, "value_millions": _N})),
                             "quote": _S}),
     }),
     "risks": _obj({
@@ -68,7 +68,8 @@ report and extract facts for the analysts. Rules:
 - kpis: operating KPIs the company reports (e.g. Gross Bookings, users, take rate), latest values with period.
 - volume_kpi: the one money-volume metric revenue is earned on, if the company reports it (Gross Bookings, GMV,
   total payment volume, gross transaction value), with its value for EACH fiscal year the filing shows, in millions
-  of the reporting currency, and a verbatim quote containing at least one of the values. Empty name and values if
+  of the reporting currency, the period-end date of each year (YYYY-MM-DD, "" if not stated), and a verbatim
+  quote containing at least one of the values. Empty name and values if
   the company reports no such metric.
 - risk_factors: the 6 most material risks for valuation, each with a verbatim quote.
 - one_off_items: impairments, restructuring, litigation, gains or losses on investments or disposals, and similar
@@ -112,7 +113,7 @@ def verify(data: dict, source_text: str) -> tuple[dict, list[str]]:
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 txt = f"{v:g}"
                 alts = {txt, f"{v:,.0f}".replace(",", ""), f"{v:.1f}", f"{v * 1000:,.0f}".replace(",", ""),
-                        f"{v / 1000:g}", f"{v / 1000:.1f}"}  # the filing may state it in billions
+                        f"{v / 1000:g}"}  # the filing may state it in billions (exactly, not rounded)
                 if not any(a in src_tokens for a in alts):
                     return False
             elif isinstance(v, str) and k.endswith("_text"):

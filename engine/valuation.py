@@ -100,6 +100,13 @@ def _latest(h: Historicals, line: str) -> Value | None:
     return None
 
 
+def _uses(v: Value | None, marker: str) -> bool:
+    """True if `v` or any value it was calculated from has `marker` in its formula (survives FX conversion)."""
+    if v is None:
+        return False
+    return marker in (v.formula or "") or any(_uses(x, marker) for x in (v.inputs or ()))
+
+
 def _neg(v: Value, name: str) -> Value:
     return calc(lambda x: -x, f"minus {name}", v.period, MILLIONS, v.currency, **{name: v})
 
@@ -129,8 +136,11 @@ def value_company(i: EngineInputs) -> Valuation:
     if cls.stage == CYCLICAL:  # PROMPT.md 4b: futures where available, spot with a flag if not
         flags.append(Flag(INFO, "no_commodity_futures", "No commodity futures curve used",
                           "Commodity futures and forward prices are not available from the tool's data sources, so "
-                          "the forecast does not use a commodity price deck: margins are normalised to the "
-                          f"company's own mid-cycle level over {cyc.get('years', 'the available')} years instead.",
+                          "the forecast does not use a commodity price deck: "
+                          + (f"margins are normalised to the company's own mid-cycle level over {cyc['years']} "
+                             "years instead." if cyc.get("years") else
+                             "there are too few years of history to judge the cycle, so treat the forecast "
+                             "margins with extra caution."),
                           cur_p, {}))
 
     # --- balance sheet for the bridge: latest reported -----------------------------------------------------
@@ -159,9 +169,8 @@ def value_company(i: EngineInputs) -> Valuation:
                           f"Cash is at {bs_p}, but {', '.join(mixed)} (not reported at {bs_p}).", bs_p,
                           {"items": mixed}))
     bridge: list[tuple[str, Value]] = [("Debt", _neg(debt, "debt")), ("Cash and investments", cash)]
-    op_formula = (h.get("operating_income", cur_p).formula or "") if h.get("operating_income", cur_p) else ""
     if investments is not None and investments.value:
-        if "EBIT proxy" in op_formula:  # pre-tax income already holds the investment income: no double count
+        if _uses(h.get("operating_income", cur_p), "EBIT proxy"):  # pre-tax income already holds the investment income: no double count
             flags.append(Flag(INFO, "investments_in_ebit", "Investments valued through operating income",
                               f"Operating income is an EBIT proxy (pre-tax income + interest), which includes income "
                               f"from investments, so long-term investments ({investments.value:,.0f}m at "

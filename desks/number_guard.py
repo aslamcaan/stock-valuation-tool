@@ -19,14 +19,20 @@ import re
 from dataclasses import dataclass, field
 
 NUM_RE = re.compile(
-    r"(?P<cur>US\$|\$|€|£|S\$)?\s?(?P<num>-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?)\s?"
+    r"(?<![\w.])(?P<sign>[-−])?(?P<cur>US\$|\$|€|£|S\$|¥|EUR|GBP|SGD|JPY)?\s?(?P<paren>\()?"
+    r"(?P<num>(?:(?<![\d\w])-)?\d{1,3}(?:,\d{3})+(?:\.\d+)?|(?:(?<![\d\w])-)?\d+(?:\.\d+)?)\)?\s?"
     r"(?P<unit>%|bps|bp|x|bn|billion|mn|million|m|k|thousand|trillion|tn)?(?![A-Za-z0-9])", re.IGNORECASE)
 LABEL_RE = re.compile(r"\b(?:FY|Q|H)\d{1,4}\b|\b(?:19|20)\d{2}[-/]\d{2}(?:[-/]\d{2})?\b", re.IGNORECASE)
 QUOTE_RE = re.compile(r"[\"“”']([^\"“”']{8,})[\"“”']")
-NEGATIVE_WORDS = re.compile(r"\b(fell|fall|falls|falling|down|declin\w*|below|lower|less|discount|cut\w*|drop\w*|"
-                            r"loss\w*|decreas\w*|negative|short of|under\w*|shrink\w*|shrank|contract\w*|"
-                            r"deficit|outflow\w*|overvalued|downside|reduc\w*|weak\w*|minus|deteriorat\w*|"
-                            r"slow\w*|worse|dilut\w*|trims?|trimm\w*|lowers?|erod\w*)\b", re.IGNORECASE)
+NEGATIVE_WORDS = re.compile(r"\b(fell|fall|falls|falling|down|declin\w*|below|lower|less|discount|cut|cuts|"
+                            r"cutting|drop\w*|loss\w*|decreas\w*|negative|short of|under|undervalue\w*|"
+                            r"shrink\w*|shrank|contracted|contraction|contracting|deficit|outflow\w*|overvalued|"
+                            r"downside|reduc\w*|weak\w*|minus|deteriorat\w*|slow\w*|worse|dilut\w*|trims?|"
+                            r"trimm\w*|lowers?|erod\w*|net cash|burn\w*|burned|burnt|spent|spend\w*)\b",
+                            re.IGNORECASE)
+# sentences that state a rule's limit: only these may quote the brief's thresholds (80% of EV, WACC 6-15%, ...)
+LIMIT_WORDS = re.compile(r"\b(limit|threshold|range|cap|ceiling|floor|maximum|minimum|tolerance|percentile|"
+                         r"cut-?off|guideline|band|rule)s?\b", re.IGNORECASE)
 USD_SIGNS = (None, "$", "us$")
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
 
@@ -133,7 +139,7 @@ def number_allowed(text_num: str, unit: str | None, allowed: list[float], cur: s
     return False
 
 
-def check_text(text: str, allowed: list[float], sources: str = "") -> GuardResult:
+def check_text(text: str, allowed: list[float], sources: str = "", contextual: list[float] = ()) -> GuardResult:
     """Check every sentence; return the offending numbers and a cleaned text without failing sentences."""
     src = re.sub(r"\s+", " ", sources).lower()
     bad_nums, bad_sents, keep = [], [], []
@@ -144,13 +150,17 @@ def check_text(text: str, allowed: list[float], sources: str = "") -> GuardResul
                 work = work.replace(q, " ")
         work = LABEL_RE.sub(" ", work)
         neg = bool(NEGATIVE_WORDS.search(sentence))
+        here = list(allowed) + (list(contextual) if LIMIT_WORDS.search(sentence) else [])
         bad_here = []
         for m in NUM_RE.finditer(work):
             cur = (m.group("cur") or None) and m.group("cur").lower()
+            num = m.group("num")
+            if (m.group("sign") or m.group("paren")) and not num.startswith("-"):
+                num = "-" + num  # "-$200m", "−$200m", "$(1.20)"
             if cur not in USD_SIGNS:
                 ok = re.sub(r"\s+", " ", m.group(0).strip()).lower() in src
             else:
-                ok = number_allowed(m.group("num"), m.group("unit"), allowed, cur, neg)
+                ok = number_allowed(num, m.group("unit"), here, cur, neg)
             if not ok:
                 bad_here.append(m.group(0).strip())
         if bad_here:
@@ -161,7 +171,8 @@ def check_text(text: str, allowed: list[float], sources: str = "") -> GuardResul
     return GuardResult(not bad_nums, bad_nums, bad_sents, " ".join(keep))
 
 
-def check_fields(data, allowed: list[float], sources: str = "", path: str = "") -> dict[str, GuardResult]:
+def check_fields(data, allowed: list[float], sources: str = "", path: str = "",
+                 contextual: list[float] = ()) -> dict[str, GuardResult]:
     """Run the guard over every string field of a JSON-like structure. Keys ending in '_quote' are checked
     against the sources instead (the quote must appear verbatim)."""
     out = {}
@@ -173,12 +184,12 @@ def check_fields(data, allowed: list[float], sources: str = "", path: str = "") 
                 out[p] = GuardResult(found or not v, [] if found or not v else ["quote not found in source"],
                                      [] if found or not v else [v], v if found else "")
             elif isinstance(v, str):
-                out[p] = check_text(v, allowed, sources)
+                out[p] = check_text(v, allowed, sources, contextual)
             else:
-                out.update(check_fields(v, allowed, sources, p))
+                out.update(check_fields(v, allowed, sources, p, contextual))
     elif isinstance(data, list):
         for i, v in enumerate(data):
-            out.update(check_fields(v, allowed, sources, f"{path}[{i}]"))
+            out.update(check_fields(v, allowed, sources, f"{path}[{i}]", contextual))
     return out
 
 

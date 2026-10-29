@@ -228,7 +228,11 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         svc.ai.ledger.hold(rid, MD_HOLD)  # the review and impact desks may not spend the MD's budget
         try:
             p("Review desk", RUNNING, "Challenging assumptions and writing the bear case…")
-            review, log = run_review(svc.ai, rid, summary_of(model), sources)
+            try:
+                review, log = run_review(svc.ai, rid, summary_of(model), sources)
+                review_failed = None
+            except (AIError, CostCapExceeded) as exc:  # the MD still signs off (its budget is held), without it
+                review, log, review_failed = {}, [], f"{type(exc).__name__}: {exc}"
             rep.guard_log += log
             sr = review.get("stage_review", {})
             if not sr.get("agree", True) and sr.get("suggested_stage") in STAGES and \
@@ -249,8 +253,11 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
                     rep.forensic = _forensic(cd, model)
                     review, relog = recheck(review, summary_of(model), sources, "Review desk")
                     rep.guard_log += relog
-            rep.review = review
-            p("Review desk", DONE, f"{len(review.get('challenges', []))} challenges; bear case written", cost())
+            rep.review = review or None
+            if review_failed:
+                p("Review desk", FAILED, review_failed)
+            else:
+                p("Review desk", DONE, f"{len(review.get('challenges', []))} challenges; bear case written", cost())
 
             rep.news = news_now()
             rep.impact = _impact_job(svc, rid, model, rep.news, rep.exposure, summary_of(model),

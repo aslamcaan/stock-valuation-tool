@@ -1,4 +1,5 @@
 """Golden test 11: generated text with an invented number is caught and fixed or dropped."""
+import pytest
 from desks.number_guard import apply_cleaning, check_fields, check_text, flatten_numbers
 
 RESULTS = {"operating_income": 1110.0, "revenue_growth": 0.183, "wacc": 0.0865, "value_per_share": 5.39,
@@ -74,3 +75,30 @@ def test_other_currency_amounts_must_be_quoted_from_sources():
     assert not check_text("Revenue was €1.1bn.", [1110.0]).ok
     assert check_text("Revenue was €1.1bn.", [1110.0], sources="Net sales were €1.1bn in the year.").ok
     assert check_text("Revenue was $1.1bn.", [1110.0]).ok
+
+
+@pytest.mark.parametrize("text,allowed", [
+    ("The company has net cash of $5.0bn.", [-5000.0]),
+    ("Free cash flow was -$200m.", [-200.0]),
+    ("Free cash flow was −$200m.", [-200.0]),
+    ("EPS was $(1.20).", [-1.2]),
+    ("Growth of 10-15% is assumed.", [0.10, 0.15]),
+    ("It burned $200m of cash.", [-200.0]),
+])
+def test_signed_amounts_written_naturally_pass(text, allowed):
+    assert check_text(text, allowed).ok
+
+
+def test_rule_thresholds_only_in_sentences_about_a_limit():
+    assert not check_text("Revenue grew 15% last year.", [0.1234], contextual=[0.15]).ok
+    assert check_text("WACC sits outside the 6-15% range.", [0.1234], contextual=[0.06, 0.15]).ok
+
+
+def test_ratio_does_not_let_a_hundredfold_percentage_through():
+    assert check_text("The stock moved 0.48% on the day.", [0.0048]).ok
+    assert not check_text("The stock moved 48% on the day.", [0.0048]).ok
+
+
+def test_currency_codes_need_the_figure_verbatim_in_sources():
+    assert not check_text("Sales were EUR 1.2bn.", []).ok
+    assert check_text("Sales were EUR 1.2bn.", [], sources="... sales were EUR 1.2bn in 2025 ...").ok

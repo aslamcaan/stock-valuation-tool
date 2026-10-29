@@ -262,9 +262,10 @@ def run_impact(ai: AIClient, svc, report_id: str, report, news: NewsResult, summ
     return res
 
 
-def _pct(x: float | None) -> float | None:
-    """A ratio as a percentage to 2 decimals (0.0048 -> 0.48), so the AI writes "0.48%" rather than "0.0048"."""
-    return None if x is None else round(x * 100, 2)
+def _ratio(x: float | None) -> float | None:
+    """A ratio to 4 decimals (0.0048 = 0.48%). Kept as a ratio: the guard reads "0.48%" as 0.0048, so a value
+    shown as 0.48 would also let "48%" through."""
+    return None if x is None else round(x, 4)
 
 
 def impact_payload(res: ImpactResult) -> dict:
@@ -282,10 +283,10 @@ def impact_payload(res: ImpactResult) -> dict:
             "fair_value_effect_per_share": _r(i.fair_value_effect, 2),
             "year1_eps_effect": _r(i.eps_effect, 2), "duration": i.duration, "more_convincing": i.more_convincing,
             "priced_in": None if not i.priced else {
-                "verdict": i.priced.verdict, "stock_return_pct": _pct(i.priced.stock_return),
-                "abnormal_vs_market_pct": _pct(i.priced.abnormal_vs_market),
-                "abnormal_vs_sector_pct": _pct(i.priced.abnormal_vs_sector),
-                "estimated_impact_pct_of_price": _pct(i.priced.estimated_impact), "window": i.priced.window}}
+                "verdict": i.priced.verdict, "stock_return": _ratio(i.priced.stock_return),
+                "abnormal_vs_market": _ratio(i.priced.abnormal_vs_market),
+                "abnormal_vs_sector": _ratio(i.priced.abnormal_vs_sector),
+                "estimated_impact_vs_price": _ratio(i.priced.estimated_impact), "window": i.priced.window}}
             for i in res.items],
         "notes": res.notes,
     }

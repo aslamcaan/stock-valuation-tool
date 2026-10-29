@@ -126,6 +126,13 @@ def value_company(i: EngineInputs) -> Valuation:
                           f"(range {cyc['min_margin']:.1%} to {cyc['max_margin']:.1%}).", cur_p,
                           {"percentile": cyc["percentile"], "current_margin": cyc["current_margin"]}))
 
+    if cls.stage == CYCLICAL:  # PROMPT.md 4b: futures where available, spot with a flag if not
+        flags.append(Flag(INFO, "no_commodity_futures", "No commodity futures curve used",
+                          "Commodity futures and forward prices are not available from the tool's data sources, so "
+                          "the forecast does not use a commodity price deck: margins are normalised to the "
+                          f"company's own mid-cycle level over {cyc.get('years', 'the available')} years instead.",
+                          cur_p, {}))
+
     # --- balance sheet for the bridge: latest reported -----------------------------------------------------
     # one balance-sheet date: the latest period with cash; each other item from that period where it is reported,
     # else its latest earlier value, flagged so a stale figure is never mixed in silently

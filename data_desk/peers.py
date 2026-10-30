@@ -56,7 +56,17 @@ def metrics_from(h: Historicals, analysis, *, ticker: str, name: str, sic: str, 
         benchmarks={"revenue_growth": rg, "operating_margin": analysis.m("operating_margin", p),
                     "roic": analysis.m("roic", last), "fcf_margin": analysis.m("fcf_margin", p),
                     "net_debt_to_ebitda": analysis.m("net_debt_to_ebitda", p) if ebitda and ebitda > 0 else None},
-        source=source)
+        source=source, **financial_fields(h))
+
+
+def financial_fields(h) -> dict:
+    """Book, tangible book, earnings to common, FFO and an NOI proxy (latest fiscal year) for financial comps."""
+    from engine.financials import common_equity, ffo, ni_common, noi_proxy, tangible_common_equity
+    fy = h.fy_labels[-1] if h.fy_labels else None
+    if fy is None:
+        return {}
+    return {"common_equity": common_equity(h, fy).value, "tangible_equity": tangible_common_equity(h, fy).value,
+            "net_income_common": ni_common(h, fy).value, "ffo": ffo(h, fy).value, "noi": noi_proxy(h, fy).value}
 
 
 def next_fy_eps(svc, ticker: str, after_iso: str) -> float | None:

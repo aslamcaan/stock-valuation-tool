@@ -23,6 +23,14 @@ def verify(path: str | Path) -> dict:
                     if isinstance(val, str) and val in ERRORS:
                         errors.append(f"{ws.title}!{c.coordinate}: {val} ({c.value[:80]})")
     get = lambda ref: xl.evaluate(ref)  # noqa: E731
+    if "Metrics" in wb.sheetnames and "Historicals" not in wb.sheetnames:  # financial-sector workbook
+        su = wb["Summary"]
+        fv_row = next(r for r in range(5, 60) if su[f"A{r}"].value == "Fair value (weighted blend)")
+        checks = [get(f"Summary!B{r}") for r in range(fv_row + 5, fv_row + 12)
+                  if str(su[f"A{r}"].value or "").startswith("Check:") and su[f"B{r}"].data_type == "f"]
+        return {"formulas": formulas, "errors": errors, "fair_value": get(f"Summary!B{fv_row}"),
+                "fair_value_check": get(f"Summary!B{fv_row + 5}"), "method_checks": checks,
+                "verdict": get(f"Summary!B{fv_row + 2}")}
     return {"formulas": formulas, "errors": errors, "excel_dcf": get("Summary!B6"),
             "dcf_check": get("Summary!B15"), "fair_value": get("Summary!B10"), "fair_value_check": get("Summary!B17"),
             "verdict": get("Summary!B12")}

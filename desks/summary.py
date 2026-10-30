@@ -13,7 +13,54 @@ RULE_THRESHOLDS = {"terminal_value_share_of_ev_max": 0.80, "whole_enterprise_val
                    "kpi_divergence_points": 5, "stale_filing_days": 120, "cyclical_peak_percentile": 90,
                    "beneish_m_threshold": -1.78}
 
+def financial_summary(report, research: dict | None = None) -> dict:
+    """Banks, insurers, REITs: the toolkit's metrics (computed and reported) and valuation methods."""
+    from engine.financials import method_label
+    from ui.financial import FS_LINES
+    cd, fv, vd = report.company, report.financial, report.verdict
+    h = cd.historicals_usd
+    periods = h.fy_labels[-4:]
+    d = fv.detail
+    methods = {}
+    for k, val in fv.methods.items():
+        x = {"label": method_label(k, fv.toolkit), "value_per_share": _r(val.value, 2)}
+        if k == "justified":
+            x["justified_multiple"] = _r(d[k]["multiple"], 3)
+        if k in ("residual_income", "ddm"):
+            x.update(pv_explicit=_r(d[k]["pv_explicit"], 2), pv_terminal=_r(d[k]["pv_terminal"], 2))
+        if k.startswith("comps"):
+            x.update(peer_median=_r(d[k]["median"], 2), peers=[p["ticker"] for p in d[k]["peers"]])
+        if k == "nav":
+            x.update(cap_rate=_r(d[k]["cap_rate"]), noi_m=_r(d[k]["noi"], 0), net_debt_m=_r(d[k]["net_debt"], 0))
+        methods[k] = x
+    return {
+        "company": {"name": cd.profile.name, "ticker": cd.profile.ticker, "sic": cd.profile.sic_description,
+                    "reporting_currency": cd.profile.reporting_currency, "latest_fiscal_year": fv.period},
+        "price": _r(vd.price, 2),
+        "toolkit": {"toolkit": fv.toolkit, "why_no_dcf": fv.why_no_dcf},
+        "historicals_usd_m": {line: {p: _r(h.v(line, p), 2) for p in periods} for line in FS_LINES[fv.toolkit]},
+        "sector_metrics": {m.key: {"label": m.label, "computed": _r(m.value.value),
+                                   "reported": _r(m.reported.value) if m.reported is not None else None}
+                           for m in fv.metrics},
+        "cost_of_equity": {"cost_of_equity": _r(fv.cost_of_equity.value), "risk_free": _r(report.inputs.risk_free.value),
+                           "erp": _r(report.inputs.erp.value), "crp": _r(report.inputs.crp.value),
+                           "long_run_growth": _r(fv.growth.value),
+                           "normalised_return": _r(fv.normalised_return.value) if fv.normalised_return else None,
+                           "book_value_per_share_used": _r(fv.base_per_share.value, 2) if fv.base_per_share else None},
+        "methods": methods,
+        "verdict": {"fair_value": _r(vd.fair_value, 2), "gap": _r(vd.gap), "verdict": vd.verdict,
+                    "confidence": vd.confidence, "components": {k: _r(x, 2) for k, x in vd.components.items()},
+                    "weights": {k: _r(w) for k, w in vd.weights_used.items()}},
+        "analyst_targets": report.analyst_targets,
+        "flags": [{"level": f.level, "code": f.code, "message": f.message} for f in report.flags],
+        "rule_thresholds": RULE_THRESHOLDS,
+        "research": research or {},
+    }
+
+
 def build_summary(report, research: dict | None = None) -> dict:
+    if getattr(report, "financial", None) is not None:
+        return financial_summary(report, research)
     cd, v, vd = report.company, report.valuation, report.verdict
     h = cd.historicals_usd
     last = h.fy_labels[-1]

@@ -134,6 +134,39 @@ def edit_form(rep) -> None:
                 st.rerun()
 
 
+def edit_form_financial(rep) -> None:
+    """Banks, insurers, REITs: cost of equity, long-run growth, normalised return, cap rate and blend weights."""
+    from engine.financials import method_label
+    fv = rep.model.financial
+    with st.form("edit_fin"):
+        st.markdown("Edit any assumption; the valuation recalculates (AI commentary keeps the original view).")
+        c1, c2, c3 = st.columns(3)
+        coe = c1.number_input("Cost of equity (%)", value=round(fv.cost_of_equity.value * 100, 2))
+        g = c1.number_input("Long-run growth (%)", value=round(fv.growth.value * 100, 2))
+        normal = c2.number_input("Normalised return on equity (%)", value=round(fv.normalised_return.value * 100, 2))             if fv.normalised_return is not None else None
+        cap = c2.number_input("Cap rate (%)", value=round(fv.detail["nav"]["cap_rate"] * 100, 2))             if "nav" in fv.detail else None
+        weights = {k: c3.number_input(f"Weight: {method_label(k, fv.toolkit)} (%)", value=round(w * 100, 1))
+                   for k, w in fv.weights.items()}
+        if st.form_submit_button("Recalculate"):
+            ov = {**rep.overrides, "cost_of_equity": coe / 100, "long_run_growth": g / 100,
+                  "blend_weights": {k: w / 100 for k, w in weights.items()}}
+            if normal is not None:
+                ov["normalised_return"] = normal / 100
+            if cap is not None:
+                ov["cap_rate"] = cap / 100
+            try:
+                with st.spinner("Recalculating…"):
+                    edited = copy.copy(rep)
+                    edited.model = run_modelling(rep.company, svc, rep.valuation_date, ov, peers=rep.peers_pool)
+                    edited.overrides = ov
+                    edited.impact = None
+            except ValuationError as exc:
+                st.error(f"These assumptions cannot be valued, so the report is unchanged. {exc}")
+            else:
+                st.session_state.edited = edited
+                st.rerun()
+
+
 # --- page ------------------------------------------------------------------------------------------------------------
 if "run" in st.session_state:
     st.title(f"Analysing {st.session_state.run['ticker']}")
@@ -172,7 +205,9 @@ if rep.model is not None and "edited" not in st.session_state and \
             st.error(f"News refresh failed: {type(exc).__name__}: {exc}")
         else:
             st.rerun()
-if rep.model is not None and rep.model.valuation.dcf is not None:
+exportable = rep.model is not None and (getattr(rep.model, "financial", None) is not None or
+                                        (rep.model.valuation is not None and rep.model.valuation.dcf is not None))
+if exportable:
     try:
         top[3].download_button("Download Excel model", export_bytes(rep), file_name=f"{rep.report_id}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -187,7 +222,10 @@ if "edited" in st.session_state:
         st.rerun()
 
 render_report(rep)
-if rep.model is not None and rep.model.valuation.dcf_inputs is not None:
+if rep.model is not None and getattr(rep.model, "financial", None) is not None:
+    with st.expander("Edit assumptions (live recalculation)"):
+        edit_form_financial(rep)
+elif rep.model is not None and rep.model.valuation.dcf_inputs is not None:
     with st.expander("Edit assumptions (live recalculation)"):
         edit_form(rep)
 with st.expander("Desk log"):

@@ -166,6 +166,11 @@ def run_impact(ai: AIClient, svc, report_id: str, report, news: NewsResult, summ
     """`report` is the ValuationReport (base, news-free); `summary` the computed-results summary the desks use."""
     vd = report.verdict
     res = ImpactResult(news.as_of, vd.fair_value, vd.verdict, vd.price)
+    if report.valuation is None:  # bank / insurer / REIT: no DCF drivers to move
+        res.notes.append(f"News effects are not repriced for the {report.toolkit} toolkit: the impact analyst moves "
+                         "DCF drivers (growth, margins, WACC), which this toolkit does not use. The news is still "
+                         "summarised in the MD's view, without a fair-value effect.")
+        return res
     items = news.items[:MAX_ITEMS]
     if not items:
         res.notes.append("No material news items to analyse.")

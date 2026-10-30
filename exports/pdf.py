@@ -84,8 +84,9 @@ def build_pdf(rep) -> bytes:
     card = [["Share price", money(vd.price), "Fair value", f"{money(vd.fair_value)} ({vd.gap:+.1%})" if vd.gap is not None else "-"],
             ["Verdict", vd.verdict or "-", "Confidence", vd.confidence or "-"],
             ["MD rating", rep.md.rating if rep.md else "-", "Conviction", rep.md.conviction if rep.md else "-"],
-            ["Stage", v.classification.stage_label, "Toolkit", v.classification.toolkit]]
-    if len(v.scenarios) == 3:
+            ["Stage", v.classification.stage_label, "Toolkit", v.classification.toolkit] if v is not None else
+            ["Toolkit", f"{m.financial.toolkit} (no DCF)", "Cost of equity", pct(m.financial.cost_of_equity.value)]]
+    if v is not None and len(v.scenarios) == 3:
         b, base, bu = (v.per_us_share(x.value_per_share) for x in v.scenarios)
         card.append(["Bear / base / bull", f"{money(b)} / {money(base)} / {money(bu)}", "Analyst target",
                      f"{money((m.analyst_targets or {}).get('median'))}" if m.analyst_targets else "not available"])
@@ -123,6 +124,9 @@ def build_pdf(rep) -> bytes:
             s.append(table([[x["name"], millions(x.get("revenue_millions")), millions(x.get("profit_millions")),
                              x.get("profit_metric", "")] for x in d["segments"]],
                            ["Segment", "Revenue (m)", "Profit (m)", "Measure"], [60 * mm, 30 * mm, 30 * mm, 62 * mm]))
+    if v is None:  # bank / insurer / REIT toolkit
+        _financial_body(s, rep)
+        return _finish(doc, s, rep, buf)
     # 3. historicals (main lines)
     h = cd.historicals
     cols = [p.label for p in h.periods][-4:]
@@ -196,10 +200,84 @@ def build_pdf(rep) -> bytes:
                        ["g \\ WACC"] + [pct(x) for x in s1["wacc"]], [24 * mm] + [31 * mm] * 5))
     s.append(P("15. Football field", H2))
     s.append(football_drawing(rep))
+    return _finish(doc, s, rep, buf)
+
+
+def _financial_body(s: list, rep) -> None:
+    """Sections 3-10 for the financial-sector toolkits (PROMPT.md section 8)."""
+    from engine.financials import method_label
+    from ui.financial import FS_LINES
+    m, cd, fv = rep.model, rep.company, rep.model.financial
+    h = cd.historicals_usd
+    cols = h.fy_labels[-4:]
+    s.append(P("3. Historicals (US$ m)", H2))
+    s.append(table([[ln.replace("_", " ").capitalize()] + [millions(h.v(ln, p)) for p in cols]
+                    for ln in FS_LINES[fv.toolkit]], ["Line"] + cols, [60 * mm] + [30 * mm] * len(cols)))
+    s.append(P(f"4. Sector metrics ({fv.period})", H2))
+
+    def f(x):
+        if x is None or x.value is None:
+            return "-"
+        return money(x.value) if x.unit == "per_share" else (pct(x.value, 2) if x.unit == "ratio" else
+                                                             (mult(x.value) if x.unit == "x" else millions(x.value)))
+    s.append(table([[mt.group, mt.label, f(mt.value), f(mt.reported)] for mt in fv.metrics],
+                   ["Group", "Metric", "Computed", "Reported (10-K)"], [30 * mm, 80 * mm, 36 * mm, 36 * mm]))
+    s.append(P("Reported figures are read from the 10-K text; quotes are in the app and the Excel Metrics tab.",
+               SMALL))
     s.append(PageBreak())
-    # 18-21
+    s.append(P("6. Toolkit and why no DCF", H2))
+    s.append(P(fv.why_no_dcf))
+    s.append(P("7. Valuation methods", H2))
+    vd = m.verdict
+    s.append(table([[method_label(k, fv.toolkit), money(x.value), pct(vd.weights_used.get(k), 0)
+                     if k in vd.weights_used else "-"] for k, x in fv.methods.items()],
+                   ["Method", "Value per share", "Weight"], [100 * mm, 40 * mm, 40 * mm]))
+    d = fv.detail
+    if "justified" in d:
+        j = d["justified"]
+        s.append(P(f"Justified multiple: ({pct(j['return'])} - {pct(j['g'])}) / ({pct(j['coe'])} - {pct(j['g'])}) = "
+                   f"{j['multiple']:.2f}x book of {money(j['base'])} per share."))
+    if "residual_income" in d:
+        ri = d["residual_income"]
+        s.append(table([[str(r["year"]), money(r["opening_book"]), pct(r["return"]), money(r["residual_income"]),
+                         money(r["pv"])] for r in ri["rows"]], ["Year", "Opening book", "Return", "Residual income",
+                                                                "PV"], [20 * mm, 40 * mm, 30 * mm, 46 * mm, 46 * mm]))
+        s.append(P(f"Residual income: book {money(ri['rows'][0]['opening_book'])} + PV {money(ri['pv_explicit'])} + "
+                   f"PV terminal {money(ri['pv_terminal'])} = {money(ri['value'])}."))
+    if "ddm" in d:
+        dd = d["ddm"]
+        s.append(P(f"Dividend discount: last dividend {money(dd['dps0'])}, stage-1 growth {pct(dd['stage1_growth'])}, "
+                   f"long-run {pct(fv.growth.value)}: PV {money(dd['pv_explicit'])} + terminal "
+                   f"{money(dd['pv_terminal'])} = {money(dd['value'])}."))
+    if "nav" in d:
+        n = d["nav"]
+        s.append(P(f"NAV: NOI {millions(n['noi'])} / cap rate {pct(n['cap_rate'], 2)} - net debt "
+                   f"{millions(n['net_debt'])}."))
+    for k in ("comps_pb", "comps_pe", "comps_pffo", "cap_rate"):
+        x = d.get(k)
+        if x and x.get("peers"):
+            s.append(P(f"{'Peer cap rates' if k == 'cap_rate' else method_label(k, fv.toolkit)}: median "
+                       f"{'-' if x.get('median') is None else (pct(x['median'], 2) if k == 'cap_rate' else mult(x['median']))}"
+                       " (" + ", ".join(p_["ticker"] for p_ in x["peers"]) + ")", SMALL))
+    s.append(P("9. Cost of equity", H2))
+    i = m.inputs
+    s.append(table([["Risk-free", pct(i.risk_free.value, 2), "ERP", pct(i.erp.value, 2)],
+                    ["Country risk premium", pct(i.crp.value, 2), "Cost of equity", pct(fv.cost_of_equity.value, 2)],
+                    ["Long-run growth", pct(fv.growth.value, 2), "Normalised return",
+                     pct(fv.normalised_return.value, 2) if fv.normalised_return else "-"]],
+                   ["", "", "", ""], [40 * mm, 45 * mm, 50 * mm, 47 * mm]))
+    s.append(P("10. Football field", H2))
+    s.append(football_drawing(rep))
+
+
+def _finish(doc, s: list, rep, buf) -> bytes:
+    """Review, risks, flags, provenance and disclaimer (shared by every toolkit)."""
+    m = rep.model
+    fin = getattr(m, "financial", None) is not None
+    n = (lambda k: k - 5) if fin else (lambda k: k)  # financial reports have fewer sections before these
+    s.append(PageBreak())
     if rep.review:
-        s.append(P("18. Review desk notes", H2))
+        s.append(P(f"{n(18)}. Review desk notes", H2))
         s.append(table([[c["assumption"], c["severity"], c["challenge"], c["resolution"]]
                         for c in rep.review.get("challenges", [])], ["Assumption", "Severity", "Challenge", "Resolution"],
                        [30 * mm, 15 * mm, 75 * mm, 62 * mm]))
@@ -209,21 +287,21 @@ def build_pdf(rep) -> bytes:
             s.append(P(f"• {x}"))
         if rep.md:
             s.append(P(f"<b>MD response.</b> {clean(rep.md.view.get('bear_case_response', ''))}", BODY))
-    s.append(P("19. Main risks", H2))
+    s.append(P(f"{n(19)}. Main risks", H2))
     items = (rep.md.view.get("key_risks") if rep.md else None) or \
             [{"risk": x["title"], "quote": x["quote"]} for x in (rep.research.data.get("risk_factors", []) if rep.research else [])]
     for x in items:
         s.append(P(f"• <b>{clean(x['risk'])}</b> - \"{clean(x.get('quote', ''))}\"", BODY))
-    s.append(P("20. Flags", H2))
+    s.append(P(f"{n(20)}. Flags", H2))
     s.append(table([[f.level.upper(), f.title, f.message] for f in m.flags], ["Level", "Flag", "Detail"],
                    [18 * mm, 45 * mm, 119 * mm]))
-    s.append(P("21. Assumptions and data provenance", H2))
+    s.append(P(f"{n(21)}. Assumptions and data provenance", H2))
     s.append(table([[a["group"], a["name"], f"{a['value']:.4g}" if isinstance(a["value"], float) else str(a["value"]),
                      a["source"]] for a in m.assumptions], ["Group", "Assumption", "Value", "Source"],
                    [22 * mm, 50 * mm, 22 * mm, 88 * mm]))
     s.append(table([[x["source"], x["what"], x.get("detail") or "", x.get("fetched_at") or ""] for x in m.sources],
                    ["Source", "What", "Detail", "Fetched"], [35 * mm, 40 * mm, 72 * mm, 35 * mm]))
-    s.append(KeepTogether([P("22. Disclaimer", H2), P(DISCLAIMER, SMALL)]))
+    s.append(KeepTogether([P(f"{n(22)}. Disclaimer", H2), P(DISCLAIMER, SMALL)]))
     s.append(Spacer(1, 4))
     doc.build(s)
     return buf.getvalue()

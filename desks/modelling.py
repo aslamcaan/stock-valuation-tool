@@ -13,6 +13,8 @@ from data_desk.xbrl import fy_label
 from data_desk.history_data import price_series, week52, year_points
 from data_desk.peers import gather_peers, latest_period, metrics_from, next_fy_eps, peer_metrics
 from data_desk.valuation_inputs import build_engine_inputs, crp_from_filing_geography, one_off_adjustments
+from engine.classify import CORPORATE, toolkit_for_sic
+from engine.financials import FinancialError, FinancialValuation, FinInputs, method_label, value_financial
 from engine.sotp import Segment
 from engine.comps import CompanyMetrics, CompsResult, run_comps, select_peers
 from engine.flags import AMBER, INFO, RED, Flag, sort_flags
@@ -26,7 +28,7 @@ from engine.verdict import Bar, Verdict, blend, confidence, football_field
 class ValuationReport:
     company: CompanyData
     inputs: EngineInputs
-    valuation: Valuation
+    valuation: Valuation | None          # corporate toolkit (DCF); None for banks, insurers and REITs
     comps: CompsResult | None
     history: dict[str, HistoryResult]
     revisions: dict
@@ -40,6 +42,12 @@ class ValuationReport:
     assumptions: list[dict]
     sources: list[dict]
     notes: list[str] = field(default_factory=list)
+    financial: FinancialValuation | None = None  # bank / insurer / REIT toolkit
+
+    @property
+    def toolkit(self) -> str:
+        fin = getattr(self, "financial", None)  # reports saved before the financial toolkits have no field
+        return fin.toolkit if fin is not None else CORPORATE
 
 
 def _v(x: float | None, formula: str, unit: str = PER_SHARE) -> Value:
@@ -136,6 +144,9 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
         if sc.get("multiple") and not any(f.code == "multiple_share_classes" for f in cd.flags):
             extra_flags.append(Flag(AMBER, "multiple_share_classes", "Multiple share classes",
                                     f"{sc.get('description', '')} Quote: \"{sc.get('quote', '')[:200]}\"", None, {}))
+    toolkit, _ = toolkit_for_sic(cd.profile.sic)
+    if toolkit != CORPORATE:
+        return run_financial(cd, svc, ei, toolkit, today, notes, overrides or {}, peers, say)
     say("Classifying the company and building the forecast")
     v = value_company(ei)
     stops = [f for f in v.flags if f.is_hard_stop]
@@ -172,16 +183,7 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
     hist = history_multiples(pts, me.multiples(), current_metrics, shares, bridge, adr)
     w52 = week52(closes, today)
 
-    # --- estimate revisions (own snapshots) ---------------------------------------------------------------------
-    est = svc.market.analyst_estimates(cd.profile.ticker)
-    rows = []
-    if est.available:
-        for r in est.data:
-            rows.append({"fiscal_year_end": r.get("date", "")[:10], "revenue_avg": r.get("revenueAvg"),
-                         "eps_avg": r.get("epsAvg"), "analysts": r.get("numAnalystsRevenue"), "source": est.source})
-        svc.store.save_snapshot(cd.profile.ticker, rows, today)
-    revisions = svc.store.revisions(cd.profile.ticker, today, rows) if rows else \
-        {d: {"available": False, "reason": "no analyst consensus available"} for d in (30, 60, 90)}
+    revisions = estimate_revisions(svc, cd.profile.ticker, today)
 
     # --- verdict ----------------------------------------------------------------------------------------------------
     dcf_v = v.per_us_share(v.scenario_value)
@@ -236,6 +238,159 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
                              assumptions_table(ei, v, verdict), sources(cd, ei, price_src), notes)
     say("Modelling complete")
     return report
+
+
+def estimate_revisions(svc, ticker: str, today: date) -> dict:
+    """Consensus revisions over 30/60/90 days from the tool's own daily snapshots."""
+    est = svc.market.analyst_estimates(ticker)
+    rows = []
+    if est.available:
+        for r in est.data:
+            rows.append({"fiscal_year_end": r.get("date", "")[:10], "revenue_avg": r.get("revenueAvg"),
+                         "eps_avg": r.get("epsAvg"), "analysts": r.get("numAnalystsRevenue"), "source": est.source})
+        svc.store.save_snapshot(ticker, rows, today)
+    return svc.store.revisions(ticker, today, rows) if rows else \
+        {d: {"available": False, "reason": "no analyst consensus available"} for d in (30, 60, 90)}
+
+
+def reported_kpis_for(svc, cd: CompanyData, toolkit: str, period: str) -> tuple[dict[str, Value], list[str]]:
+    """The company's own reported KPIs (CET1, combined ratio, FFO...) read from the latest annual report's text,
+    each with its verbatim quote. Used only when that report covers the same fiscal year as the statements."""
+    from data_desk.filings import annual_report_html
+    from data_desk.fin_text import plain, reported_kpis
+    cik = cd.profile.statements_cik
+    filings = svc.edgar.filings(cik, forms={"10-K"})
+    if not filings:
+        return {}, ["no 10-K on file: reported KPIs not available"]
+    f = filings[0]
+    try:
+        raw, fetched = annual_report_html(svc, cik, f)
+    except Exception as exc:  # the metrics computed from XBRL still stand
+        return {}, [f"annual report text unavailable ({type(exc).__name__}): reported KPIs not read"]
+    fy = fy_label(date.fromisoformat(f.report_date)) if f.report_date else None
+    if fy != period:
+        return {}, [f"latest 10-K covers {fy}, statements run to {period}: reported KPIs not used"]
+    src = f"{f.form} filed {f.filing_date} ({f.accession}), annual report text"
+    out = {}
+    for k, r in reported_kpis(plain(raw), toolkit, src).items():
+        out[k] = Value(r.value, None if r.unit == RATIO else "USD", r.unit, period, "SEC EDGAR (10-K text)",
+                       fetched_at=fetched, filing=src, note=f'quote: "{r.quote}"')
+    return out, []
+
+
+def _bars(toolkit: str, fv: FinancialValuation, inputs: FinInputs) -> list[Bar]:
+    """Football field: each method re-run at cost of equity -1 / +1 point (peer multiples as computed)."""
+    from dataclasses import replace as _replace
+    alts: dict[str, list[float]] = {}
+    for d in (-0.01, 0.01):
+        try:
+            alt = value_financial(_replace(inputs, overrides={**inputs.overrides,
+                                                              "cost_of_equity": fv.cost_of_equity.value + d}))
+        except FinancialError:
+            continue
+        for k, v in alt.methods.items():
+            alts.setdefault(k, []).append(v.value)
+    bars = []
+    for k, v in fv.methods.items():
+        xs = (alts.get(k, []) if not k.startswith("comps") else []) + [v.value]
+        bars.append(Bar(method_label(k, toolkit), min(xs), max(xs), v.value,
+                        "peer median" if k.startswith("comps") else "cost of equity +/- 1 point"))
+    return bars
+
+
+def run_financial(cd: CompanyData, svc, ei: EngineInputs, toolkit: str, today: date, notes: list[str],
+                  overrides: dict, peers: list[CompanyMetrics] | None, say) -> ValuationReport:
+    """Banks, insurers and REITs: no DCF (PROMPT.md section 8)."""
+    say(f"{toolkit.capitalize()} toolkit: reading reported KPIs from the annual report")
+    h = cd.historicals_usd
+    period = h.fy_labels[-1]
+    if cd.historicals.currency == "USD":
+        reported, kpi_notes = reported_kpis_for(svc, cd, toolkit, period)
+    else:
+        reported, kpi_notes = {}, ["reported KPIs are read only from US$ annual reports"]
+    notes += kpi_notes
+    say("Selecting peers")
+    me = company_metrics(cd, svc, ei)
+    if peers is None:
+        peers, peer_notes = gather_peers(svc, cd.profile.ticker, progress=say)
+        notes += peer_notes
+    chosen, steps = select_peers(me, peers)
+    beta = ei.industry.levered_beta if overrides.get("beta_choice", "industry") == "industry" else None
+    beta = beta or ei.beta_regression
+    if beta is None:
+        raise ValuationError("Cannot value: no beta available (no industry beta and no regression beta).")
+    shares = cd.historicals.get("shares_outstanding", period) or ei.basic_shares
+    fin_in = FinInputs(toolkit, h, ei.price, shares, ei.adr_ratio, ei.risk_free, ei.erp, ei.crp, beta,
+                       reported, chosen, overrides)
+    say("Valuing on book, returns, dividends and peer multiples")
+    try:
+        fv = value_financial(fin_in)
+    except FinancialError as exc:
+        raise ValuationError(str(exc)) from exc
+    # corporate key lines (revenue, operating income...) are not the lines this toolkit values on
+    flags: list[Flag] = [f for f in cd.flags if f.code != "missing_key_line"] + list(fv.flags)
+    if len(chosen) < 5:
+        flags.append(Flag(AMBER, "few_peers", "Fewer than 5 comparable companies",
+                          f"Only {len(chosen)} usable peers after widening ({'; '.join(steps)}).", None,
+                          {"peers": len(chosen)}))
+    closes, price_src, _ = price_series(svc, cd.profile.ticker, today - timedelta(days=400))
+    w52 = week52(closes, today)
+    revisions = estimate_revisions(svc, cd.profile.ticker, today)
+    verdict = blend({k: v.value for k, v in fv.methods.items()}, ei.price.value, fv.weights)
+    pt = svc.market.price_target(cd.profile.ticker)
+    targets = pt.data if pt.available else None
+    all_flags = sort_flags(flags)
+    key = {"bank": ("cet1_ratio", "rote", "tbvps"), "insurer": ("combined_ratio", "roe", "bvps"),
+           "reit": ("ffo_per_share", "affo_per_share", "noi")}[toolkit]
+    have = [bool(fv.metric(k) and (fv.metric(k).reported is not None or fv.metric(k).value.value is not None))
+            for k in key]
+    level, reasons = confidence(verdict, estimate_dispersion=0.0,
+                                red_flags=len({f.code for f in all_flags if f.level == RED}),
+                                amber_flags=len({f.code for f in all_flags if f.level == AMBER and f.code != "few_peers"}),
+                                tv_share=None, completeness=sum(have) / len(have),
+                                peers_meet_brief_filter=len(chosen) >= 5 and len(steps) <= 3)
+    verdict.confidence, verdict.confidence_reasons = level, reasons
+    football = _bars(toolkit, fv, fin_in)
+    if targets and targets.get("low") and targets.get("high"):
+        football.append(Bar("Analyst price targets", targets["low"], targets["high"], targets.get("median"),
+                            "low to high"))
+    if w52:
+        football.append(Bar("52-week trading range", w52[0], w52[1], None))
+    trace: dict[str, Value] = {"price": ei.price, "cost_of_equity": fv.cost_of_equity, "long_run_growth": fv.growth}
+    trace.update({f"method_{k}": v for k, v in fv.methods.items()})
+    if fv.base_per_share is not None:
+        trace["book_per_share"] = fv.base_per_share
+    if verdict.fair_value is not None:
+        trace["fair_value"] = _v(verdict.fair_value, "weighted blend: " + ", ".join(
+            f"{method_label(k, toolkit)} {verdict.components[k]:,.2f} x {w:.0%}"
+            for k, w in verdict.weights_used.items()))
+        trace["gap"] = _v(verdict.gap, "fair value / price - 1", RATIO)
+    report = ValuationReport(cd, ei, None, None, {}, revisions, verdict, football, targets, w52, all_flags, me, trace,
+                             financial_assumptions(ei, fv, beta, verdict), sources(cd, ei, price_src), notes,
+                             financial=fv)
+    say("Modelling complete")
+    return report
+
+
+def financial_assumptions(ei: EngineInputs, fv: FinancialValuation, beta: Value, verdict: Verdict) -> list[dict]:
+    rows = []
+
+    def add(group, name, value, unit, source, editable=None, note=None):
+        rows.append({"group": group, "name": name, "value": value, "unit": unit, "source": source,
+                     "editable": editable, "note": note})
+
+    add("Cost of equity", "Risk-free rate", ei.risk_free.value, "%", f"{ei.risk_free.source} ({ei.risk_free.period})")
+    add("Cost of equity", "Equity risk premium", ei.erp.value, "%", f"{ei.erp.source} ({ei.erp.period})")
+    add("Cost of equity", "Beta (levered)", beta.value, "x", beta.source, "beta_choice", beta.note)
+    add("Cost of equity", "Country risk premium", ei.crp.value, "%", ei.crp.source, None, ei.crp.note)
+    add("Cost of equity", "Cost of equity", fv.cost_of_equity.value, "%",
+        fv.cost_of_equity.formula or fv.cost_of_equity.source, "cost_of_equity")
+    for a in fv.assumptions:
+        add("Valuation", a["name"], a["value"], "%" if a["unit"] == RATIO else "x", a["basis"], a.get("editable"))
+    for k, wt in verdict.weights_used.items():
+        add("Blend", f"Weight: {method_label(k, fv.toolkit)}", wt, "%",
+            "toolkit default, rescaled when a method is missing", "blend_weights")
+    return rows
 
 
 def assumptions_table(ei: EngineInputs, v: Valuation, verdict: Verdict) -> list[dict]:

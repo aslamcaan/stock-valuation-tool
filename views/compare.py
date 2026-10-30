@@ -86,8 +86,12 @@ for col, rep in zip(cols, reps):
             st.caption(f"News-adjusted fair value {money(imp.adjusted_fair_value)} (news as of "
                        f"{imp.as_of[:10]})")
         v = rep.model.valuation
-        st.caption(f"Stage: {v.classification.stage_label} · Toolkit: {v.classification.toolkit} · WACC "
-                   f"{v.wacc.wacc.value:.1%}")
+        if v is None:
+            fin = rep.model.financial
+            st.caption(f"Toolkit: {fin.toolkit} (no DCF) · cost of equity {fin.cost_of_equity.value:.1%}")
+        else:
+            st.caption(f"Stage: {v.classification.stage_label} · Toolkit: {v.classification.toolkit} · WACC "
+                       f"{v.wacc.wacc.value:.1%}")
 
 # --- key metrics and multiples ---------------------------------------------------------------------------------------
 st.markdown("### Key metrics")

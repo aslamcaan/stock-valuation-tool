@@ -159,7 +159,9 @@ def build_engine_inputs(cd: CompanyData, svc, valuation_date: date | None = None
                                else "revenue CAGR, last 5 years")
     ind_s2c = Value(s2c[name], None, "x", s_asof, src, tag="capex", fetched_at=sc.fetched_at_iso,
                     note="sales / invested capital") if name in s2c else None
-    industry = IndustryData(name, ind["how"], unlev, ind_margin, ind_growth, ind_s2c)
+    lev = Value(b["beta"], None, RATIO, b_asof, src, tag="betas", fetched_at=bc.fetched_at_iso,
+                note=f"levered industry beta, {b['firms']} firms; industry {ind['how']}") if b else None
+    industry = IndustryData(name, ind["how"], unlev, ind_margin, ind_growth, ind_s2c, lev)
 
     domicile = ind.get("country") or ("United States" if not p.foreign_filer else None)
     crp = country_risk_premium(svc, p.ticker, domicile, ind.get("broad_group"))

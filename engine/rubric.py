@@ -109,3 +109,27 @@ def apply_notch(rating: str, notch: int) -> str:
 def conflicts_with_verdict(rating: str, verdict: str | None) -> bool:
     return (rating in ("Buy", "Strong Buy") and verdict == "Overvalued") or \
            (rating in ("Sell", "Strong Sell") and verdict == "Undervalued")
+
+
+def score_financial_quality(normalised_return: float | None, coe: float | None, label: str) -> Score:
+    """Banks and insurers: normalised return on (tangible) equity against the cost of equity."""
+    if normalised_return is None or coe is None:
+        return Score("business_quality", 3, "insufficient data: neutral score", "code")
+    spread = normalised_return - coe
+    return Score("business_quality", _band(spread, [-0.06, -0.02, 0.02, 0.06]),
+                 f"normalised {label} {normalised_return:.1%} vs cost of equity {coe:.1%} "
+                 f"({spread * 100:+.1f} points)", "code")
+
+
+def score_financial_strength_sector(toolkit: str, cet1: float | None = None, combined_ratio: float | None = None,
+                                    debt_to_ebitda: float | None = None) -> Score:
+    """Banks: CET1 ratio. Insurers: combined ratio (underwriting profit funds capital). REITs: debt / EBITDA."""
+    if toolkit == "bank" and cet1 is not None:
+        return Score("financial_strength", _band(cet1, [0.08, 0.10, 0.115, 0.13]), f"CET1 ratio {cet1:.1%}", "code")
+    if toolkit == "insurer" and combined_ratio is not None:
+        return Score("financial_strength", 6 - _band(combined_ratio, [0.90, 0.95, 1.00, 1.05]),
+                     f"combined ratio {combined_ratio:.1%}", "code")
+    if toolkit == "reit" and debt_to_ebitda is not None:
+        return Score("financial_strength", 6 - _band(debt_to_ebitda, [4.0, 5.5, 7.0, 8.5]),
+                     f"debt / EBITDA {debt_to_ebitda:.1f}x", "code")
+    return Score("financial_strength", 3, "capital measure unavailable: neutral score", "code")

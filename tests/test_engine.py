@@ -283,7 +283,7 @@ def test_a_model_hard_stop_refuses_to_value(monkeypatch):
     monkeypatch.setattr(m, "value_company", lambda ei: SimpleNamespace(flags=[
         Flag(HARD_STOP, "dcf_invalid", "DCF cannot be computed", "terminal growth 9.0% >= WACC 8.5%", None, {})]))
     with pytest.raises(ValuationError, match="terminal growth 9.0% >= WACC 8.5%"):
-        m.run_modelling(SimpleNamespace(flags=[]), None)
+        m.run_modelling(SimpleNamespace(flags=[], profile=SimpleNamespace(sic="3571")), None)
 
 
 def test_a_margin_at_a_five_year_record_is_above_the_90th_percentile():

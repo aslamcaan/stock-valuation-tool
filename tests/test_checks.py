@@ -35,6 +35,7 @@ def test_market_cap_hard_stop_and_approximate():
     assert checks.market_cap(1000, 1040, "FMP", "")[0].level == HARD_STOP
     assert checks.market_cap(1000, 1040, "FMP", "", point_in_time_shares=False)[0].level == AMBER
     assert checks.market_cap(None, 1040, "FMP", "no price")[0].code == "mcap_unchecked"
+    assert checks.market_cap(1000, 1040, "Finnhub", "")[0].code == "mcap_mismatch_secondary"
 
 
 def test_cash_flow_tie():

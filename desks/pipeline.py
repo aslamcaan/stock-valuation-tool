@@ -211,7 +211,8 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
         rep.model = model
         rep.forensic = _forensic(cd, model)
         vd = model.verdict
-        p("Modelling desk", DONE, f"{model.valuation.classification.stage_label}; fair value "
+        what = model.valuation.classification.stage_label if model.valuation else f"{model.toolkit} toolkit"
+        p("Modelling desk", DONE, f"{what}; fair value "
                                   f"{'n/a' if vd.fair_value is None else f'${vd.fair_value:,.2f}'} → {vd.verdict}")
         if not use_ai:
             for d in ("Review desk", "Impact analyst", "MD"):
@@ -235,8 +236,8 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
                 review, log, review_failed = {}, [], f"{type(exc).__name__}: {exc}"
             rep.guard_log += log
             sr = review.get("stage_review", {})
-            if not sr.get("agree", True) and sr.get("suggested_stage") in STAGES and \
-                    sr["suggested_stage"] != model.valuation.classification.stage and "stage" not in rep.overrides:
+            if model.valuation is not None and not sr.get("agree", True) and sr.get("suggested_stage") in STAGES \
+                    and sr["suggested_stage"] != model.valuation.classification.stage and "stage" not in rep.overrides:
                 rep.overrides.update(stage=sr["suggested_stage"], stage_reason=f"Review desk: {sr.get('reason', '')}")
                 p("Review desk", RUNNING, f"Stage overridden to {sr['suggested_stage']}: re-running the model…")
                 try:
@@ -449,7 +450,8 @@ def log_to_track_record(rep: FullReport, store) -> None:
         "fair_value": rep.model.verdict.fair_value, "verdict": rep.model.verdict.verdict,
         "rating": rep.md.rating if rep.md else None, "conviction": rep.md.conviction if rep.md else None,
         "confidence": rep.model.verdict.confidence,
-        "toolkit": rep.model.valuation.classification.toolkit, "stage": rep.model.valuation.classification.stage,
+        "toolkit": rep.model.toolkit,
+        "stage": rep.model.valuation.classification.stage if rep.model.valuation else None,
         "sector_etf": sector_etf(rep.company.profile.sic)})
 
 

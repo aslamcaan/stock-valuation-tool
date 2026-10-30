@@ -76,14 +76,21 @@ def verdict_card(rep) -> None:
     if vd.confidence == "Low":
         st.warning("Low confidence: " + "; ".join(vd.confidence_reasons))
     c1, c2, c3 = st.columns(3)
-    if len(v.scenarios) == 3:
+    fin = getattr(m, "financial", None)
+    if fin is not None:
+        c1.markdown(f"**Cost of equity:** {pct(fin.cost_of_equity.value)} · **Long-run growth:** "
+                    f"{pct(fin.growth.value)}")
+    elif len(v.scenarios) == 3:
         b, base, bu = (v.per_us_share(s.value_per_share) for s in v.scenarios)
         c1.markdown(f"**Bear / base / bull (DCF):** {money(b)} / {money(base)} / {money(bu)}")
     t = m.analyst_targets
     c2.markdown(f"**Analyst target:** {money(t.get('median') or t.get('consensus'))} "
                 f"(range {money(t.get('low'))}–{money(t.get('high'))})" if t else
                 "**Analyst target:** not available (FMP free plan)")
-    c3.markdown(f"**Stage:** {v.classification.stage_label} · **Toolkit:** {v.classification.toolkit}")
+    if fin is not None:
+        c3.markdown(f"**Toolkit:** {fin.toolkit} (no DCF; see section 6)")
+    else:
+        c3.markdown(f"**Stage:** {v.classification.stage_label} · **Toolkit:** {v.classification.toolkit}")
     if rep.md and rep.md.view.get("reasoning_lines"):
         for line in rep.md.view["reasoning_lines"][:4]:
             st.markdown(f"- {line}")
@@ -158,6 +165,11 @@ def historicals(rep) -> None:
     h = rep.company.historicals
     st.caption(f"{h.currency} millions (hover any number for its filing, XBRL tag and fetch time). "
                f"Reports under {h.taxonomy}.")
+    fin = getattr(rep.model, "financial", None) if rep.model else None
+    if fin is not None:
+        from ui.financial import FS_LINES
+        st.markdown(f"**Key lines ({fin.toolkit})**")
+        html(statement_table(h, FS_LINES[fin.toolkit]))
     for title, lines in (("Income statement", IS_LINES), ("Balance sheet", BS_LINES), ("Cash flow", CF_LINES)):
         st.markdown(f"**{title}**")
         html(statement_table(h, lines))
@@ -425,7 +437,7 @@ def risks(rep) -> None:
     for x in items:
         st.markdown(f"- **{x['risk']}** — “{x.get('quote', '')}”")
     v = rep.model.valuation
-    s1 = v.sensitivity_wacc_growth
+    s1 = v.sensitivity_wacc_growth if v is not None else None
     if s1 and v.dcf:
         st.markdown(f"**What would change the verdict (quantified):** a WACC 1 point higher takes the DCF to "
                     f"{money(v.per_us_share(s1['value_per_share'][2][4]))}; 1 point lower to "
@@ -482,6 +494,21 @@ SECTIONS = [
     ("18. Review desk notes", review_notes), ("19. Main risks", risks), ("20. Flags", flags),
     ("21. Assumptions table and data provenance", provenance),
 ]
+
+
+def financial_sections() -> list:
+    """Banks, insurers, REITs: the same report with the analysis and valuation sections changed (no DCF)."""
+    from ui.financial import SECTIONS_FIN
+    shared = dict(SECTIONS)
+    out = [s for s in SECTIONS if s[0].startswith(("1.", "2.", "3."))] + SECTIONS_FIN[:4]
+    out.append(("8. Estimate revisions", shared["8. Estimate revisions"]))
+    out.append(SECTIONS_FIN[4])
+    n = 10
+    for title in ("15. Football field", "16. News and impact analysis", "17. Ownership and insider activity",
+                  "18. Review desk notes", "19. Main risks", "20. Flags", "21. Assumptions table and data provenance"):
+        out.append((f"{n}. {title.split('. ', 1)[1]}", shared[title]))
+        n += 1
+    return out
 
 
 def md_text(x: str) -> str:
@@ -695,13 +722,14 @@ def render_report(rep) -> None:
     if rep.stopped:
         st.warning(rep.stopped)
     verdict_card(rep)
-    for title, fn in SECTIONS:
-        with st.expander(title, expanded=title.startswith(("1.", "15."))):
+    fin = getattr(rep.model, "financial", None)
+    for title, fn in (financial_sections() if fin is not None else SECTIONS):
+        with st.expander(title, expanded=title.startswith(("1.", "15.")) or (fin is not None and "Football" in title)):
             try:
                 fn(rep)
             except Exception as exc:  # one broken section must not hide the rest of the report
                 st.error(f"This section could not be displayed: {type(exc).__name__}: {exc}")
-    st.markdown("### 22. Disclaimer")
+    st.markdown(f"### {17 if fin is not None else 22}. Disclaimer")
     st.caption(DISCLAIMER)
 
 

@@ -51,11 +51,18 @@ class RateLimiter:
             time.sleep(delay)
 
 
+COOLDOWN_SECONDS = 600  # after a source exhausts its retries on HTTP 429 (e.g. a daily quota), fail fast for a while
+_cooldown: dict[str, float] = {}
+
+
 def get(source: str, url: str, *, params: dict | None = None, headers: dict | None = None,
         limiter: RateLimiter | None = None, timeout: float = 30, retries: int = 3,
         session: requests.Session | None = None) -> requests.Response:
     sess = session or requests
     last_err: Exception | None = None
+    until = _cooldown.get(source)
+    if until is not None and time.monotonic() < until:
+        raise DataSourceError(source, f"rate limited (HTTP 429); not retried for {until - time.monotonic():.0f}s", 429)
     for attempt in range(retries):
         if limiter:
             limiter.wait()
@@ -76,4 +83,6 @@ def get(source: str, url: str, *, params: dict | None = None, headers: dict | No
                                   resp.status_code)
         return resp
     assert last_err is not None
+    if getattr(last_err, "status", None) == 429:
+        _cooldown[source] = time.monotonic() + COOLDOWN_SECONDS
     raise last_err

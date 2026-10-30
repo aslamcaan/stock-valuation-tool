@@ -38,6 +38,7 @@ class IndustryData:
     operating_margin: Value | None
     revenue_growth: Value | None
     sales_to_capital: Value | None
+    levered_beta: Value | None = None   # financial toolkits (cost of equity on a levered industry beta)
 
 
 @dataclass

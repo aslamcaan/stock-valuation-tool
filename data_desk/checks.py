@@ -109,6 +109,12 @@ def market_cap(computed: float | None, provider: float | None, provider_name: st
         return [Flag(AMBER, "mcap_unchecked", "Market cap could not be cross-checked",
                      f"Market cap check skipped: {detail}", None, {"computed": computed, "provider": provider})]
     d = rel_diff(computed, provider)
+    if d > MCAP_TOLERANCE and not provider_name.upper().startswith("FMP"):
+        # the brief's hard stop is against FMP; a secondary provider's market cap often uses a stale share count
+        return [Flag(AMBER, "mcap_mismatch_secondary", "Market cap differs from a secondary provider",
+                     f"Computed market cap {_fmt(computed)}m vs {provider_name} {_fmt(provider)}m ({d:.1%} apart). "
+                     f"FMP was unavailable, and {provider_name}'s figure can lag the share count, so this is not a "
+                     f"hard stop. {detail}", None, {"computed": computed, "provider": provider, "diff": d})]
     if d > MCAP_TOLERANCE and not point_in_time_shares:
         return [Flag(AMBER, "mcap_mismatch_approx", "Market cap check is approximate",
                      f"Computed market cap {_fmt(computed)}m vs {provider_name} {_fmt(provider)}m ({d:.1%} apart). "

@@ -149,6 +149,9 @@ def dcf_block(sh: Sheet, top: int, n: int, I: dict, title: str, g_shift: str = "
 def build_workbook(rep) -> Workbook:
     """`rep` is a desks.pipeline.FullReport (or any object with .model / .company / .md / .ticker)."""
     m = rep.model
+    if getattr(m, "financial", None) is not None:  # bank / insurer / REIT toolkit
+        from exports.excel_fin import build_financial_workbook
+        return build_financial_workbook(rep)
     v, ei = m.valuation, m.inputs
     d = v.dcf_inputs
     if d is None or v.dcf is None:

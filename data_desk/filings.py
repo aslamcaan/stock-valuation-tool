@@ -118,11 +118,33 @@ def extract_sections(raw_html: str, form: str) -> dict[str, str]:
     return out
 
 
+EX13 = re.compile(r"ex-?13|exhibit-?13|annualreport", re.IGNORECASE)
+
+
+def annual_report_html(svc, cik: int, f) -> tuple[str, str]:
+    """(html, fetched_at) of the annual report: the primary document plus any part filed beside it. Some banks
+    split the 10-K (e.g. usb-20251231.htm and usb-20251231_d2.htm) or file the financial review as Exhibit 13."""
+    doc = svc.edgar.document(cik, f)
+    parts = [doc.payload]
+    try:
+        stem = re.sub(r"(_d\d+)?\.htm$", "", f.primary_document)
+        acc = f.accession.replace("-", "")
+        for x in svc.edgar.filing_documents(cik, f):
+            name = x.get("name", "")
+            if name == f.primary_document or not name.endswith(".htm"):
+                continue
+            if re.fullmatch(re.escape(stem) + r"(_d\d+)?\.htm", name) or EX13.search(name):
+                url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}/{name}"
+                parts.append(svc.edgar.raw_xml(url).payload)
+    except Exception:  # the primary document alone is still usable
+        pass
+    return "\n".join(parts), doc.fetched_at_iso
+
+
 def latest_annual_report(svc, cik: int) -> FilingText | None:
     filings = svc.edgar.filings(cik, forms={"10-K", "20-F", "40-F"})
     if not filings:
         return None
     f = filings[0]
-    doc = svc.edgar.document(cik, f)
-    return FilingText(f.form, f.filing_date, f.report_date, f.url(cik), extract_sections(doc.payload, f.form),
-                      doc.fetched_at_iso)
+    html_text, fetched = annual_report_html(svc, cik, f)
+    return FilingText(f.form, f.filing_date, f.report_date, f.url(cik), extract_sections(html_text, f.form), fetched)

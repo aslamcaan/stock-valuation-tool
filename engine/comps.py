@@ -58,6 +58,12 @@ class CompanyMetrics:
     earnings_flagged: bool = False  # net income distorted in the latest fiscal year (even if not in the LTM)
     benchmarks: dict[str, float | None] = field(default_factory=dict)
     source: str = ""
+    # financial-sector toolkits (US$ millions, latest fiscal year)
+    common_equity: float | None = None
+    tangible_equity: float | None = None
+    net_income_common: float | None = None
+    ffo: float | None = None
+    noi: float | None = None
 
     @property
     def ev(self) -> float | None:

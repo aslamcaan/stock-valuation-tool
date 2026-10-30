@@ -34,6 +34,10 @@ valuation (all numbers come from code) and the research desk's filing extracts. 
    "not_applicable".
 4. Write the strongest possible bear case, and the strongest possible bull case, each as a thesis plus 3-5 points.
 5. Explain each amber or red flag in plain English: what it means for this company.
+For a bank, insurer or REIT (the results have a "toolkit" instead of a "stage"): there is no DCF and no lifecycle
+stage, so set stage_review to agree with suggested_stage "none", and challenge the toolkit's assumptions instead
+(normalised return, cost of equity, long-run growth, cap rate, peer set, reported vs computed metrics, credit or
+underwriting quality, capital).
 Rules: never calculate. Only use numbers that appear in the computed results (rounded as shown) or verbatim in the
 filing quotes. Write in UK English, concise, specific to this company."""
 

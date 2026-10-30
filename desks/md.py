@@ -8,7 +8,8 @@ from desks.ai import SONNET, AIClient
 from desks.guarded import DATE_OK, guarded_call
 from desks.research import _arr, _obj
 from engine.rubric import (AI_CRITERIA, LABELS, Score, apply_notch, conflicts_with_verdict, rating_from,
-                           score_business_quality, score_financial_strength, score_revisions, score_valuation_gap)
+                           score_business_quality, score_financial_quality, score_financial_strength,
+                           score_financial_strength_sector, score_revisions, score_valuation_gap)
 
 _S = {"type": "string"}
 
@@ -65,6 +66,20 @@ class MDResult:
 MAX_TOKENS = 6000  # the sign-off is about 2,200 tokens; the cap sets the worst-case cost reservation
 
 def code_scores(report) -> list[Score]:
+    fv = getattr(report, "financial", None)
+    if fv is not None:  # banks, insurers, REITs
+        def m(key):
+            x = fv.metric(key)
+            if x is None:
+                return None
+            return x.reported.value if x.reported is not None else x.value.value
+        label = {"bank": "ROTE", "insurer": "ROE"}.get(fv.toolkit, "return")
+        quality = score_financial_quality(fv.normalised_return.value if fv.normalised_return else None,
+                                          fv.cost_of_equity.value, label) if fv.toolkit != "reit" else             Score("business_quality", 3, "REIT: judged by the MD on portfolio quality; neutral code score", "code")
+        return [score_valuation_gap(report.verdict.gap), quality,
+                score_financial_strength_sector(fv.toolkit, cet1=m("cet1_ratio"), combined_ratio=m("combined_ratio"),
+                                                debt_to_ebitda=m("debt_to_ebitda")),
+                score_revisions(report.revisions)]
     cd, v, vd = report.company, report.valuation, report.verdict
     h = cd.historicals_usd
     p = h.ltm.label if h.ltm else h.fy_labels[-1]

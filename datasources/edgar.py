@@ -118,6 +118,12 @@ class EdgarClient:
             "filings", cache_key(url),
             lambda: get(SOURCE, url, headers=self._headers(), limiter=_LIMITER, timeout=60).text)
 
+    def filing_documents(self, cik: int, filing: Filing) -> list[dict]:
+        """The filing's files (name, size) from its index, cached 30 days."""
+        acc = filing.accession.replace("-", "")
+        url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}/index.json"
+        return self._json("filings", url).payload.get("directory", {}).get("item", [])
+
     def document(self, cik: int, filing: Filing) -> Cached:
         """Raw text/HTML of a filing's primary document (cached 30 days)."""
         url = filing.url(cik)

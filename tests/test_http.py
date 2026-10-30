@@ -35,3 +35,26 @@ def test_rate_limiter_spacing():
     for _ in range(5):
         rl.wait()
     assert time.monotonic() - t0 >= 4 / 20 - 0.01
+
+
+def test_a_source_that_keeps_returning_429_fails_fast_afterwards(monkeypatch):
+    import time as _t
+    import core.http as h
+    calls = []
+
+    class R:
+        status_code, url, text = 429, "https://x/y", ""
+
+    class S:
+        def get(self, *a, **k):
+            calls.append(1)
+            return R()
+    monkeypatch.setattr(h.time, "sleep", lambda s: None)
+    h._cooldown.pop("TEST", None)
+    for _ in range(2):
+        try:
+            h.get("TEST", "https://x/y", session=S())
+        except h.DataSourceError as e:
+            assert e.status == 429
+    assert len(calls) == 3  # the second request did not reach the network
+    h._cooldown.pop("TEST", None)

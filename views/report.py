@@ -144,16 +144,28 @@ def edit_form_financial(rep) -> None:
         coe = c1.number_input("Cost of equity (%)", value=round(fv.cost_of_equity.value * 100, 2))
         g = c1.number_input("Long-run growth (%)", value=round(fv.growth.value * 100, 2))
         normal = c2.number_input("Normalised return on equity (%)", value=round(fv.normalised_return.value * 100, 2))             if fv.normalised_return is not None else None
-        cap = c2.number_input("Cap rate (%)", value=round(fv.detail["nav"]["cap_rate"] * 100, 2))             if "nav" in fv.detail else None
+        cap0 = fv.detail["nav"]["cap_rate"] * 100 if "nav" in fv.detail else None
+        cap = c2.number_input("Cap rate (%)" + ("" if cap0 is not None else " (no peer cap rate: enter one to add NAV)"),
+                              value=round(cap0, 2) if cap0 is not None else 0.0) if fv.toolkit == "reit" else None
         weights = {k: c3.number_input(f"Weight: {method_label(k, fv.toolkit)} (%)", value=round(w * 100, 1))
                    for k, w in fv.weights.items()}
         if st.form_submit_button("Recalculate"):
-            ov = {**rep.overrides, "cost_of_equity": coe / 100, "long_run_growth": g / 100,
-                  "blend_weights": {k: w / 100 for k, w in weights.items()}}
-            if normal is not None:
+            # only what the user changed becomes an override, so derived inputs (growth from return x retention)
+            # keep following the others
+            ov = dict(rep.overrides)
+
+            def changed(new, old):
+                return new is not None and old is not None and abs(new - round(old * 100, 2)) > 1e-9
+            if changed(coe, fv.cost_of_equity.value):
+                ov["cost_of_equity"] = coe / 100
+            if changed(g, fv.growth.value):
+                ov["long_run_growth"] = g / 100
+            if fv.normalised_return is not None and changed(normal, fv.normalised_return.value):
                 ov["normalised_return"] = normal / 100
-            if cap is not None:
+            if cap is not None and (changed(cap, cap0 / 100) if cap0 is not None else cap > 0):
                 ov["cap_rate"] = cap / 100
+            if any(abs(w - round(fv.weights[k] * 100, 1)) > 1e-9 for k, w in weights.items()):
+                ov["blend_weights"] = {k: w / 100 for k, w in weights.items()}
             try:
                 with st.spinner("Recalculating…"):
                     edited = copy.copy(rep)

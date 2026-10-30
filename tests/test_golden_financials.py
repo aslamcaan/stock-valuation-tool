@@ -41,3 +41,11 @@ def test_requirements_and_toc_entries_are_not_read_as_values():
          "Book value per common share $ 140.44 Tangible book value per common share (non-GAAP) (a) $ 112.51")
     assert find(t, SPECS["bank"]["cet1_ratio"]) is None
     assert find(t, SPECS["bank"]["tbvps"], lambda v: v <= 140.44)[0] == 112.51
+
+
+def test_numbers_are_read_whole_and_amounts_and_years_are_rejected():
+    from data_desk.fin_text import SPECS, find
+    assert find("Book value per share 1234.56", SPECS["insurer"]["bvps"]) in (None, (1234.56, "Book value per share 1234.56"))
+    assert find("Tangible book value per share (a) 2024 95.11", SPECS["bank"]["tbvps"])[0] == 95.11
+    assert find("CET1 capital ratio 25.1 billion", SPECS["bank"]["cet1_ratio"]) is None
+    assert find("CET1 capital ratio 1,234 was", SPECS["bank"]["cet1_ratio"]) is None

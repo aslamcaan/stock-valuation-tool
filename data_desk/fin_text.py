@@ -13,12 +13,15 @@ from dataclasses import dataclass
 
 from engine.values import PER_SHARE, RATIO
 
-NUM = r"(?P<num>\(?\d{1,3}(?:,\d{3})*(?:\.\d+)?\)?)"
+# whole numbers only: never stop inside "1234.56" or "1,234" (the lookahead rejects a following digit or decimal)
+NUM = r"(?P<num>\(?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\)?)(?![\d]|[.,]\d)"
 # between a label and its figure: footnote markers "(a)", quoted abbreviations ("ROTCE"), an approach qualifier,
 # a currency sign, or a short linking verb in a sentence ("was", "of")
 GAP = (r"(?P<gap>(?:\s*\((?:[a-z0-9]{1,2}|non-GAAP|\"[^\"]{1,40}\")\))*"
        r"(?:\s*[-,]\s*(?:Standardized|Advanced|transitional|fully phased-in)(?: approach)?(?:\s*\([a-z]{1,2}\))*)?"
-       r"(?:\s+(?:was|of|at|is|for 20\d{2} (?:was|of)))?\s*:?\s*(?:US)?\$?\s*)")  # not "were": lists mix figures
+       r"(?:\s+(?:was|of|at|is|for 20\d{2} (?:was|of)))?\s*:?"
+       r"(?:\s*(?:19|20)\d{2}(?=\s))?"  # a column-header year before the figure
+       r"\s*(?:US)?\$?\s*)")  # not "were": lists mix figures
 EXCLUDE_BEFORE = re.compile(r"(reconciliation of|table \d+:|minimum|required|requirement|requirements|target|"
                             r"guidance|well-capitalized|"
                             r"buffer|excluding|ex-|underlying|adjusted for|effect of|impact of|change in)[^.]{0,40}$",
@@ -38,7 +41,7 @@ class Spec:
 SPECS: dict[str, dict[str, Spec]] = {
     "bank": {
         "cet1_ratio": Spec("CET1 ratio", RATIO, (r"CET1 capital ratio", r"Common equity tier 1 \(?(?:\"?CET1\"?\)? )?"
-                                                 r"(?:capital )?ratio", r"CET1 ratio", r"CET1 capital"), 0.03, 0.35),
+                                                 r"(?:capital )?ratio", r"CET1 ratio"), 0.03, 0.35),
         "tier1_leverage_ratio": Spec("Tier 1 leverage ratio", RATIO, (r"Tier 1 leverage ratio", r"Tier 1 leverage"),
                                      0.02, 0.25),
         "slr": Spec("Supplementary leverage ratio", RATIO, (r"Supplementary leverage ratio(?: \(\"SLR\"\))?", r"SLR"),
@@ -114,8 +117,6 @@ def find(text: str, spec: Spec, ok=lambda v: True) -> tuple[float, str] | None:
         for m in re.finditer(f"(?:{pat}){GAP}{NUM}(?P<pct>\\s*%)?", text, re.IGNORECASE):
             if EXCLUDE_BEFORE.search(text[max(0, m.start() - 60):m.start()]):
                 continue
-            if spec.excluded_after and re.match(spec.excluded_after, text[m.start() + len(pat):][:20], re.I):
-                continue
             label_end = m.start("gap")
             if spec.excluded_after and re.match(spec.excluded_after, text[label_end:label_end + 20], re.I):
                 continue
@@ -123,6 +124,10 @@ def find(text: str, spec: Spec, ok=lambda v: True) -> tuple[float, str] | None:
                 continue
             if spec.unit == RATIO and "$" in m.group("gap"):
                 continue
+            if re.match(r"\s*(?:billion|million|thousand|bn|m)\b", text[m.end():m.end() + 12], re.I):
+                continue  # an amount, not a ratio or per-share figure
+            if spec.unit == PER_SHARE and re.fullmatch(r"(?:19|20)\d{2}", m.group("num")):
+                continue  # a column year, not a value
             v = _value(m.group("num"), spec.unit, bool(m.group("pct")))
             if spec.lo <= v <= spec.hi and ok(v):
                 return v, text[m.start():m.end() + 40].strip()

@@ -362,7 +362,7 @@ def _growth(now: Value, before: Value, p: str) -> Value:
 
 # --- valuation methods ---------------------------------------------------------------------------------------------
 def cost_of_equity(i: FinInputs) -> Value:
-    if i.overrides.get("cost_of_equity"):
+    if i.overrides.get("cost_of_equity") is not None:
         return Value(float(i.overrides["cost_of_equity"]), None, RATIO, "current", "user override")
     return calc(lambda rf, b, erp, crp: rf + b * erp + crp, "risk-free + levered beta x equity risk premium + "
                 "country risk premium", "current", RATIO, None, risk_free=i.risk_free, beta=i.beta, erp=i.erp,
@@ -483,6 +483,9 @@ def value_financial(i: FinInputs) -> FinancialValuation:
         base_line = "tbvps" if tk == BANK else "bvps"
         mt = next(m for m in metrics if m.key == base_line)
         base = mt.reported if mt.reported is not None else mt.value
+        if base.value is None or base.value <= 0:
+            raise FinancialError(f"Cannot value: {mt.label.lower()} is unavailable or not positive (book-based "
+                                 "methods need positive book value).")
         if mt.reported is not None and mt.value.value and abs(mt.reported.value / mt.value.value - 1) > 0.05:
             flags.append(Flag(AMBER, "book_vs_reported", f"{mt.label}: computed differs from reported",
                               f"Computed {mt.value.value:.2f} vs reported {mt.reported.value:.2f} per share; the "
@@ -556,7 +559,7 @@ def value_financial(i: FinInputs) -> FinancialValuation:
         noi = next(m for m in metrics if m.key == "noi").value
         m_cap, used_cap = peer_multiple(i.peers, lambda c: _pos(c.noi, c.ev))
         cap_rate = None
-        if i.overrides.get("cap_rate"):
+        if i.overrides.get("cap_rate") is not None:
             cap_rate = Value(float(i.overrides["cap_rate"]), None, RATIO, "current", "user override")
         elif m_cap is not None:
             cap_rate = Value(m_cap, None, RATIO, "current", "calculated",
@@ -573,7 +576,8 @@ def value_financial(i: FinInputs) -> FinancialValuation:
             if nav.value is not None and nav.value > 0:
                 methods["nav"] = nav
             detail["nav"] = {"noi": noi.value, "cap_rate": cap_rate.value, "net_debt": net_debt.value,
-                             "gross_asset_value": noi.value / cap_rate.value}
+                             "gross_asset_value": noi.value / cap_rate.value, "shares": shares.value,
+                             "cap_rate_overridden": cap_rate.source == "user override", "value": nav.value}
             assumptions.append({"name": "Cap rate", "value": cap_rate.value, "unit": RATIO,
                                 "basis": cap_rate.formula or cap_rate.source, "editable": "cap_rate"})
         f_ps = next(m for m in metrics if m.key == "ffo_per_share")

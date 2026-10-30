@@ -8,7 +8,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 
 from engine.classify import BANK, INSURER, REIT
-from engine.financials import DDM_YEARS, EXCESS_KEPT, FADE_TO_NORMAL, RI_YEARS, method_label
+from engine.financials import DDM_YEARS, EXCESS_KEPT, FADE_TO_NORMAL, RI_YEARS, method_label, ni_common
 from engine.values import PER_SHARE, RATIO
 from exports.excel import BLACK, BLUE, GREEN, MULT, NUM, PCT, PCT2, PS, RED, YELLOW, Sheet, col
 
@@ -19,9 +19,19 @@ METRIC_LINES = {
            "shares_outstanding"],
     INSURER: ["premiums_earned", "losses_incurred", "net_investment_income", "net_income_common", "total_assets",
               "parent_equity", "preferred_equity", "shares_outstanding"],
-    REIT: ["net_income_common", "d_and_a", "real_estate_impairment", "real_estate_gains", "operating_income",
-           "total_debt", "cash_and_investments", "minority_interest", "preferred_equity", "shares_diluted_weighted",
-           "shares_outstanding", "dps_declared"],
+    REIT: ["net_income_common", "net_income", "interest_expense", "income_tax", "d_and_a", "real_estate_impairment",
+           "real_estate_gains", "total_debt", "cash_and_investments", "minority_interest", "preferred_equity",
+           "shares_diluted_weighted", "shares_outstanding", "dps_declared"],
+}
+# rows whose value is the engine's resolved input (with its fallback), not the raw tag
+RESOLVED = {
+    "net_income_common": ("Net income to common (tag, else NI attributable - preferred dividends)",
+                          lambda h, y: ni_common(h, y).value),
+    "net_income": ("Net income (incl. minorities; else attributable)",
+                   lambda h, y: h.v("net_income", y) if h.v("net_income", y) is not None
+                   else h.v("net_income_attributable", y)),
+    "shares_diluted_weighted": ("Weighted diluted shares (else basic)",
+                                lambda h, y: h.v("shares_diluted_weighted", y) or h.v("shares_basic_weighted", y)),
 }
 
 
@@ -82,7 +92,8 @@ def build_financial_workbook(rep) -> Workbook:
     if "residual_income" in d:
         ri = d["residual_income"]
         add("Latest return on equity", ri["latest_return"], PCT2, f"{p}, computed from XBRL", key="latest")
-        add("Retention (1 - dividend payout)", ri["retention"], PCT, "dividends per share / EPS", True, key="ret")
+        add("Retention (1 - total payout)", ri["retention"], PCT,
+            "(dividends + buybacks) / net income, 3-year average", True, key="ret")
         add("Excess return kept by year 10", EXCESS_KEPT, PCT, "competition erodes excess returns", True, key="kept")
     if "ddm" in d:
         add("Last dividend per share", d["ddm"]["dps0"], PS, f"{p} XBRL (dividends declared)", key="dps0")
@@ -105,10 +116,11 @@ def build_financial_workbook(rep) -> Workbook:
     L: dict = {}
     for i, line in enumerate(METRIC_LINES[tk]):
         r_ = 5 + i
-        mt.label(f"A{r_}", line.replace("_", " ").capitalize())
+        label, get = RESOLVED.get(line, (line.replace("_", " ").capitalize(), lambda h_, y_, ln=line: h_.v(ln, y_)))
+        mt.label(f"A{r_}", label)
         for j, y in enumerate(years):
-            v = h.get(line, y)
-            mt.input(f"{col(2 + j)}{r_}", v.value if v is not None and v.value is not None else 0, NUM)
+            v = get(h, y)
+            mt.input(f"{col(2 + j)}{r_}", v if v is not None else 0, NUM)
         L[line] = r_
     r0 = 6 + len(METRIC_LINES[tk])
     mt.head(f"A{r0}", "Metric")
@@ -142,7 +154,8 @@ def build_financial_workbook(rep) -> Workbook:
                            f"-{B}{L['real_estate_gains']}",
                     "ffo_per_share": f"({B}{L['net_income_common']}+{B}{L['d_and_a']}+{B}{L['real_estate_impairment']}"
                                      f"-{B}{L['real_estate_gains']})/{B}{L['shares_diluted_weighted']}",
-                    "noi": f"{B}{L['operating_income']}+{B}{L['d_and_a']}+{B}{L['real_estate_impairment']}"}
+                    "noi": f"{B}{L['net_income']}+{B}{L['interest_expense']}+{B}{L['income_tax']}+{B}{L['d_and_a']}"
+                           f"+{B}{L['real_estate_impairment']}-{B}{L['real_estate_gains']}"}
     k = r0 + 1
     for metric in fv.metrics:
         mt.label(f"A{k}", metric.label)
@@ -276,13 +289,12 @@ def build_financial_workbook(rep) -> Workbook:
     if "nav" in d:
         n = d["nav"]
         ns = Sheet(wb, "NAV", "US$ millions", "NOI proxy / cap rate - net debt, per share.")
-        cap = I.get("cap_rate") or None
-        rows_ = [("NOI proxy (operating income + D&A + impairments)", n["noi"], NUM, False),
+        cap = None if n.get("cap_rate_overridden") else I.get("cap_rate")  # an edited cap rate is an input
+        rows_ = [("NOI proxy (EBITDAre: NI + interest + tax + D&A + impairments - gains)", n["noi"], NUM, False),
                  ("Cap rate", cap if cap else n["cap_rate"], PCT2, bool(cap)),
                  ("Gross asset value", "B5/B6", NUM, True), ("Net debt (debt - cash + minorities + preferred)",
                                                             n["net_debt"], NUM, False),
-                 ("Net asset value", "B7-B8", NUM, True), ("Shares outstanding (m)", fv.methods["nav"].inputs[3].value
-                                                           if len(fv.methods["nav"].inputs) > 3 else None, NUM, False),
+                 ("Net asset value", "B7-B8", NUM, True), ("Shares outstanding (m)", n.get("shares"), NUM, False),
                  ("NAV per ordinary share", "B9/B10", PS, True), ("NAV per US share", f"B11*{I['adr']}", PS, True)]
         for i, (lab, val, fmt, is_f) in enumerate(rows_):
             ns.label(f"A{5 + i}", lab, bold=i >= 6)

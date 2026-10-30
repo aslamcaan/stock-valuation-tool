@@ -146,7 +146,7 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
                                     f"{sc.get('description', '')} Quote: \"{sc.get('quote', '')[:200]}\"", None, {}))
     toolkit, _ = toolkit_for_sic(cd.profile.sic)
     if toolkit != CORPORATE:
-        return run_financial(cd, svc, ei, toolkit, today, notes, overrides or {}, peers, say)
+        return run_financial(cd, svc, ei, toolkit, today, notes, overrides or {}, peers, say, extra_flags)
     say("Classifying the company and building the forecast")
     v = value_company(ei)
     stops = [f for f in v.flags if f.is_hard_stop]
@@ -299,7 +299,8 @@ def _bars(toolkit: str, fv: FinancialValuation, inputs: FinInputs) -> list[Bar]:
 
 
 def run_financial(cd: CompanyData, svc, ei: EngineInputs, toolkit: str, today: date, notes: list[str],
-                  overrides: dict, peers: list[CompanyMetrics] | None, say) -> ValuationReport:
+                  overrides: dict, peers: list[CompanyMetrics] | None, say,
+                  extra_flags: list[Flag] | None = None) -> ValuationReport:
     """Banks, insurers and REITs: no DCF (PROMPT.md section 8)."""
     say(f"{toolkit.capitalize()} toolkit: reading reported KPIs from the annual report")
     h = cd.historicals_usd
@@ -314,7 +315,8 @@ def run_financial(cd: CompanyData, svc, ei: EngineInputs, toolkit: str, today: d
     if peers is None:
         peers, peer_notes = gather_peers(svc, cd.profile.ticker, progress=say)
         notes += peer_notes
-    chosen, steps = select_peers(me, peers)
+    # peer multiples only mean something within the same toolkit (no corporates in a bank's P/TBV median)
+    chosen, steps = select_peers(me, [p for p in peers if toolkit_for_sic(p.sic or "")[0] == toolkit])
     beta = ei.industry.levered_beta if overrides.get("beta_choice", "industry") == "industry" else None
     beta = beta or ei.beta_regression
     if beta is None:
@@ -328,7 +330,7 @@ def run_financial(cd: CompanyData, svc, ei: EngineInputs, toolkit: str, today: d
     except FinancialError as exc:
         raise ValuationError(str(exc)) from exc
     # corporate key lines (revenue, operating income...) are not the lines this toolkit values on
-    flags: list[Flag] = [f for f in cd.flags if f.code != "missing_key_line"] + list(fv.flags)
+    flags: list[Flag] = [f for f in cd.flags if f.code != "missing_key_line"] + list(fv.flags) +         list(extra_flags or [])
     if len(chosen) < 5:
         flags.append(Flag(AMBER, "few_peers", "Fewer than 5 comparable companies",
                           f"Only {len(chosen)} usable peers after widening ({'; '.join(steps)}).", None,

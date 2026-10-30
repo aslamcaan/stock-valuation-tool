@@ -296,6 +296,8 @@ LINES: dict[str, Line] = {
              (I, "CashFlowsFromUsedInFinancingActivities")),
     "fx_effect_on_cash": L("FX effect on cash", "CF", "duration",
                            (G, "EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"),
+                           (G, "EffectOfExchangeRateOnCashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"
+                               "IncludingDisposalGroupAndDiscontinuedOperations"),
                            (G, "EffectOfExchangeRateOnCashAndCashEquivalents"),
                            (I, "EffectOfExchangeRateChangesOnCashAndCashEquivalents")),
     "change_in_cash": L("Net change in cash", "CF", "duration",

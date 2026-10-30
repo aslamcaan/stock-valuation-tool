@@ -58,3 +58,25 @@ def test_a_source_that_keeps_returning_429_fails_fast_afterwards(monkeypatch):
             assert e.status == 429
     assert len(calls) == 3  # the second request did not reach the network
     h._cooldown.pop("TEST", None)
+
+
+def test_a_quota_message_is_not_retried_and_cools_down_longer(monkeypatch):
+    import core.http as h
+    calls = []
+
+    class R:
+        status_code, url, text = 429, "https://x/y", '{"Error Message": "Limit Reach . Please upgrade your plan"}'
+
+    class S:
+        def get(self, *a, **k):
+            calls.append(1)
+            return R()
+    monkeypatch.setattr(h.time, "sleep", lambda s: None)
+    h._cooldown.pop("TESTQ", None)
+    try:
+        h.get("TESTQ", "https://x/y", session=S())
+    except h.DataSourceError:
+        pass
+    assert len(calls) == 1
+    assert h._cooldown["TESTQ"] - h.time.monotonic() > h.SHORT_COOLDOWN_SECONDS
+    h._cooldown.pop("TESTQ", None)

@@ -51,7 +51,11 @@ class RateLimiter:
             time.sleep(delay)
 
 
-COOLDOWN_SECONDS = 600  # after a source exhausts its retries on HTTP 429 (e.g. a daily quota), fail fast for a while
+# after a source exhausts its retries on HTTP 429, fail fast for a while: long for a quota message (FMP "Limit Reach",
+# a daily cap), short for a rate limit that clears within the minute
+COOLDOWN_SECONDS = 600
+SHORT_COOLDOWN_SECONDS = 60
+QUOTA_WORDS = ("limit reach", "daily", "quota", "upgrade your plan")
 _cooldown: dict[str, float] = {}
 
 
@@ -75,6 +79,9 @@ def get(source: str, url: str, *, params: dict | None = None, headers: dict | No
         if resp.status_code == 429 or resp.status_code >= 500:
             last_err = DataSourceError(source, f"HTTP {resp.status_code} from {redact(resp.url)}",
                                        resp.status_code)
+            last_err.quota = resp.status_code == 429 and any(w in (resp.text or "")[:500].lower() for w in QUOTA_WORDS)
+            if last_err.quota:
+                break  # a quota does not clear on retry
             time.sleep(2.0 * (attempt + 1))
             continue
         if resp.status_code >= 400:
@@ -84,5 +91,6 @@ def get(source: str, url: str, *, params: dict | None = None, headers: dict | No
         return resp
     assert last_err is not None
     if getattr(last_err, "status", None) == 429:
-        _cooldown[source] = time.monotonic() + COOLDOWN_SECONDS
+        _cooldown[source] = time.monotonic() + (COOLDOWN_SECONDS if getattr(last_err, "quota", False)
+                                                else SHORT_COOLDOWN_SECONDS)
     raise last_err

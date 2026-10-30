@@ -85,9 +85,9 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - [ ] **CHECKPOINT 5:** news demo on CVX and GRAB
 
 ## RELEASE 3: financial-sector toolkits
-- [ ] Phase 14 — bank toolkit; extract JPM expected values
-- [ ] **CHECKPOINT 6:** JPM fixture confirmation
-- [ ] Phase 15 — insurance and REIT toolkits; pass JPM, O, TRV tests
+- [x] Phase 14 — bank toolkit; extract JPM expected values
+- [ ] **CHECKPOINT 6:** JPM fixture confirmation (fixture built and independently verified; awaiting user review)
+- [x] Phase 15 — insurance and REIT toolkits; pass JPM, O, TRV tests
 
 ## DEPLOY
 - [ ] Phase 16 — password gate, secrets, hosted DB for Track Record
@@ -273,3 +273,27 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - 2026-10-29 Phase 13 done. Compare page (views/compare.py): two saved reports (latest per ticker) side by side:
   price, fair value, verdict, MD rating, news-adjusted fair value, stage/toolkit/WACC, key metrics (LTM, latest
   FY fallback labelled), multiples vs peer medians, both football fields. Saved reports only: no API cost.
+- 2026-10-30 Phases 14-15 done (financial toolkits, engine/financials.py, no DCF). Routing by SIC: banks 6020-6039,
+  6111, 6712; insurers 6300-6399 except 6324 (managed care stays corporate: valued on operating profit); REITs 6798.
+  Cost of equity = rf + levered industry beta x ERP + CRP. Long-run g = max(0, min(sustainable, rf - 0.5pp, 3%));
+  REITs min(2%, rf - 0.5pp). Retention = 1 - (dividends + buybacks) / net income, 3-year average (book grows only
+  by what is neither paid out nor bought back). Methods and weights: banks/insurers justified P/TBV (P/B)
+  (R-g)/(CoE-g) 30, residual income (return fades to normalised over 3 years, excess return to 50% by year 10)
+  30, DDM two-stage 10, peer P/TBV 15, peer P/E 15; REITs NAV (EBITDAre / median peer cap rate - net debt) 40,
+  peer P/FFO 30, DDM 30. Peers restricted to the same toolkit; medians need 3+ peers. Reported KPIs (CET1, SLR,
+  NIM, ROTCE, TBVPS, combined/loss/expense ratios, FFO/AFFO per share) read deterministically from the 10-K text
+  (primary + split _dN documents + EX-13) with a verbatim quote and range checks; whole-number parsing, amounts
+  ("billion") and column years rejected. Golden fixtures (tests/fixtures/fin): JPM CET1 14.6%, ROTCE 20%, NIM
+  2.50% (managed basis), TBVPS 107.56; TRV combined ratio 89.9%; O FFO 4.25 / AFFO 4.28, independently checked
+  against the filings by a separate agent. Excel workbook (exports/excel_fin.py) rebuilds every method in
+  formulas and ties to the app (checks ~0); PDF and edit form (only changed values become overrides). Live:
+  JPM 302.96 vs 343.58 (Fairly valued), TRV 376.60 vs 398.27 (Fairly valued), O 57.11 vs 57.20 (Fairly valued).
+- 2026-10-30 Smoke test (28 tickers) fixes: cover-page share counts rejected when stale (NKE tagged 2015) or
+  outside 0.5-2x the weighted count (BABA FY2026 20-F tagged 1.86bn vs 18.6bn); EDGAR now carries foreign
+  countries in `country` (CRP for BABA/TSM/SHOP was zero); foreign-filer test scans all recent forms (TSM's last
+  200 are 6-Ks); catch-all SICs (7389 etc.) use the market average with an industry-proxy flag; FX-on-cash and
+  change-in-cash tags including disposal groups (AMZN, TSLA, UNH cash ties); EBIT proxy from net non-operating
+  interest (NKE); market-cap gap vs a secondary provider (Finnhub) is amber, the hard stop stays FMP-only; HTTP 429
+  cool-down (10 minutes) so a quota-exhausted source fails fast; profitable early-stage companies keep their margin
+  rather than ramping down to a lower industry aggregate (SHOP); loss-making decliners revert toward their
+  10-year average margin instead of holding a perpetual loss (INTC).

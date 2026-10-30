@@ -110,6 +110,12 @@ def standardise(h: Historicals) -> Historicals:
                      pretax_income=g("pretax_income"), interest_expense=g("interest_expense"))
             _fill(h, "operating_income", p, v.with_note(
                 "operating income not reported: EBIT proxy includes non-operating items such as equity-affiliate income"))
+        elif not has(g("operating_income")) and has(g("pretax_income")) and has(g("net_interest_nonoperating")):
+            v = calc(lambda pt, ni: pt - ni, "pretax_income - net non-operating interest income (EBIT proxy)", p,
+                     MILLIONS, c, pretax_income=g("pretax_income"),
+                     net_interest_nonoperating=g("net_interest_nonoperating"))
+            _fill(h, "operating_income", p, v.with_note(
+                "operating income not reported: EBIT proxy includes non-operating items such as equity-affiliate income"))
         if has(g("revenue")) and has(g("cost_of_revenue")):
             _fill(h, "gross_profit", p, calc(lambda r, k: r - k, "revenue - cost_of_revenue", p, MILLIONS, c,
                                              revenue=g("revenue"), cost_of_revenue=g("cost_of_revenue")))

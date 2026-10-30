@@ -96,6 +96,13 @@ def _fx_rates(svc, currency: str) -> FxRates | None:
                                        c.fetched_at_iso)})
 
 
+def _address_country(addr: dict) -> str | None:
+    """EDGAR business address: a US state code for US filers; foreign filers carry `country` ("Ontario, Canada")."""
+    if addr.get("isForeignLocation") and addr.get("country"):
+        return addr["country"].split(",")[-1].strip()
+    return addr.get("stateOrCountryDescription") or addr.get("country")
+
+
 def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict | None = None,
                        progress=None) -> CompanyData:
     """Assemble everything the engine needs for `ticker`. `progress(msg)` receives step updates."""
@@ -142,9 +149,10 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
         sic_description=sub.get("sicDescription") or "", fiscal_year_end=sub.get("fiscalYearEnd") or "",
         exchange=tickers_row.get("exchange", ""), entity_type=sub.get("entityType") or "",
         reporting_currency=h.currency, taxonomy=h.taxonomy,
-        foreign_filer=any(f in {"20-F", "40-F"} for f in sub["filings"]["recent"]["form"][:200]),
+        # all recent forms, not the first 200: a 20-F filer's recent list can be all 6-Ks (TSM)
+        foreign_filer=any(f in {"20-F", "20-F/A", "40-F"} for f in sub["filings"]["recent"]["form"]),
         tickers=list(sub.get("tickers") or [ticker]),
-        country=(sub.get("addresses", {}).get("business", {}) or {}).get("stateOrCountryDescription"),
+        country=_address_country((sub.get("addresses", {}) or {}).get("business") or {}),
         predecessor_cik=pred,
     )
 
@@ -159,6 +167,10 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
                               f"{annual[0].filing_date}, but SEC's XBRL data stops at {h.fy_labels[-1]}. Figures use "
                               f"{h.fy_labels[-1]} until EDGAR processes the new filing.", None,
                               {"filed": annual[0].filing_date}))
+    for n in h.notes:
+        if n.startswith("Cover-page share count rejected"):
+            flags.append(Flag(AMBER, "cover_shares_rejected", "Cover-page share count looks wrong", n +
+                              " The weighted-average count is used instead.", None, {}))
     interim_failed = any("could not be built" in n for n in h.notes)
     if h.ltm is None and interim_failed:
         flags.append(Flag(AMBER, "ltm_failed", "LTM could not be built", " ".join(h.notes), None, {}))

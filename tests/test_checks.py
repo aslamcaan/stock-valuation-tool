@@ -120,3 +120,10 @@ def test_volume_kpi_values_must_be_in_the_filing():
                                       {"fiscal_year": "2023", "value_millions": 137865}]}}
     out, dropped = verify(data, src)
     assert [x["fiscal_year"] for x in out["volume_kpi"]["values"]] == ["2025", "2024"] and dropped
+
+
+def test_cash_flow_ties_before_reclassification_to_held_for_sale():
+    """UNH FY2025: the sections sum to the change in cash including disposal groups, not the reported total."""
+    h = hist(cfo={"FY2025": 19697}, cfi={"FY2025": -8685}, cff={"FY2025": -11644}, fx_effect_on_cash={"FY2025": 40},
+             change_in_cash={"FY2025": -947}, change_in_cash_incl_disposal={"FY2025": -592})
+    assert checks.cash_flow_tie(h) == []

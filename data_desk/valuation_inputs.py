@@ -163,7 +163,8 @@ def build_engine_inputs(cd: CompanyData, svc, valuation_date: date | None = None
                 note=f"levered industry beta, {b['firms']} firms; industry {ind['how']}") if b else None
     industry = IndustryData(name, ind["how"], unlev, ind_margin, ind_growth, ind_s2c, lev)
 
-    domicile = ind.get("country") or ("United States" if not p.foreign_filer else None)
+    from data_desk.exposure import _home_country
+    domicile = ind.get("country") or _home_country(getattr(p, "country", None))  # registered business address
     crp = country_risk_premium(svc, p.ticker, domicile, ind.get("broad_group"))
     taxes, tc = svc.damodaran.country_tax_rates()
     tax_country = domicile if domicile in taxes else "United States"

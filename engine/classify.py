@@ -53,6 +53,9 @@ def toolkit_for_sic(sic: str) -> tuple[str, str]:
         return CORPORATE, "no SIC code: corporate toolkit by default"
     if 6020 <= code <= 6039 or code in (6111, 6712):
         return BANK, f"SIC {code} is a bank / bank holding company: bank toolkit (no DCF)"
+    if code == 6324:  # hospital & medical service plans (UNH, ELV, HUM, CNC): managed care, valued on operating profit
+        return CORPORATE, (f"SIC {code} is managed care (health plans): valued like a services business on operating "
+                           "profit (full DCF), not on book value")
     if 6300 <= code <= 6399:
         return INSURER, f"SIC {code} is an insurance carrier: insurance toolkit (no DCF)"
     if code == 6798:

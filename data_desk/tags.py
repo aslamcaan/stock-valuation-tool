@@ -63,6 +63,9 @@ LINES: dict[str, Line] = {
                           (G, "InterestExpense"), (G, "InterestExpenseNonoperating"), (G, "InterestExpenseDebt"),
                           (G, "InterestAndDebtExpense"), (G, "InterestExpenseOperating"), (I, "FinanceCosts"),
                           (I, "InterestExpense")),
+    # net non-operating interest, positive = net interest income (NKE's "interest expense (income), net"); EBIT proxy
+    "net_interest_nonoperating": L("Net interest income (non-operating)", "IS", "duration",
+                                   (G, "InterestIncomeExpenseNonoperatingNet")),
     "pretax_income": L("Pre-tax income", "IS", "duration",
                        (G, "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"),
                        (G, "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"),
@@ -300,6 +303,11 @@ LINES: dict[str, Line] = {
                                "IncludingDisposalGroupAndDiscontinuedOperations"),
                            (G, "EffectOfExchangeRateOnCashAndCashEquivalents"),
                            (I, "EffectOfExchangeRateChangesOnCashAndCashEquivalents")),
+    # the sum of the three sections before cash moves into assets held for sale (UNH FY2025); used by the tie check
+    "change_in_cash_incl_disposal": L("Net change in cash incl. disposal groups", "CF", "duration",
+                                      (G, "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncrease"
+                                          "DecreaseIncludingExchangeRateEffectDisposalGroupIncludingDiscontinued"
+                                          "Operations")),
     "change_in_cash": L("Net change in cash", "CF", "duration",
                         (G, "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect"),
                         (G, "CashAndCashEquivalentsPeriodIncreaseDecrease"),

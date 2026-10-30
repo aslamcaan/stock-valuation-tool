@@ -49,3 +49,9 @@ def test_numbers_are_read_whole_and_amounts_and_years_are_rejected():
     assert find("Tangible book value per share (a) 2024 95.11", SPECS["bank"]["tbvps"])[0] == 95.11
     assert find("CET1 capital ratio 25.1 billion", SPECS["bank"]["cet1_ratio"]) is None
     assert find("CET1 capital ratio 1,234 was", SPECS["bank"]["cet1_ratio"]) is None
+
+
+def test_managed_care_uses_the_corporate_toolkit():
+    from engine.classify import CORPORATE
+    assert toolkit_for_sic("6324")[0] == CORPORATE   # UNH: health plans, not a book-value insurer
+    assert toolkit_for_sic("6311")[0] == INSURER     # life insurance

@@ -126,6 +126,13 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
     today = valuation_date or date.today()
     ei, notes = build_engine_inputs(cd, svc, today, overrides)
     extra_flags: list[Flag] = []
+    ind = getattr(ei, "industry", None)
+    how = getattr(ind, "how", None) or "matched"  # no industry data (test fakes): nothing to flag
+    if not how.startswith("matched"):
+        extra_flags.append(Flag(AMBER, "industry_proxy", "Industry benchmarks are a proxy",
+                                f"The company is not in Damodaran's company list, so industry beta, margin and "
+                                f"growth use '{ei.industry.name}' ({how}). Check the industry fits the business.",
+                                None, {"industry": ei.industry.name}))
     if research:
         geo_crp = crp_from_filing_geography(svc, research.get("geographic_mix") or [], "annual report")
         if geo_crp is not None:

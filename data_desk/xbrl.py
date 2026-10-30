@@ -329,6 +329,20 @@ def extract(companyfacts: dict, fetched_at: str | None = None, max_years: int = 
         dei_v = Value(total / 1e6, None, SHARES_M, f"cover page {end}", SOURCE, "dei:EntityCommonStockSharesOutstanding",
                       fetched_at, _filing(rows[0]),
                       note=f"sum of {len(rows)} share classes" if len(rows) > 1 else None)
+        # a cover page tagged with a dropped or extra digit (BABA's FY2026 20-F: 1.86bn vs 18.6bn weighted) must not
+        # set the share count: check it against the latest weighted-average count from the statements
+        ref = next((lines[n][p.label] for n in ("shares_basic_weighted", "shares_diluted_weighted")
+                    for p in reversed(periods) if lines[n].get(p.label) and lines[n][p.label].value), None)
+        last_fy_end = fy[-1].end if fy else None
+        if last_fy_end is not None and date.fromisoformat(str(end)[:10]) < last_fy_end - timedelta(days=200):
+            notes.append(f"Cover-page share count rejected: {dei_v.value:,.1f}m is dated {end}, before the latest "
+                         f"fiscal year ({fy[-1].label}, ended {last_fy_end}); the company no longer tags it.")
+            dei_v = None
+        elif ref is not None and not 0.5 <= dei_v.value / ref.value <= 2:
+            notes.append(f"Cover-page share count rejected: {dei_v.value:,.1f}m ({dei_v.period}) is "
+                         f"{dei_v.value / ref.value:.2f}x the weighted-average {ref.value:,.1f}m ({ref.period}); "
+                         "likely a tagging error in the filing.")
+            dei_v = None
 
     return Historicals(
         currency=cf.currency, taxonomy=cf.taxonomy, periods=periods, lines=lines, tag_log=tag_log, notes=notes,

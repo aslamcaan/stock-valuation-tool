@@ -94,3 +94,38 @@ def test_derived_gross_profit_is_traceable():
                CostOfRevenue=[fact(70e6, "2025-12-31", "2025-01-01")])
     gp = standardise(extract(cf)).get("gross_profit", "FY2025")
     assert gp.value == 50 and gp.formula == "revenue - cost_of_revenue" and "derived" in gp.note
+
+
+def _with_cover(shares, end):
+    cf = facts(Revenues=[fact(120e6, "2025-12-31", "2025-01-01"), fact(110e6, "2024-12-31", "2024-01-01")],
+               WeightedAverageNumberOfSharesOutstandingBasic=[fact(1000e6, "2025-12-31", "2025-01-01")])
+    cf["facts"]["us-gaap"]["WeightedAverageNumberOfSharesOutstandingBasic"]["units"] = {
+        "shares": cf["facts"]["us-gaap"]["WeightedAverageNumberOfSharesOutstandingBasic"]["units"]["USD"]}
+    cf["facts"]["dei"] = {"EntityCommonStockSharesOutstanding": {"units": {"shares": [
+        fact(shares, end, form="10-K", filed="2026-02-01")]}}}
+    return extract(cf)
+
+
+def test_cover_page_shares_accepted_when_plausible():
+    assert _with_cover(990e6, "2026-01-31").dei_shares.value == 990.0
+
+
+def test_cover_page_shares_rejected_when_a_digit_is_wrong():
+    h = _with_cover(99e6, "2026-01-31")  # BABA FY2026: 1.86bn tagged vs 18.6bn weighted
+    assert h.dei_shares is None and any("rejected" in n for n in h.notes)
+
+
+def test_cover_page_shares_rejected_when_stale():
+    h = _with_cover(990e6, "2015-07-17")  # NKE: no longer tags the undimensioned cover-page count
+    assert h.dei_shares is None and any("dated 2015-07-17" in n for n in h.notes)
+
+
+def test_ebit_proxy_from_net_nonoperating_interest():
+    """NKE tags neither operating income nor interest expense: EBIT = pre-tax - net interest income."""
+    cf = facts(Revenues=[fact(46398e6, "2026-05-31", "2025-06-01")],
+               IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest=[
+                   fact(3900e6, "2026-05-31", "2025-06-01")],
+               InterestIncomeExpenseNonoperatingNet=[fact(50e6, "2026-05-31", "2025-06-01")])
+    h = standardise(extract(cf))
+    v = h.get("operating_income", "FY2026")
+    assert v.value == 3850.0 and "EBIT proxy" in v.formula

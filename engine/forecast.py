@@ -243,7 +243,12 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
         m_conf = "Low" if stage in (EARLY, CYCLICAL) else "Medium"
     my2 = m12[-1]
     rest = n - len(m12)
-    if stage == EARLY:
+    if stage == EARLY and my2 > ind_m:
+        # already above the industry aggregate (which includes loss-makers): scale does not compress margins, so
+        # hold the year-2 margin rather than ramping down while revenue grows
+        target, why = my2, "held at the year-2 margin (already above the industry margin)"
+        m_tail = [target] * rest
+    elif stage == EARLY:
         target, why = ind_m, "ramps to the industry margin (mature peers)"
         m_tail = _lerp(my2, target, rest)
     elif stage == CYCLICAL and mid_cycle_margin is not None:

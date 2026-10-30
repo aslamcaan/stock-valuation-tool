@@ -37,6 +37,11 @@ _NAME_NOISE = {"inc", "corp", "corporation", "co", "company", "ltd", "limited", 
 US_EXCHANGE_PREFIXES = ("Nasdaq", "NYSE", "NYSEAM", "NYSEArca", "BATS", "Cboe")
 
 
+# SIC codes that say nothing about the business ("Services-Business Services, NEC", blank checks, non-classifiable):
+# the most common industry among US companies with these codes would be an arbitrary proxy
+CATCH_ALL_SIC = {"7389", "6770", "9995", "9999", "8900", "6199", "6799"}
+
+
 def normalise_name(name: str) -> str:
     import re
     words = re.sub(r"[^a-z0-9 ]", " ", name.lower()).split()
@@ -192,6 +197,10 @@ class DamodaranClient:
         if rec is None:
             rec = idx["by_name"].get(normalise_name(company_name))
             how = f"matched company name '{company_name}'"
+        if rec is None and sic in CATCH_ALL_SIC:
+            rec = {"industry": "Total Market (without financials)", "country": None, "broad_group": None,
+                   "listing": None}
+            how = f"not in Damodaran's company list and SIC {sic} is a catch-all code: market average used"
         if rec is None and sic in idx["by_sic"]:
             rec = {"industry": idx["by_sic"][sic], "country": None, "broad_group": None, "listing": None}
             how = f"most common industry for US companies with SIC {sic}"

@@ -92,6 +92,9 @@ def cash_flow_tie(h: Historicals) -> list[Flag]:
         else:
             continue
         scale = max(abs(cfo), abs(cfi), abs(cff), 1.0)
+        alt = h.v("change_in_cash_incl_disposal", p)  # before reclassification to held for sale
+        if alt is not None and what == "including FX" and abs(computed - alt) / scale <= SUM_TOLERANCE:
+            continue
         if abs(computed - reported) / scale > SUM_TOLERANCE:
             flags.append(Flag(RED, "cf_not_tying", "Cash flow does not tie to the change in cash",
                               f"{p}: operating {_fmt(cfo)} + investing {_fmt(cfi)} + financing {_fmt(cff)}"

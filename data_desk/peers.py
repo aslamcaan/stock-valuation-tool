@@ -82,6 +82,21 @@ def next_fy_eps(svc, ticker: str, after_iso: str) -> float | None:
     return float(rows[0]["epsAvg"]) if rows else None
 
 
+def usd_market_cap(svc, mc, today: date | None = None) -> tuple[float | None, str | None]:
+    """(US$ millions, source) from a market-cap lookup. A home-market listing's figure (e.g. KOF in MXN) is converted
+    at FRED's latest daily rate, as the rest of the tool converts; None if there is no rate within ten days."""
+    if not mc.available:
+        return None, None
+    ccy = mc.data.get("currency") or "USD"
+    if ccy == "USD":
+        return mc.data["market_cap"] / 1e6, mc.source
+    fx = _fx_rates(svc, ccy)
+    rate = fx.at(ccy, today or date.today(), "spot", max_gap_days=10) if fx else None
+    if rate is None:
+        return None, None
+    return mc.data["market_cap"] / 1e6 * rate.value, f"{mc.source} ({ccy}) at {rate.source} ({rate.note})"
+
+
 def peer_metrics(svc, ticker: str, sec_rows: dict) -> tuple[CompanyMetrics | None, str | None]:
     row = sec_rows.get(ticker)
     if row is None:
@@ -109,9 +124,7 @@ def peer_metrics(svc, ticker: str, sec_rows: dict) -> tuple[CompanyMetrics | Non
     if price and h.dei_shares and h.dei_shares.value:
         mcap, mc_src = price * h.dei_shares.value / ratio, "price x SEC cover-page shares"  # same basis every run
     else:
-        mc = svc.market.market_cap(ticker)
-        if mc.available and (mc.data.get("currency") or "USD") == "USD":
-            mcap, mc_src = mc.data["market_cap"] / 1e6, mc.source
+        mcap, mc_src = usd_market_cap(svc, svc.market.market_cap(ticker))
     if mcap is None:
         return None, f"{ticker}: market cap unavailable"
     # forward EPS only for US$ reporters with ordinary shares listed (estimates are in the reporting currency)

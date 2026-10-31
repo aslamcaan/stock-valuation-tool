@@ -294,3 +294,17 @@ def test_a_provider_refusal_is_flagged():
     f = provider_flags(["FMP: FMP: rate limited (HTTP 429); not retried for 463s; No free source for analyst estimates"])
     assert len(f) == 1 and f[0].level == "amber" and f[0].code == "provider_unavailable" and "FMP" in f[0].message
     assert provider_flags(["peers from SEC frames"]) == []
+
+
+def test_foreign_market_cap_converted_at_fred(monkeypatch):
+    import data_desk.peers as peers
+    from data_desk.fx import FxRates, FxSeries
+    from datasources.market import MarketResult
+    series = FxSeries("MXN", "DEXMXUS", False, (("2026-10-20", 18.0), ("2026-10-23", 18.5)), "2026-10-31")
+    monkeypatch.setattr(peers, "_fx_rates", lambda svc, ccy: FxRates({"MXN": series}))
+    mc = MarketResult({"market_cap": 462_500e6, "currency": "MXN"}, "Finnhub", "2026-10-31")
+    usd, src = peers.usd_market_cap(None, mc, date(2026, 10, 31))
+    assert usd == pytest.approx(462_500 / 18.5) and "MXN" in src and "DEXMXUS" in src
+    assert peers.usd_market_cap(None, mc, date(2027, 3, 1)) == (None, None)  # no rate within ten days
+    usd_mc = MarketResult({"market_cap": 5e9, "currency": "USD"}, "FMP", "")
+    assert peers.usd_market_cap(None, usd_mc) == (5000.0, "FMP")

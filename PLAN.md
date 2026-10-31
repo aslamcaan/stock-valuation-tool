@@ -410,3 +410,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   Analysis section 5 with live formulas on the DCF tab's NOPAT row): KO $36.10 (price $94.08 implies 5.9% dividend
   growth for ever), CVX $133.92 (3.1%); MSFT, TSM below the 1% yield cut-off; UBER, GRAB pay none. Excel check rows
   0.00.
+- Foreign peers: a home-market market cap (e.g. KOF in MXN from Finnhub) is converted at FRED's latest daily rate
+  instead of the peer being dropped (data_desk.peers.usd_market_cap). KOF: US$24.8bn, EV/EBIT 11.3x. This let KO's
+  SOTP apply on re-model: five filed segments + corporate costs = $51.94 a share (DCF $43.47); fair value on
+  re-model $65.32 (the saved report shows the old run until KO is re-run).

@@ -6,7 +6,7 @@
     "expected": {
       "cet1_ratio": {"value": 0.146, "row": "CET1 capital ratio 14.6 % (Standardized, 31 Dec 2025)"},
       "rotce": {"value": 0.20, "row": "Return on tangible common equity (\"ROTCE\") (a) 20 22 21"},
-      "nim": {"value": 0.0250, "row": "Net yield on average interest-earning assets - managed basis 2.50 %"},
+      "nim": {"value": 0.024889170526140113, "row": "Managed-basis (FTE) net yield 2.50 % x net interest income reported 95,443 / managed basis 95,868 = 2.49 % (JPM publishes no GAAP margin)"},
       "tbvps": {"value": 107.56, "row": "Tangible book value per share (\"TBVPS\") (a) 107.56"},
       "bvps": {"value": 126.99, "row": "Book value per share 126.99"},
       "tier1_leverage_ratio": {"value": 0.069, "row": "Tier 1 leverage ratio (b)(c) 6.9"},

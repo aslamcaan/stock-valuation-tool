@@ -57,9 +57,11 @@ def annual_values(income: list[dict], balance: list[dict], cash: list[dict], end
 
 
 def ltm_from_quarters(income_q: list[dict], cash_q: list[dict], balance_q: list[dict], after: date,
-                      currency: str, fetched_at: str | None) -> tuple[Period | None, dict[str, Value]]:
+                      currency: str, fetched_at: str | None, adr_ratio: float = 1.0
+                      ) -> tuple[Period | None, dict[str, Value]]:
     """Sum the last four quarters of income/cash flow, take the latest balance sheet. Requires the latest
-    quarter to end after `after` (the last fiscal year end); otherwise LTM adds nothing."""
+    quarter to end after `after` (the last fiscal year end); otherwise LTM adds nothing. FMP counts an ADR
+    issuer's shares in ADSs, so share counts are multiplied by `adr_ratio` to give ordinary shares."""
     def recent(rows):
         rows = sorted((r for r in rows or [] if r.get("date")), key=lambda r: r["date"], reverse=True)
         return rows[:4]
@@ -86,8 +88,9 @@ def ltm_from_quarters(income_q: list[dict], cash_q: list[dict], balance_q: list[
             val = sign * float(rows[0][fld]) / 1e6
             how = f"FMP quarterly balance sheet at {end}"
         elif line in SHARE_FIELDS:
-            val = float(rows[0][fld]) / 1e6
-            how = f"FMP latest quarter weighted shares to {end}"
+            val = float(rows[0][fld]) / 1e6 * adr_ratio
+            how = f"FMP latest quarter weighted shares to {end}" + (
+                f", ADSs x {adr_ratio:g} ordinary shares each" if adr_ratio != 1 else "")
         else:
             val = sign * sum(float(r[fld]) for r in rows) / 1e6
             how = "sum of last four FMP quarters: " + ", ".join(r["date"][:10] for r in rows)

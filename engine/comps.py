@@ -18,6 +18,9 @@ MULTIPLES = {
     "ev_ebitda": ("EV/EBITDA", "ev"),
     "ev_fcf": ("EV/FCF", "ev"),
 }
+# Above these a peer's multiple is "not meaningful" (NM, the sell-side convention): earnings or cash flow near zero,
+# so the ratio says nothing about value and would swamp the quartiles (e.g. a 5,700x P/E).
+NM_ABOVE = {"pe_forward": 100.0, "pe_trailing": 100.0, "ev_sales": 50.0, "ev_ebitda": 100.0, "ev_fcf": 100.0}
 BENCHMARKS = {  # metric -> (label, higher is better)
     "revenue_growth": ("Revenue growth", True),
     "operating_margin": ("Operating margin", True),
@@ -174,8 +177,11 @@ def run_comps(company: CompanyMetrics, peers: list[CompanyMetrics], steps: list[
     """`bridge` is the signed amount from EV to equity (cash - debt - minorities), `shares` diluted ordinary shares."""
     own = company.multiples()
     res: dict[str, MultipleResult] = {}
+    excluded: list[str] = []
     for key, (label, basis) in MULTIPLES.items():
-        vals = {p.ticker: m for p in peers if (m := p.multiples()[key]) is not None}
+        vals = {p.ticker: m for p in peers if (m := p.multiples()[key]) is not None and m <= NM_ABOVE[key]}
+        excluded += [f"{p.ticker} {label} {m:,.0f}x (not meaningful, above {NM_ABOVE[key]:g}x)" for p in peers
+                     if (m := p.multiples()[key]) is not None and m > NM_ABOVE[key]]
         if len(vals) < 3:
             res[key] = MultipleResult(key, label, vals, None, None, None, own[key], None, None, None, basis)
             continue
@@ -188,7 +194,7 @@ def run_comps(company: CompanyMetrics, peers: list[CompanyMetrics], steps: list[
     if res["pe_forward"].implied_price is not None and res["pe_trailing"].implied_price is not None:
         implied.remove(res["pe_trailing"].implied_price)  # forward P/E preferred; avoid double-weighting P/E
     benchmarks = benchmark(company, peers)
-    return CompsResult(peers, steps, res, median(implied) if implied else None, benchmarks)
+    return CompsResult(peers, steps, res, median(implied) if implied else None, benchmarks, excluded)
 
 
 def benchmark(company: CompanyMetrics, peers: list[CompanyMetrics]) -> dict[str, dict]:

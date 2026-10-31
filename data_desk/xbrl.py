@@ -193,7 +193,8 @@ class Extractor:
 
     def _value(self, line: Line, rows: list, period: str) -> Value:
         parts = [Value(_scale(r["val"], line), self.cf.currency if line.unit != "shares" else None, _unit(line),
-                       period, SOURCE, f"{tax}:{tag}", self.cf.fetched_at, _filing(r)) for tax, tag, r in rows]
+                       period, r.get("src", SOURCE), f"{tax}:{tag}", self.cf.fetched_at, _filing(r))
+                 for tax, tag, r in rows]
         if len(parts) == 1:
             return parts[0]
         return Value(sum(p.value for p in parts), parts[0].currency, parts[0].unit, period, "calculated",
@@ -326,7 +327,8 @@ def extract(companyfacts: dict, fetched_at: str | None = None, max_years: int = 
     dei_v = None
     if dei:
         total, end, rows = dei
-        dei_v = Value(total / 1e6, None, SHARES_M, f"cover page {end}", SOURCE, "dei:EntityCommonStockSharesOutstanding",
+        dei_v = Value(total / 1e6, None, SHARES_M, f"cover page {end}", rows[0].get("src", SOURCE),
+                      "dei:EntityCommonStockSharesOutstanding",
                       fetched_at, _filing(rows[0]),
                       note=f"sum of {len(rows)} share classes" if len(rows) > 1 else None)
         # a cover page tagged with a dropped or extra digit (BABA's FY2026 20-F: 1.86bn vs 18.6bn weighted) must not

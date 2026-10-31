@@ -143,4 +143,26 @@ def reported_kpis(text: str, toolkit: str, source: str) -> dict[str, Reported]:
         hit = find(text, spec, ok)
         if hit:
             out[key] = Reported(key, spec.label, hit[0], spec.unit, hit[1], source)
+    if "nim" in out and re.search(r"managed basis|FTE|fully taxable", out["nim"].quote, re.I):
+        out["nim"] = _reported_nim(text, out["nim"])
     return out
+
+
+_NII = r"Net interest income - {basis}(?:\s*\([a-z]\))?\s*\$?\s*(?P<num>\d{{1,3}}(?:,\d{{3}})+|\d+)"
+
+
+def _reported_nim(text: str, managed: Reported) -> Reported:
+    """Banks such as JPM publish only the managed-basis (fully taxable-equivalent) margin, which grosses up tax-exempt
+    income. The GAAP margin is that yield scaled by reported / managed net interest income (same average assets)."""
+    rep = re.search(_NII.format(basis="reported"), text, re.I)
+    man = re.search(_NII.format(basis="managed basis"), text, re.I)
+    if not (rep and man):
+        return Reported(managed.key, "Net interest margin (FTE, managed basis)", managed.value, managed.unit,
+                        managed.quote, managed.source)
+    r, m = (float(x.group("num").replace(",", "")) for x in (rep, man))
+    if not 0.9 <= r / m <= 1.0:  # the FTE adjustment only ever adds a little
+        return Reported(managed.key, "Net interest margin (FTE, managed basis)", managed.value, managed.unit,
+                        managed.quote, managed.source)
+    quote = f"{managed.quote} … {rep.group(0)} … {man.group(0)}"
+    return Reported(managed.key, "Net interest margin (reported: managed yield × reported / managed NII)",
+                    managed.value * r / m, managed.unit, quote, managed.source)

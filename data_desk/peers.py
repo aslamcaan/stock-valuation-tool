@@ -1,6 +1,7 @@
 """Data desk: comparable-company candidates and their metrics (from each peer's own SEC filings).
 
-Candidates = FMP peers + Finnhub peers, kept only if they are SEC-registered and listed on a US exchange.
+Candidates = FMP peers + Finnhub peers, kept only if they are SEC-registered and listed on a US exchange, plus
+US-listed filers in the same 2-digit SIC and of similar revenue found in SEC frames (no market-data plan needed).
 Each peer gets the same extraction as the company (XBRL -> standardise -> US$ -> analysis), so multiples are
 computed on consistent definitions.
 """
@@ -23,6 +24,9 @@ from engine.comps import CompanyMetrics, earnings_distorted
 from engine.model import Historicals
 
 MAX_CANDIDATES = 15
+MAX_SEC_CANDIDATES = 8   # added from SEC frames on top of the provider peers
+SEC_SCAN = 60            # nearest-by-revenue filers whose SIC is looked up
+REVENUE_CONCEPTS = ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet")
 
 
 def _ok(fn, *a, **k):
@@ -117,6 +121,52 @@ def peer_metrics(svc, ticker: str, sec_rows: dict) -> tuple[CompanyMetrics | Non
                         source=f"SEC XBRL ({latest_period(h)}); market cap {mc_src}"), None
 
 
+def sec_revenues(svc, year: int) -> tuple[dict[str, float], str]:
+    """{cik: annual revenue, US$} for every filer, from SEC frames: the latest calendar year, older years filling
+    gaps, and the largest of the revenue lines a filer reports. Returns (revenues, frames used)."""
+    out: dict[str, float] = {}
+    used = []
+    for y in (year - 2, year - 1):  # later years overwrite earlier ones
+        got: dict[str, float] = {}
+        for concept in REVENUE_CONCEPTS:
+            frame = _ok(svc.edgar.frame, concept, f"CY{y}")
+            for cik, val in (frame.payload if frame else {}).items():
+                got[cik] = max(got.get(cik, 0.0), float(val))
+            if frame:
+                used.append(f"{concept} CY{y}")
+        out.update(got)
+    return out, ", ".join(used)
+
+
+def sec_candidates(svc, ticker: str, rows: dict, exclude: set[str], year: int) -> tuple[list[str], str | None]:
+    """US-listed companies in the same 2-digit SIC and 0.25x-4x the company's revenue, nearest in size first: the
+    brief's peer rule applied to SEC's own data, so peers do not depend on a market-data plan."""
+    import math
+    own = rows.get(ticker.upper())
+    if own is None:
+        return [], None
+    revenues, used = sec_revenues(svc, year)
+    rev = revenues.get(str(own["cik"]))
+    sub = _ok(svc.edgar.submissions, int(own["cik"]))
+    sic = str((sub.payload if sub else {}).get("sic") or "")
+    if not rev or rev <= 0 or len(sic) < 2:
+        return [], None
+    by_cik: dict[str, str] = {}
+    for t, r in rows.items():  # one ticker per company (share classes share a CIK)
+        by_cik.setdefault(str(r["cik"]), t)
+    near = sorted((abs(math.log(revenues[c] / rev)), t) for c, t in by_cik.items()
+                  if c != str(own["cik"]) and t not in exclude and revenues.get(c, 0) > 0
+                  and 0.25 <= revenues[c] / rev <= 4)[:SEC_SCAN]
+
+    def sic_of(t):
+        s = _ok(svc.edgar.submissions, int(rows[t]["cik"]))
+        return str((s.payload if s else {}).get("sic") or "")
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        sics = list(pool.map(sic_of, [t for _, t in near]))
+    picked = [t for (_, t), s in zip(near, sics) if s[:2] == sic[:2]][:MAX_SEC_CANDIDATES]
+    return picked, f"SEC frames ({used}): same 2-digit SIC {sic[:2]}, 0.25x-4x revenue"
+
+
 def candidate_tickers(svc, ticker: str) -> tuple[list[str], dict]:
     rows = {r["ticker"]: r for r in svc.edgar.company_tickers().payload if r.get("exchange") in US_EXCHANGES}
     cands: list[str] = []
@@ -132,7 +182,9 @@ def candidate_tickers(svc, ticker: str) -> tuple[list[str], dict]:
         if c != ticker.upper() and c in rows and c not in seen:
             seen.add(c)
             out.append(c)
-    return out[:MAX_CANDIDATES], rows
+    out = out[:MAX_CANDIDATES]
+    sec, _ = sec_candidates(svc, ticker, rows, set(out) | {ticker.upper()}, date.today().year)
+    return out + sec, rows
 
 
 def gather_peers(svc, ticker: str, progress=None) -> tuple[list[CompanyMetrics], list[str]]:

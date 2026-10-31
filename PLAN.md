@@ -297,3 +297,21 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   cool-down (10 minutes) so a quota-exhausted source fails fast; profitable early-stage companies keep their margin
   rather than ramping down to a lower industry aggregate (SHOP); loss-making decliners revert toward their
   10-year average margin instead of holding a perpetual loss (INTC).
+- 2026-10-31 Caveat fixes (user asked for these before the design pass):
+  - Peers without FMP: SEC frames (one XBRL line for every filer) give revenue for all US-listed companies; the
+    nearest 60 by revenue (0.25x-4x) are checked for the same 2-digit SIC and up to 8 join the FMP/Finnhub
+    candidates (AMZN +CVS, JD; MSFT +META, GOOGL, BABA). Peer multiples above a "not meaningful" ceiling (P/E,
+    EV/EBITDA, EV/FCF 100x; EV/Sales 50x) are excluded and listed, in the app and the Excel formulas (CRWD's
+    5,700x P/E had stretched MSFT's comps range to $9,000+).
+  - TSM: its 2025 20-F uses the IFRS 2025 taxonomy, which SEC companyfacts has not ingested (only dei facts).
+    data_desk/instance.py reads the filing's own XBRL instance and merges it (facts already present are not added
+    twice); figures carry "SEC EDGAR filing (XBRL instance)" and the accession. IFRS bonds tags added (TSM debt
+    NT$75bn -> NT$1,068bn, 0.4% from FMP). FMP's quarterly share counts for ADR issuers are in ADSs and are now
+    multiplied by the ADR ratio (TSM LTM market cap was 5x too low).
+  - BABA: not in Damodaran's company list; mapped by hand to Retail (General), Damodaran's industry for AMZN,
+    EBAY, MELI and CPNG (info flag, not the proxy flag). Balance-sheet share counts are dated at period end, so a
+    7-month-old count gives an amber approximate market-cap check rather than a hard stop (BABA 6.6% vs FMP).
+    EDGAR vs FMP share cross-check compares ordinary shares (FMP counts ADSs).
+  - JPM NIM: JPM publishes only the managed-basis (FTE) yield, 2.50%; the reported margin is derived as
+    2.50% x reported / managed NII (95,443 / 95,868) = 2.49%. CET1 14.6% confirmed as the binding (Standardized)
+    ratio; user had the figures and the "fairly valued, leaning expensive" read checked independently.

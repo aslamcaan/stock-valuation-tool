@@ -39,6 +39,11 @@ US_EXCHANGE_PREFIXES = ("Nasdaq", "NYSE", "NYSEAM", "NYSEArca", "BATS", "Cboe")
 
 # SIC codes that say nothing about the business ("Services-Business Services, NEC", blank checks, non-classifiable):
 # the most common industry among US companies with these codes would be an arbitrary proxy
+# Large US-listed companies missing from Damodaran's company list, mapped by hand to the industry Damodaran gives their
+# closest listed peers (ticker -> (industry, why)). Reported as a manual mapping, not a proxy.
+MANUAL_INDUSTRY = {
+    "BABA": ("Retail (General)", "Damodaran's industry for Amazon, eBay, MercadoLibre and Coupang (online marketplaces)"),
+}
 CATCH_ALL_SIC = {"7389", "6770", "9995", "9999", "8900", "6199", "6799"}
 
 
@@ -197,6 +202,10 @@ class DamodaranClient:
         if rec is None:
             rec = idx["by_name"].get(normalise_name(company_name))
             how = f"matched company name '{company_name}'"
+        if rec is None and ticker.upper() in MANUAL_INDUSTRY:
+            industry, why = MANUAL_INDUSTRY[ticker.upper()]
+            rec = {"industry": industry, "country": None, "broad_group": None, "listing": None}
+            how = f"manual mapping: not in Damodaran's company list; {why}"
         if rec is None and sic in CATCH_ALL_SIC:
             rec = {"industry": "Total Market (without financials)", "country": None, "broad_group": None,
                    "listing": None}

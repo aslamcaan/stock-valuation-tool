@@ -128,7 +128,11 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
     extra_flags: list[Flag] = []
     ind = getattr(ei, "industry", None)
     how = getattr(ind, "how", None) or "matched"  # no industry data (test fakes): nothing to flag
-    if not how.startswith("matched"):
+    if how.startswith("manual"):
+        extra_flags.append(Flag(INFO, "industry_manual", "Industry mapped manually",
+                                f"Industry beta, margin and growth use '{ei.industry.name}' ({how}).",
+                                None, {"industry": ei.industry.name}))
+    elif not how.startswith("matched"):
         extra_flags.append(Flag(AMBER, "industry_proxy", "Industry benchmarks are a proxy",
                                 f"The company is not in Damodaran's company list, so industry beta, margin and "
                                 f"growth use '{ei.industry.name}' ({how}). Check the industry fits the business.",

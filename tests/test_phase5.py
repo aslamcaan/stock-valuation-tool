@@ -156,3 +156,27 @@ def test_micro_caps_excluded_from_size_fallback():
     peers, steps = select_peers(me, cands)
     assert {p.ticker for p in peers} == {"B0", "B1", "B2"}
     assert "micro-caps" in steps[-1]
+
+
+def test_multiples_above_the_nm_ceiling_are_excluded():
+    from engine.comps import run_comps
+    co = cm("CO", 1000)
+    peers = [cm("A", 1000, ni=50), cm("B", 1000, ni=40), cm("C", 1000, ni=25), cm("D", 1000, ni=0.2)]  # D: 5,000x
+    res = run_comps(co, peers, [], shares=100, bridge=-5)
+    pe = res.multiples["pe_trailing"]
+    assert "D" not in pe.peer_values and pe.median == 1000 / 40
+    assert any(x.startswith("D Trailing P/E 5,000x") for x in res.excluded)
+
+
+def test_sec_frames_add_same_industry_peers_of_similar_revenue():
+    from types import SimpleNamespace as NS
+
+    from data_desk.peers import sec_candidates
+    rows = {"CO": {"cik": 1}, "SAME": {"cik": 2}, "OTHER": {"cik": 3}, "TINY": {"cik": 4}, "SAMEB": {"cik": 2}}
+    sic = {1: "5961", 2: "5940", 3: "3711", 4: "5961"}
+    rev = {"1": 1000.0, "2": 600.0, "3": 900.0, "4": 10.0}
+    edgar = NS(frame=lambda concept, period: NS(payload=rev if concept == "Revenues" else {}),
+               submissions=lambda cik: NS(payload={"sic": sic[cik]}))
+    picked, how = sec_candidates(NS(edgar=edgar), "CO", rows, {"CO"}, 2026)
+    assert picked == ["SAME"]  # same 2-digit SIC, 0.6x revenue; one ticker per CIK; TINY too small, OTHER other SIC
+    assert "2-digit SIC 59" in how

@@ -14,6 +14,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from engine.comps import NM_ABOVE
+
 BLUE, BLACK, GREEN, RED = "0000FF", "000000", "008000", "C00000"
 YELLOW = PatternFill("solid", fgColor="FFF2CC")
 HEAD = PatternFill("solid", fgColor="DDEBF7")
@@ -432,9 +434,12 @@ def build_workbook(rep) -> Workbook:
                     co.input(f"{col(2 + j)}{r_}", x, NUM)
             ev = f"(B{r_}+C{r_}-D{r_}+E{r_})"
             pe_ok = "TRUE" if p.pe_meaningful else "FALSE"
-            co.formula(f"J{r_}", f'IF(AND({pe_ok},I{r_}>0),B{r_}/I{r_},"")' if p.net_income is not None else '""', MULT)
-            for cc, metric in (("K", "F"), ("L", "G"), ("M", "H")):
-                co.formula(f"{cc}{r_}", f'IFERROR(IF(AND({metric}{r_}>0,{ev}>0),{ev}/{metric}{r_},""),"")', MULT)
+            # multiples above NM_ABOVE are not meaningful (blank), as in the app
+            co.formula(f"J{r_}", f'IF(AND({pe_ok},I{r_}>0,B{r_}/I{r_}<={NM_ABOVE["pe_trailing"]:g}),B{r_}/I{r_},"")'
+                       if p.net_income is not None else '""', MULT)
+            for cc, metric, key in (("K", "F", "ev_sales"), ("L", "G", "ev_ebitda"), ("M", "H", "ev_fcf")):
+                co.formula(f"{cc}{r_}", f'IFERROR(IF(AND({metric}{r_}>0,{ev}>0,{ev}/{metric}{r_}<={NM_ABOVE[key]:g}),'
+                                        f'{ev}/{metric}{r_},""),"")', MULT)
         last = 4 + len(m.comps.peers)
         co.label(f"A{last + 1}", "Peer median", bold=True)
         for cc in "JKLM":

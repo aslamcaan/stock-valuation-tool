@@ -112,3 +112,10 @@ def test_ltm_from_fmp_does_not_add_leases_again():
     h.lines["long_term_debt"][p.label] = Value(500.0, "USD", "m", p.label, "FMP")
     h = standardise(h)
     assert h.v("total_debt_incl_leases", p.label) == pytest.approx(2200.0)
+
+
+def test_fmp_ltm_shares_of_an_adr_issuer_are_ordinary_shares():
+    ends = ("2026-09-30", "2026-06-30", "2026-03-31", "2025-12-31")
+    inc = [_q(d, revenue=100.0e6, weightedAverageShsOutDil=5185.7e6) for d in ends]
+    _, vals = ltm_from_quarters(inc, [], [], date(2025, 12, 31), "TWD", None, adr_ratio=5)
+    assert vals["shares_diluted_weighted"].value == pytest.approx(25928.5)  # TSM: FMP counts ADSs (5 shares each)

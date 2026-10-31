@@ -120,14 +120,19 @@ LINES: dict[str, Line] = {
                       (G, "DebtCurrent"), (I, "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings"),
                       (I, "ShorttermBorrowings")),
     "current_portion_ltd": L("Current portion of long-term debt", "BS", "instant",
-                             (G, "LongTermDebtCurrent"), (G, "LongTermDebtAndCapitalLeaseObligationsCurrent")),
+                             (G, "LongTermDebtCurrent"), (G, "LongTermDebtAndCapitalLeaseObligationsCurrent"),
+                             (I, "CurrentPortionOfLongtermBorrowings")),
     "short_term_borrowings": L("Short-term borrowings and commercial paper", "BS", "instant",
                                (G, "ShortTermBorrowings"), (G, "NotesAndLoansPayable"), (G, "DebtCurrentExcludingLongTermDebt"),
                                opt((G, "CommercialPaper"), (G, "OtherShortTermBorrowings"))),
     "long_term_debt": L("Long-term debt", "BS", "instant",
                         (G, "LongTermDebtNoncurrent"), (G, "LongTermDebtAndCapitalLeaseObligations"),
                         (G, "LongTermNotesPayable"), (G, "SeniorLongTermNotes"),
-                        (I, "NoncurrentPortionOfNoncurrentBorrowings"), (I, "LongtermBorrowings"),
+                        (I, "NoncurrentPortionOfNoncurrentBorrowings"),
+                        # IFRS filers that show bonds and bank loans as separate lines (TSM: "Bonds payable" and
+                        # "Long-term bank loans"); the EDGAR vs FMP debt check catches any overlap
+                        opt((I, "LongtermBorrowings"), (I, "NoncurrentPortionOfNoncurrentBondsIssued")),
+                        (I, "NoncurrentPortionOfNoncurrentBondsIssued"),
                         # REITs and others that tag debt by instrument rather than maturity
                         opt((G, "NotesPayable"), (G, "LoansPayable"), (G, "SecuredDebt"), (G, "UnsecuredDebt"),
                             (G, "LineOfCredit")),

@@ -25,7 +25,8 @@ def test_reported_kpis_match_the_10k(ticker):
     for key, exp in case["expected"].items():
         assert key in got, f"{ticker} {key} not found"
         assert got[key].value == pytest.approx(exp["value"], abs=1e-6), f"{ticker} {key}: {got[key].quote}"
-        assert got[key].quote.lower() in _text(ticker).lower()  # verbatim quote
+        for part in got[key].quote.split(" … "):  # verbatim quote(s)
+            assert part.lower() in _text(ticker).lower()
 
 
 def test_toolkit_routing():

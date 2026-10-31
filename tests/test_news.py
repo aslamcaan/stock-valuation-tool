@@ -232,7 +232,15 @@ class FakeFinnhub:
                                          "source": "Reuters", "summary": "s", "datetime": int(NOW.timestamp()) - 86400}])
 
 
-def test_run_news_end_to_end(tmp_path):
+class _FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return NOW if tz else NOW.replace(tzinfo=None)
+
+
+def test_run_news_end_to_end(tmp_path, monkeypatch):
+    import desks.ai
+    monkeypatch.setattr(desks.ai, "datetime", _FrozenDatetime)  # the search is stamped at the test's "now"
     answer = {"items": [item("https://www.reuters.com/brent", "macro", "crude oil"),
                         item("x", "company", cid="C1", headline="CFO steps down")]}
     content = [result_block([("https://www.reuters.com/brent", "Brent falls", "1 days ago")]), text(answer)]

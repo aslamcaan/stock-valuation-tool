@@ -333,6 +333,8 @@ def comps(rep) -> None:
                  money(m.implied_price)] for m in c.multiples.values()]
         html(plain_table(rows, ["Multiple", "Peers", "25th", "Median", "75th", "Company", "Implied price"]))
         st.caption("Peer selection: " + " → ".join(c.selection_steps))
+        if c.excluded:
+            st.caption("Excluded as not meaningful: " + "; ".join(c.excluded))
         with st.expander("Peer multiples"):
             peer_rows = [[p.ticker, p.name, f"{p.market_cap / 1000:,.1f}bn"] +
                          [mult(p.multiples()[k]) for k in ("pe_forward", "pe_trailing", "ev_sales", "ev_ebitda", "ev_fcf")]

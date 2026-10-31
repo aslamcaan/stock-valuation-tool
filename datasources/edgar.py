@@ -16,7 +16,8 @@ TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
 COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 SUBMISSIONS_PAGE_URL = "https://data.sec.gov/submissions/{name}"
-ARCHIVE_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/{doc}"
+FRAMES_URL = "https://data.sec.gov/api/xbrl/frames/{tax}/{concept}/{unit}/{period}.json"
+ARCHIVE_URL ="https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/{doc}"
 
 _LIMITER = RateLimiter(per_second=9)  # stay safely under the 10 req/s limit
 
@@ -71,6 +72,16 @@ class EdgarClient:
 
     def submissions(self, cik: int) -> Cached:
         return self._json("filings", SUBMISSIONS_URL.format(cik=int(cik)))
+
+    def frame(self, concept: str, period: str, taxonomy: str = "us-gaap", unit: str = "USD") -> Cached:
+        """One XBRL line for every filer in a calendar period (e.g. CY2025 = the annual figure closest to that
+        year). Stored compactly as {cik: value}."""
+        url = FRAMES_URL.format(tax=taxonomy, concept=concept, unit=unit, period=period)
+
+        def fetch():
+            raw = get(SOURCE, url, headers=self._headers(), limiter=_LIMITER, timeout=60).json()
+            return {str(r["cik"]): r["val"] for r in raw.get("data", []) if r.get("val") is not None}
+        return self.cache.get_or_fetch("reference", cache_key(url), fetch)
 
     def filings(self, cik: int, forms: set[str] | None = None, include_older: bool = False) -> list[Filing]:
         """Filing list, newest first. `include_older` also reads the paged older-filings files."""

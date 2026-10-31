@@ -5,6 +5,7 @@ separately; this module is exercised by offline tests with a seeded cache and by
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
@@ -96,6 +97,34 @@ def _fx_rates(svc, currency: str) -> FxRates | None:
                                        c.fetched_at_iso)})
 
 
+def _facts_from_filing(svc, cik: int, filing, payload: dict, fetched_at: str) -> tuple[Historicals, dict] | None:
+    """When companyfacts lags the latest annual report, read that filing's XBRL instance and merge it in.
+    None unless the merged data then contains the new fiscal year."""
+    from data_desk.instance import instance_facts, merge
+
+    docs = _safe(svc.edgar.filing_documents, cik, filing) or []
+    names = [d["name"] for d in docs if d.get("name", "").endswith(".xml")]
+    inst = next((n for n in names if n.endswith("_htm.xml")), None) or next(
+        (n for n in names if not re.search(r"_(cal|def|lab|pre)\.xml$|FilingSummary", n)), None)
+    if inst is None:
+        return None
+    url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{filing.accession.replace('-', '')}/{inst}"
+    xml = _safe(svc.edgar.raw_xml, url)
+    if xml is None:
+        return None
+    try:
+        extra = instance_facts(xml.payload, filing.accession, filing.form, filing.filing_date,
+                               int(filing.report_date[:4]))
+    except Exception:  # malformed or unexpected instance: keep companyfacts as it is
+        return None
+    merged = merge(payload, extra)
+    h = standardise(extract(merged, fetched_at))
+    newest = date.fromisoformat(filing.report_date)
+    if not any(p.kind == "FY" and abs((p.end - newest).days) <= 30 for p in h.periods):
+        return None
+    return h, merged
+
+
 def _address_country(addr: dict) -> str | None:
     """EDGAR business address: a US state code for US filers; foreign filers carry `country` ("Ontario, Canada")."""
     if addr.get("isForeignLocation") and addr.get("country"):
@@ -161,7 +190,16 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
     if annual and annual[0].report_date:
         newest = date.fromisoformat(annual[0].report_date)
         last_fy_end = [p for p in h.periods if p.kind == "FY"][-1].end
-        if (newest - last_fy_end).days > 30:
+        read = _facts_from_filing(svc, profile.statements_cik, annual[0], payload, facts.fetched_at_iso) \
+            if (newest - last_fy_end).days > 30 else None
+        if read is not None:
+            h, payload = read
+            log(f"Read {annual[0].form} for {annual[0].report_date} from the filing's own XBRL")
+            flags.append(Flag(INFO, "xbrl_from_filing", "Latest annual report read from the filing",
+                              f"SEC's XBRL data stops before the {annual[0].form} filed {annual[0].filing_date} "
+                              f"(accession {annual[0].accession}), so its figures were read from the filing's own "
+                              f"XBRL instance document.", None, {"filed": annual[0].filing_date}))
+        elif (newest - last_fy_end).days > 30:
             flags.append(Flag(AMBER, "newer_filing_not_in_xbrl", "Latest annual report not yet in XBRL data",
                               f"{annual[0].form} for the period ending {annual[0].report_date} was filed on "
                               f"{annual[0].filing_date}, but SEC's XBRL data stops at {h.fy_labels[-1]}. Figures use "
@@ -186,7 +224,7 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
             else:
                 period, vals = ltm_from_quarters(q["income_statement_q"].payload, q["cash_flow_q"].payload,
                                                  q["balance_sheet_q"].payload, last_end, h.currency,
-                                                 q["income_statement_q"].fetched_at_iso)
+                                                 q["income_statement_q"].fetched_at_iso, adr_ratio(ticker)[0])
                 if period:
                     h.periods.append(period)
                     for line, v in vals.items():
@@ -257,6 +295,8 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
     point_in_time = bool(shares and shares.tag and shares.tag.split(":")[-1] in (
         "EntityCommonStockSharesOutstanding", "CommonStockSharesOutstanding", "NumberOfSharesOutstanding"))
     shares_date = (shares.period.split()[-1] if shares and shares.period else "")
+    if shares and shares.period in [x.label for x in h.periods]:  # a balance-sheet count: dated at period end
+        shares_date = next(x.end for x in h.periods if x.label == shares.period).isoformat()
     if point_in_time and len(shares_date) == 10 and (today - date.fromisoformat(shares_date)).days > checks.STALE_DAYS:
         point_in_time = False  # a share count this old cannot support a hard stop (buybacks/issuance since)
         detail += f" The share count is dated {shares_date}, over {checks.STALE_DAYS} days ago."
@@ -281,8 +321,10 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
                             h.periods[[p.label for p in h.periods].index(last_fy)].end)
         edgar = {"revenue": h.v("revenue", last_fy), "net_income": h.v("net_income_attributable", last_fy),
                  "cash": h.v("cash", last_fy), "shares": h.v("shares_diluted_weighted", last_fy)}
+        # FMP counts an ADR issuer's shares in ADSs (TSM 5,185.9m x 5 = 25,929.7m ordinary): compare in ordinary shares
+        fmp_shares = fmp["shares_diluted_weighted"] * ratio if fmp["shares_diluted_weighted"] else None
         other = {"revenue": fmp["revenue"], "net_income": fmp["net_income_attributable"], "cash": fmp["cash"],
-                 "shares": fmp["shares_diluted_weighted"]}
+                 "shares": fmp_shares}
         flags += checks.cross_source(edgar, other, "FMP", last_fy)
         # FMP's totalDebt includes lease liabilities, so compare like with like (no picking the closer figure)
         flags += checks.cross_source({"debt incl. leases": h.v("total_debt_incl_leases", last_fy)},

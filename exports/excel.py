@@ -145,7 +145,8 @@ def dcf_block(sh: Sheet, top: int, n: int, I: dict, title: str, g_shift: str = "
     sh.formula(f"B{b + 11}", f"B{b + 10}/{I['shares']}", PS)
     sh.formula(f"B{b + 12}", f"B{b + 11}*{I['adr']}", PS, bold=True)
     return {"vps": sh.ref(f"B{b + 12}"), "ev": sh.ref(f"B{b + 8}"), "tv": sh.ref(f"B{b + 6}"),
-            "end_row": b + 13, "fcf_row": r["fcf"], "rev_row": r["rev"], "nopat_row": r["nopat"]}
+            "end_row": b + 13, "fcf_row": r["fcf"], "rev_row": r["rev"], "nopat_row": r["nopat"],
+            "reinv_row": r["reinv"], "last_col": last}
 
 
 # --- workbook -------------------------------------------------------------------------------------------------------
@@ -594,7 +595,7 @@ def build_workbook(rep) -> Workbook:
 def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
     """The report's explaining analyses: the walk from our DCF to the price, what the price pays for (live formulas on
     the DCF tab), the Monte Carlo range and the peer regressions (live SLOPE / INTERCEPT / RSQ on the peers)."""
-    from engine.insights import peer_regressions, price_walk, value_split
+    from engine.insights import peer_regressions, price_walk, return_on_new_capital, value_split
     from ui.insights import dividend_for, mc_for, walk_args
     m = rep.model
     v = m.valuation
@@ -654,7 +655,20 @@ def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
             an.formula(f"B{r + i}", fm, fmt)
         an.label(f"A{r + len(rows)}", "Check: no-growth value minus the app (should be 0)")
         an.formula(f"B{r + len(rows)}", f"B{r + 2}-{sp['no_growth_ev']!r}", NUM, check=True)
-        r += len(rows) + 2
+        k = r + len(rows) + 1
+        lc = base["last_col"]
+        an.label(f"A{k}", "Total reinvestment over the forecast (DCF tab)")
+        an.formula(f"B{k}", f"SUM(DCF!B{base['reinv_row']}:{lc}{base['reinv_row']})", NUM)
+        an.label(f"A{k + 1}", "NOPAT in the final forecast year (DCF tab)")
+        an.formula(f"B{k + 1}", f"DCF!{lc}{base['nopat_row']}", NUM)
+        an.label(f"A{k + 2}", "Return on new capital ((final NOPAT - today's NOPAT) / reinvestment); compare with WACC",
+                 bold=True)
+        an.formula(f"B{k + 2}", f"(B{k + 1}-B{r})/B{k}", PCT, bold=True)
+        rn = return_on_new_capital(v.dcf)
+        if rn is not None:
+            an.label(f"A{k + 3}", "Check: Excel minus app (should be 0.0%)")
+            an.formula(f"B{k + 3}", f"B{k + 2}-{rn['roic_new']!r}", PCT, check=True)
+        r = k + 5
     # 3. Monte Carlo
     mc, corr, ind = mc_for(rep)
     if mc:

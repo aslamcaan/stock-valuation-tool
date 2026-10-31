@@ -39,7 +39,7 @@ def hero_svg(closes: list[tuple[str, float]], fair_value: float, band: tuple[flo
     return (f"<svg class='chart' viewBox='0 0 {W} {H}' preserveAspectRatio='none' aria-hidden='true'>"
             "<defs><linearGradient id='vtg' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#ff7a1a' "
             "stop-opacity='.2'/><stop offset='.85' stop-color='#ff7a1a' stop-opacity='0'/></linearGradient></defs>"
-            f"{shade}<line class='fvl' x1='0' y1='{fy:.1f}' x2='{W}' y2='{fy:.1f}' stroke='#ff7a1a' "
+            f"{shade}<line class='fvl fv' x1='0' y1='{fy:.1f}' x2='{W}' y2='{fy:.1f}' stroke='#ff7a1a' "
             "stroke-opacity='.55' stroke-dasharray='4 6'/>"
             f"<path class='area' d='{line} L{lx:.1f} {H} L0 {H} Z' fill='url(#vtg)'/>"
             f"<path class='line' d='{line}' pathLength='1600' fill='none' stroke='#ff7a1a' stroke-width='2.5' stroke-linejoin='round'/>"

@@ -228,9 +228,9 @@ def test_hero_chart_plots_the_closes_against_fair_value():
     svg = hero_svg(closes, 120.0, (90.0, 140.0), step=1)
     ys = [float(y) for y in re.findall(r"[ML][\d.]+ ([\d.]+)", svg.split("class='line' d='")[1].split("'")[0])]
     assert len(ys) == 30 and ys == sorted(ys, reverse=True)  # rising prices draw upwards
-    fv = float(re.search(r"<line class='fvl' x1='0' y1='([\d.]+)'", svg).group(1))
+    fv = float(re.search(r"<line class='fvl fv' x1='0' y1='([\d.]+)'", svg).group(1))
     assert ys[-1] < fv < ys[0]  # the fair value (120) sits between the first (101) and last (130) close
-    assert "cx='800.0'" in svg  # the dot marks the latest close
+    assert "cx='786.0'" in svg  # the dot marks the latest close, inset so it is not clipped
 
 
 def test_a_new_10q_refetches_the_cached_xbrl(tmp_path, monkeypatch):

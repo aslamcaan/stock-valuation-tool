@@ -38,6 +38,14 @@ class Historicals:
         x = self.get(line, period)
         return None if x is None else x.value
 
+    def non_operating_investments(self, period: str) -> Value | None:
+        """Long-term investments valued separately in the equity bridge, so they are not operating capital. None when
+        operating income is an EBIT proxy (pre-tax income + interest): its investment income makes them operating."""
+        x = self.get("long_term_investments", period)
+        if x is None or not x.value or _formula_mentions(self.get("operating_income", period), "EBIT proxy"):
+            return None
+        return x
+
     @property
     def fy_labels(self) -> list[str]:
         return [p.label for p in self.periods if p.kind == "FY"]
@@ -45,3 +53,9 @@ class Historicals:
     @property
     def ltm(self) -> Period | None:
         return next((p for p in self.periods if p.kind == "LTM"), None)
+
+
+def _formula_mentions(v: Value | None, marker: str) -> bool:
+    if v is None:
+        return False
+    return marker in (v.formula or "") or any(_formula_mentions(x, marker) for x in (v.inputs or ()))

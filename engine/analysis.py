@@ -121,9 +121,15 @@ def analyse(h: Historicals, earnings_history: list[dict] | None = None,
             a.put("nopat", p, nopat)
         eq, debt, cash = g("total_equity", p), g("debt_for_valuation", p), g("cash_and_investments", p)
         if eq and debt and cash and None not in (eq.value, debt.value, cash.value):
-            a.put("invested_capital", p, calc(lambda e, d, c: e + d - c,
-                                              "total_equity + debt_for_valuation - cash_and_investments",
-                                              p, MILLIONS, h.currency, e=eq, d=debt, c=cash))
+            inv = h.non_operating_investments(p)
+            if inv is not None:  # valued in the equity bridge, so not capital the operations earn on
+                ic_v = calc(lambda e, d, c, i: e + d - c - i,
+                            "total_equity + debt_for_valuation - cash_and_investments - long_term_investments",
+                            p, MILLIONS, h.currency, e=eq, d=debt, c=cash, i=inv)
+            else:
+                ic_v = calc(lambda e, d, c: e + d - c, "total_equity + debt_for_valuation - cash_and_investments",
+                            p, MILLIONS, h.currency, e=eq, d=debt, c=cash)
+            a.put("invested_capital", p, ic_v)
     for p in labels:
         prev = prev_of.get(p)
         ic_now, ic_prev = a.metrics.get("invested_capital", {}).get(p), a.metrics.get("invested_capital", {}).get(prev)

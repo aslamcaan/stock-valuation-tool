@@ -214,8 +214,11 @@ def value_company(i: EngineInputs) -> Valuation:
         flags.append(Flag(AMBER, "wacc_range", "WACC outside 6-15%", f"WACC is {wacc:.2%}.", None, {"wacc": wacc}))
 
     # --- forecast ----------------------------------------------------------------------------------------------
-    # one-off items (research desk, verified against the filing) are stripped out of historical margins
-    margins_5y = sorted((h.v("operating_income", p) + i.one_off_adjustments.get(p, 0.0)) / h.v("revenue", p)
+    # one-off items are stripped out of historical margins: the research desk's (verified against the filing) or, where
+    # larger, the goodwill and intangible impairments tagged in XBRL (the desk's figure usually already includes them)
+    margins_5y = sorted((h.v("operating_income", p) + max(i.one_off_adjustments.get(p, 0.0),
+                                                          h.v("goodwill_intangible_impairment", p) or 0.0))
+                        / h.v("revenue", p)
                         for p in h.fy_labels[-5:] if h.v("operating_income", p) is not None and h.v("revenue", p))
     plan = build_plan(
         h, cls.stage, valuation_date=i.valuation_date, current_margin=cur_margin, consensus=i.consensus,

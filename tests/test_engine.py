@@ -353,3 +353,58 @@ def test_segments_valued_through_the_engine_use_the_bridge_amounts():
     bridge = sum(x.value for _, x in v.bridge)
     assert v.sotp.applicable
     assert v.sotp.value_per_share == pytest.approx((v.sotp.enterprise_value + bridge) / v.diluted_shares.value)
+
+
+# --- mature-company fixes (2026-10-31): KO was valued at half its price -------------------------------------------
+def test_investments_valued_in_the_bridge_are_not_operating_capital():
+    """KO's ~US$20bn of bottler stakes are added in the equity bridge, so they must not also sit in invested capital
+    (which would understate ROIC and overstate the capital each dollar of growth needs)."""
+    import copy
+    from engine.analysis import analyse
+    from engine.forecast import _sales_to_capital
+    from tests.engine_fixtures import engine_inputs
+    i = engine_inputs("KO")
+    h, p = i.historicals, i.historicals.fy_labels[-1]
+    inv = h.v("long_term_investments", p)
+    assert inv > 15_000
+    ic = analyse(h).metrics["invested_capital"][p].value
+    assert ic == pytest.approx(h.v("total_equity", p) + h.v("debt_for_valuation", p)
+                               - h.v("cash_and_investments", p) - inv)
+    without = copy.deepcopy(h)
+    del without.lines["long_term_investments"]
+    assert _sales_to_capital(h).value > _sales_to_capital(without).value
+    assert any(name == "Long-term investments" for name, _ in value_company(i).bridge)  # still valued, once
+
+
+def test_mature_company_without_consensus_uses_three_year_growth():
+    """One year of a mature company's revenue is noisy (refranchising, currency): use the 3-year CAGR."""
+    import copy
+    from tests.engine_fixtures import engine_inputs
+    i = copy.deepcopy(engine_inputs("KO"))
+    i.consensus = []
+    v = value_company(i)
+    h = i.historicals
+    labels = h.fy_labels
+    cagr = (h.v("revenue", labels[-1]) / h.v("revenue", labels[-4])) ** (1 / 3) - 1
+    row = v.plan.drivers["revenue_growth"]
+    assert "3-year revenue CAGR" in row.source
+    assert row.path[len(v.plan.skipped)] == pytest.approx(cagr)
+
+
+def test_impairments_are_added_back_to_the_margin_history():
+    """A goodwill or intangible write-down in one year must not drag the mature margin target down."""
+    import copy
+    from engine.values import MILLIONS, Value
+    from tests.engine_fixtures import engine_inputs
+    i = copy.deepcopy(engine_inputs("KO"))
+    i.consensus, i.one_off_adjustments = [], {}
+    base = value_company(i).plan.drivers["operating_margin"].chosen.value
+    h = i.historicals
+    hit = copy.deepcopy(i)
+    for p in h.fy_labels[-3:]:  # charge 6% of revenue in three of the five years, then tag it as an impairment
+        rev = h.v("revenue", p)
+        oi = hit.historicals.lines["operating_income"][p]
+        hit.historicals.lines["operating_income"][p] = Value(oi.value - 0.06 * rev, oi.currency, MILLIONS, p, "test")
+        hit.historicals.lines.setdefault("goodwill_intangible_impairment", {})[p] = Value(
+            0.06 * rev, oi.currency, MILLIONS, p, "test")
+    assert value_company(hit).plan.drivers["operating_margin"].chosen.value == pytest.approx(base)

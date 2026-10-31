@@ -45,15 +45,21 @@ def test_each_driver_moves_fair_value_the_right_way(model, change, direction):
     assert (moved - base) * direction > 0
 
 
-def test_growth_adds_value_only_above_the_cost_of_capital(model):
-    """Faster growth is not automatically worth more: in the GRAB fixture reinvestment earns less than WACC, so
-    extra growth slightly lowers the DCF. The repricing must show that, not assume growth is good."""
-    base = reprice(model, {}).fair_value
+@pytest.mark.parametrize("sales_to_capital", [0.5, 8.0])
+def test_growth_adds_value_only_above_the_cost_of_capital(model, sales_to_capital):
+    """Faster growth is not automatically worth more. With terminal ROIC = WACC, extra revenue is worth more only if
+    the capital it needs earns above WACC: return on new capital = after-tax margin x sales-to-capital. At 0.5 GRAB's
+    reinvestment earns far below WACC (growth destroys value); at 8 it earns far above (growth creates value)."""
+    plan, wacc = model.valuation.plan, model.valuation.wacc.wacc.value
+    assert plan.terminal_roic.value == pytest.approx(wacc)
+    fixed = {"sales_to_capital": sales_to_capital}
+    base = reprice(model, fixed).fair_value
     ov, prob = overrides_for(model, [Change("revenue_growth", 3, 2)])
-    moved = reprice(model, ov, prob).fair_value
-    assert moved != pytest.approx(base, abs=1e-6)
-    t_roic, wacc = model.valuation.plan.terminal_roic.value, model.valuation.wacc.wacc.value
-    assert (moved > base) == (t_roic > wacc)
+    moved = reprice(model, {**ov, **fixed}, prob).fair_value
+    m, t = plan.path("operating_margin"), plan.path("tax_rate")
+    returns = [m[k] * (1 - t[k]) * sales_to_capital for k in range(len(m))]
+    assert all(r < wacc for r in returns) or all(r > wacc for r in returns)  # the case is unambiguous
+    assert (moved > base) == (returns[0] > wacc)
 
 
 def test_margin_shift_only_touches_the_years_given(model):

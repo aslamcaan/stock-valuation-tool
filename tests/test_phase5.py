@@ -1,5 +1,6 @@
 """Phase 5: comps, benchmarking, historical multiples, estimate revisions, verdict rules, confidence, football field."""
 from datetime import date
+from statistics import median
 
 import pytest
 
@@ -180,3 +181,19 @@ def test_sec_frames_add_same_industry_peers_of_similar_revenue():
     picked, how = sec_candidates(NS(edgar=edgar), "CO", rows, {"CO"}, 2026)
     assert picked == ["SAME"]  # same 2-digit SIC, 0.6x revenue; one ticker per CIK; TINY too small, OTHER other SIC
     assert "2-digit SIC 59" in how
+
+
+def test_ev_sales_left_out_when_margins_are_not_comparable():
+    """KO (operating margin ~30%) against PEP/KDP/MNST-like peers: a dollar of KO's revenue is worth more, so EV/Sales
+    is shown but not used in the comps value."""
+    def with_oi(c, oi):
+        c.operating_income = oi
+        return c
+    peers = [with_oi(cm(t, 1000, rev=100.0, ebitda=20.0), 12.0) for t in ("A", "B", "C")]
+    shares, bridge = 100.0, -5.0
+    hi = run_comps(with_oi(cm("ME", 1000, rev=100.0, ebitda=35.0), 30.0), peers, [], shares, bridge)
+    assert not hi.multiples["ev_sales"].in_blend and "EV/Sales left out" in hi.multiples["ev_sales"].note
+    assert hi.implied_price == pytest.approx(median([m.implied_price for k, m in hi.multiples.items()
+                                                     if m.implied_price is not None and k != "ev_sales"]))
+    same = run_comps(with_oi(cm("ME", 1000, rev=100.0, ebitda=20.0), 13.0), peers, [], shares, bridge)
+    assert same.multiples["ev_sales"].in_blend

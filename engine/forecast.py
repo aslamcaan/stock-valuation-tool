@@ -21,7 +21,7 @@ from datetime import date
 from statistics import mean
 
 from engine.dates import years_later
-from engine.classify import CYCLICAL, DECLINING, EARLY, HIGH_GROWTH, MATURE_STABLE
+from engine.classify import CYCLICAL, DECLINING, EARLY, HIGH_GROWTH, MATURE_GROWTH, MATURE_STABLE
 from engine.dcf import Conventions, DCFInputs, YearDrivers
 from engine.flags import AMBER, INFO, Flag
 from engine.model import Historicals
@@ -182,6 +182,13 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
             g_source = (f"history: {years}-year revenue CAGR {long_run:.1%}"
                         + (f", capped at {h1:.0%}" if h1 != long_run else "")
                         + " for years 1-2 (a cyclical's latest year is not extrapolated); no consensus")
+        elif stage in (MATURE_GROWTH, MATURE_STABLE, DECLINING) and len(rev) >= 4 and rev[-4][1] > 0 and rev[-1][1] > 0:
+            # one year of a mature company's revenue is noisy (currency, disposals such as refranchising): use 3 years
+            raw_h = (rev[-1][1] / rev[-4][1]) ** (1 / 3) - 1
+            h1 = min(max(raw_h, HISTORY_GROWTH_BOUNDS[0]), HISTORY_GROWTH_BOUNDS[1])
+            g_source = (f"history (3-year revenue CAGR {rev[-4][0]}-{rev[-1][0]} {raw_h:.1%}"
+                        + (f", capped at {h1:.0%}" if h1 != raw_h else "")
+                        + ") for years 1-2: fewer than 3 analysts or no consensus data")
         else:
             raw_h = hist_growth.value if hist_growth else ind_g
             h1 = min(max(raw_h, HISTORY_GROWTH_BOUNDS[0]), HISTORY_GROWTH_BOUNDS[1])
@@ -331,7 +338,8 @@ def _sales_to_capital(h: Historicals) -> Value | None:
         eq, debt, cash = h.v("total_equity", p), h.v("debt_for_valuation", p), h.v("cash_and_investments", p)
         if None in (rev, eq, debt, cash):
             continue
-        ic = eq + debt - cash - (h.v("goodwill", p) or 0.0) - (h.v("intangibles", p) or 0.0)
+        inv = h.non_operating_investments(p)
+        ic = eq + debt - cash - (h.v("goodwill", p) or 0.0) - (h.v("intangibles", p) or 0.0) - (inv.value if inv else 0.0)
         if ic > 0:
             vals.append(rev / ic)
     if not vals:
@@ -341,7 +349,8 @@ def _sales_to_capital(h: Historicals) -> Value | None:
         return None
     return Value(x, None, "x", f"{h.fy_labels[-len(vals)]}-{h.fy_labels[-1]}", "calculated",
                  formula="average of revenue / operating invested capital (equity + debt for valuation - cash - "
-                         "goodwill - acquired intangibles) over up to 3 years: organic growth does not buy goodwill")
+                         "goodwill - acquired intangibles - long-term investments valued in the equity bridge) over up to 3 years: "
+                         "organic growth does not buy goodwill or stakes in other companies")
 
 
 YEAR = 365.25

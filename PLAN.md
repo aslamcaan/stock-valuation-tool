@@ -315,3 +315,15 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   - JPM NIM: JPM publishes only the managed-basis (FTE) yield, 2.50%; the reported margin is derived as
     2.50% x reported / managed NII (95,443 / 95,868) = 2.49%. CET1 14.6% confirmed as the binding (Standardized)
     ratio; user had the figures and the "fairly valued, leaning expensive" read checked independently.
+- 2026-10-31 Mature-company valuations (KO was $46.99 vs $92.70, -49%; analyst targets $86-104). Causes found by
+  changing one assumption at a time: long-term investments valued in the equity bridge were also in invested
+  capital (KO's ~$20bn of bottler stakes: ROIC 17.4% instead of 24.8%, sales-to-capital 1.04 instead of 1.83) -> now
+  excluded unless operating income is an EBIT proxy; EV/Sales left out of the comps value when the company's
+  operating margin is outside 2/3x-1.5x the peer median (KO 29.5% vs PEP/KDP/MNST-type peers); mature/declining
+  companies without consensus use the 3-year revenue CAGR rather than the latest year; XBRL goodwill and intangible
+  impairments added back to the 5-year margin history (max with the research desk's one-offs; restructuring not
+  added back, it recurs). KO no-AI run: $58.45 (-37.9%), DCF $47.01, comps $62.67, history $80.71; PG $159.53
+  (-1.3%). The rest of the gap is the discount rate: 7.0% WACC (rf 4.98% FRED, beta 0.62, ERP 3.7% Damodaran);
+  ~6% is needed to reach the price. The saved Oct 26 KO report predates long-term investments in the bridge.
+  Open: AAPL -48.6% (DCF $101; WACC 9.8% from a 1.34 regression beta; no consensus while FMP is rate-limited);
+  FMP consensus shows KO revenue flat FY2026-FY2027 (49,826 -> 49,846), not yet explained.

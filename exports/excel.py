@@ -452,8 +452,8 @@ def build_workbook(rep) -> Workbook:
         for label, cc, key, metric in (("Revenue", "K", "ev_sales", own.revenue), ("EBITDA", "L", "ev_ebitda", own.ebitda),
                                        ("FCF", "M", "ev_fcf", own.fcf), ("Net income", "J", "pe_trailing", own.net_income)):
             mres = m.comps.multiples[key]
-            if mres.implied_price is None or metric is None:
-                continue  # fewer than 3 peers, negative metric, or P/E distorted by one-off gains
+            if mres.implied_price is None or metric is None or not mres.in_blend:
+                continue  # fewer than 3 peers, negative metric, P/E distorted by one-offs, or margins not comparable
             co.label(f"A{r_}", f"{label} (company)")
             co.input(f"B{r_}", metric, NUM)
             co.label(f"C{r_}", f"Implied price at peer median {mres.label}")

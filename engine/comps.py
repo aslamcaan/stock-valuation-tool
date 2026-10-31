@@ -20,6 +20,7 @@ MULTIPLES = {
 }
 # Above these a peer's multiple is "not meaningful" (NM, the sell-side convention): earnings or cash flow near zero,
 # so the ratio says nothing about value and would swamp the quartiles (e.g. a 5,700x P/E).
+SALES_MARGIN_BAND = (2 / 3, 1.5)  # EV/Sales only compares companies whose operating margins are within this ratio
 NM_ABOVE = {"pe_forward": 100.0, "pe_trailing": 100.0, "ev_sales": 50.0, "ev_ebitda": 100.0, "ev_fcf": 100.0}
 BENCHMARKS = {  # metric -> (label, higher is better)
     "revenue_growth": ("Revenue growth", True),
@@ -143,6 +144,8 @@ class MultipleResult:
     implied_price: float | None
     implied_price_high: float | None
     basis: str
+    in_blend: bool = True    # False: shown, but left out of the comps value (see `note`)
+    note: str = ""
 
 
 @dataclass
@@ -190,11 +193,31 @@ def run_comps(company: CompanyMetrics, peers: list[CompanyMetrics], steps: list[
                                   implied_from_multiple(key, q1, company, shares, bridge, adr_ratio),
                                   implied_from_multiple(key, md, company, shares, bridge, adr_ratio),
                                   implied_from_multiple(key, q3, company, shares, bridge, adr_ratio), basis)
-    implied = [m.implied_price for m in res.values() if m.implied_price is not None]
+    gap = _sales_margin_gap(company, peers)
+    if gap and res["ev_sales"].implied_price is not None:
+        res["ev_sales"].in_blend, res["ev_sales"].note = False, gap
+        excluded.append(gap)
+    implied = [m.implied_price for m in res.values() if m.implied_price is not None and m.in_blend]
     if res["pe_forward"].implied_price is not None and res["pe_trailing"].implied_price is not None:
         implied.remove(res["pe_trailing"].implied_price)  # forward P/E preferred; avoid double-weighting P/E
     benchmarks = benchmark(company, peers)
     return CompsResult(peers, steps, res, median(implied) if implied else None, benchmarks, excluded)
+
+
+def _sales_margin_gap(company: CompanyMetrics, peers: list[CompanyMetrics]) -> str:
+    """EV/Sales prices a dollar of revenue, so it only transfers between companies with similar margins. Returns why
+    it is left out of the comps value, or "" when the margins are comparable."""
+    def margin(c):
+        return c.operating_income / c.revenue if c.operating_income is not None and c.revenue and c.revenue > 0 else None
+    mine = margin(company)
+    theirs = [m for p in peers if (m := margin(p)) is not None]
+    if mine is None or mine <= 0 or len(theirs) < 3 or median(theirs) <= 0:
+        return ""
+    ratio = mine / median(theirs)
+    if SALES_MARGIN_BAND[0] <= ratio <= SALES_MARGIN_BAND[1]:
+        return ""
+    return (f"EV/Sales left out of the comps value: operating margin {mine:.1%} vs peer median {median(theirs):.1%} "
+            f"({ratio:.1f}x), so a dollar of revenue is not worth the same")
 
 
 def benchmark(company: CompanyMetrics, peers: list[CompanyMetrics]) -> dict[str, dict]:

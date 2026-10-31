@@ -308,3 +308,18 @@ def test_foreign_market_cap_converted_at_fred(monkeypatch):
     assert peers.usd_market_cap(None, mc, date(2027, 3, 1)) == (None, None)  # no rate within ten days
     usd_mc = MarketResult({"market_cap": 5e9, "currency": "USD"}, "FMP", "")
     assert peers.usd_market_cap(None, usd_mc) == (5000.0, "FMP")
+
+
+def test_emerging_listing_selling_to_developed_markets_uses_global_industry_data():
+    from types import SimpleNamespace as NS
+    import data_desk.valuation_inputs as vi
+    geo = NS(payload=[{"date": "2025-12-31", "data": {"UNITED STATES": 820, "CHINA": 100, "JAPAN": 40,
+                                                      "Europe Middle East and Africa": 40}}])
+    svc = NS(fmp=NS(call=lambda name, t: geo))
+    share = vi.developed_revenue_share(svc, "TSM")
+    assert share == pytest.approx(0.9)
+    region, why = vi.industry_region("Emerging Markets", True, share)
+    assert region == "global" and "90%" in why
+    assert vi.industry_region("Emerging Markets", True, 0.3) == ("emerging", "")  # sells mostly to emerging markets
+    assert vi.industry_region("Emerging Markets", True, None) == ("emerging", "")  # geography unknown: as Damodaran
+    assert vi.industry_region("United States", False, 0.1) == ("us", "")

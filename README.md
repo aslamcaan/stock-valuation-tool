@@ -60,7 +60,9 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
   target margin; the source of every driver is stated. Margins are cleaned of one-off items read from three annual
   reports (KO's FY2025 clean margin equals its reported comparable margin of 31.2%).
 - *WACC*: FRED 10-year yield + industry beta (Damodaran, relevered) x implied ERP + country risk weighted by the
-  company's revenue geography; synthetic-rating cost of debt.
+  company's revenue geography; synthetic-rating cost of debt. Industry beta and margin come from Damodaran's US,
+  global or emerging-markets dataset; an emerging-market listing that earns at least half its revenue in developed
+  markets is benchmarked on the global industry (TSM, 90%: beta 1.87 not 1.98, industry margin 27% not 20%).
 - *DCF* on operating income (never net income), with a terminal ROIC fade and the statutory terminal tax rate.
 - *Sum of the parts* when segments have materially different margins or growth: segment revenue and operating
   income read from the 10-K's XBRL segment note (the research desk's reading of the text as the fallback), each

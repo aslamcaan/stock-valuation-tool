@@ -28,6 +28,8 @@ GEO_MAP = [
     (("australia",), "region", "Australia & New Zealand"),
 ]
 INDUSTRY_REGION = {"United States": "us", "Emerging Markets": "emerging"}
+# GEO_MAP targets that are developed markets (MSCI developed: North America, Western Europe, Japan, Australia & NZ)
+DEVELOPED = {"United States", "North America", "Canada", "Japan", "Western Europe", "Australia & New Zealand"}
 
 
 class InputsError(Exception):
@@ -47,6 +49,34 @@ def _geo_target(label: str) -> tuple[str, str] | None:
         if any(k in lab for k in keys):
             return kind, name
     return None
+
+
+def developed_revenue_share(svc, ticker: str) -> float | None:
+    """Share of mapped revenue from developed markets, from FMP's latest revenue geography (None if unavailable or
+    if more than a quarter of revenue cannot be mapped)."""
+    geo = _try(svc.fmp.call, "revenue_geography", ticker)
+    rows = geo.payload if geo else None
+    if not rows:
+        return None
+    latest = max(rows, key=lambda r: r.get("date", ""))
+    data = {k: float(v) for k, v in (latest.get("data") or {}).items() if v and float(v) > 0}
+    total = sum(data.values())
+    mapped = {lab: (t, rev) for lab, rev in data.items() if (t := _geo_target(lab)) is not None}
+    m_total = sum(rev for _, rev in mapped.values())
+    if not total or m_total / total < 0.75:
+        return None
+    return sum(rev for (_, name), rev in mapped.values() if name in DEVELOPED) / m_total
+
+
+def industry_region(broad_group: str | None, foreign_filer: bool, developed_share: float | None) -> tuple[str, str]:
+    """(Damodaran dataset, why). Damodaran files a Taiwanese or Chinese listing under Emerging Markets; when most of
+    its revenue comes from developed markets it competes in the global industry, so the global dataset's beta and
+    margin are the fairer benchmark (TSM: emerging semiconductors average a 20% margin, global 27%)."""
+    region = INDUSTRY_REGION.get(broad_group or "", "global" if foreign_filer else "us")
+    if region == "emerging" and developed_share is not None and developed_share >= 0.5:
+        return "global", (f"global, not emerging-markets, industry data: {developed_share:.0%} of revenue is from "
+                          "developed markets")
+    return region, ""
 
 
 def country_risk_premium(svc, ticker: str, domicile: str | None, broad_group: str | None) -> Value:
@@ -134,13 +164,17 @@ def build_engine_inputs(cd: CompanyData, svc, valuation_date: date | None = None
                 note=e.detail)
 
     ind = svc.damodaran.industry_for(p.ticker, p.name, p.sic)
-    region = INDUSTRY_REGION.get(ind.get("broad_group") or "", "global" if p.foreign_filer else "us")
+    region, region_why = industry_region(ind.get("broad_group"), p.foreign_filer,
+                                         developed_revenue_share(svc, p.ticker)
+                                         if ind.get("broad_group") == "Emerging Markets" else None)
+    if region_why:
+        notes.append("Industry benchmarks: " + region_why)
     betas, b_asof, bc = svc.damodaran.industry_betas(region)
     margins, m_asof, mc = svc.damodaran.industry_margins(region)
     s2c, s_asof, sc = svc.damodaran.sales_to_capital("us" if region == "us" else "global")
     growth, g_asof, gc = svc.damodaran.industry_growth()
     name = ind["industry"]
-    src = f"Damodaran {region.upper()} industry '{name}'"
+    src = f"Damodaran {region.upper()} industry '{name}'" + (f" ({region_why})" if region_why else "")
     b = betas.get(name)
     unlev = Value(b["unlevered_beta_cash_adj"], None, RATIO, b_asof, src, tag="betas", fetched_at=bc.fetched_at_iso,
                   note=f"cash-adjusted unlevered beta, {b['firms']} firms; industry {ind['how']}") if b else None

@@ -430,3 +430,9 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   (2007, ~1,000 companies 1997-2006) finds 41% of the top ROIC quintile still there after nine years (20% by
   chance) but no reliable predictor of which; the fade stays, the reinvestment flag shows its cost, and the
   Talking points page answers the question.
+- Industry dataset by revenue geography: Damodaran files TSM under Emerging Markets, so its beta (1.98) and the
+  margin it fades to (20.4%, 546 mostly smaller emerging-market firms) came from the emerging dataset. An
+  emerging-market listing with >= 50% of revenue from developed markets (FMP geography) now uses the global dataset
+  (TSM 90%: beta 1.87, margin 27.0%). Re-model: WACC 12.38% -> 11.99%, DCF $119.99 -> $123.93. Unknown geography
+  keeps Damodaran's classification (GRAB). Note: offline re-models differ from saved reports also because FMP is
+  rate-limited today (no consensus) and the review desk's stage override is not replayed.

@@ -436,3 +436,6 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   (TSM 90%: beta 1.87, margin 27.0%). Re-model: WACC 12.38% -> 11.99%, DCF $119.99 -> $123.93. Unknown geography
   keeps Damodaran's classification (GRAB). Note: offline re-models differ from saved reports also because FMP is
   rate-limited today (no consensus) and the review desk's stage override is not replayed.
+- Cache fallback: when a refresh fails for a passing reason (HTTP 429, 5xx, no connection) the last good copy is
+  served, with its own fetch date, if recent enough (30 days; consensus 7; prices, news and AI never). The run's
+  notes list each fallback. Live: FMP was refusing CVX, and its 29 Oct consensus came back instead of nothing.

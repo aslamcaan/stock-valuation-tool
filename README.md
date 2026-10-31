@@ -148,7 +148,7 @@ assumptions and says so.
 
 | Package | What |
 |---|---|
-| `core/` | Settings (`.env` / Streamlit secrets), response cache with per-source TTLs, HTTP with rate limits and key redaction, store on SQLite (local) or Postgres (deployed) |
+| `core/` | Settings (`.env` / Streamlit secrets), response cache with per-source TTLs (a failed refresh falls back to the last good copy, up to 30 days old, 7 for consensus, never for prices or news, keeping its fetch date), HTTP with rate limits and key redaction, store on SQLite (local) or Postgres (deployed) |
 | `datasources/` | SEC EDGAR, FMP, FRED, Damodaran, Tiingo and Finnhub clients; FMP-first market data with free fallbacks |
 | `data_desk/` | XBRL extraction (US GAAP + IFRS tag map, restatements, 52/53-week years, LTM), derived lines, FX, data checks, peers, filing text, ownership |
 | `engine/` | **Pure** valuation engine: classification, forecast, WACC, DCF, scenarios, reverse DCF, comps, history multiples, SOTP, financial-sector toolkits, forensic scores, verdict, rubric, news repricing |

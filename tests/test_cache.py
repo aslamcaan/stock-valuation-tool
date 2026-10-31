@@ -46,3 +46,30 @@ def test_offline_serves_stale_and_never_fetches(tmp_path):
 def test_binary_roundtrip(cache):
     cache.get_or_fetch("damodaran", "f", lambda: b"\x00\x01xls", binary=True)
     assert cache.read("damodaran", "f").payload == b"\x00\x01xls"
+
+
+def test_failed_refresh_falls_back_to_a_recent_copy_but_never_for_prices(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from core.cache import Cache
+    from core.http import DataSourceError
+    c = Cache(tmp_path)
+    old = datetime.now(timezone.utc) - timedelta(days=3)
+    c.write("reference", "peers-KO", ["PEP"], fetched_at=old)
+    c.write("price", "quote-KO", {"price": 90}, fetched_at=old)
+
+    def limited():
+        raise DataSourceError("FMP", "rate limited (HTTP 429)", 429)
+
+    def missing():
+        raise DataSourceError("FMP", "HTTP 404", 404)
+
+    hit = c.get_or_fetch("reference", "peers-KO", limited)
+    assert hit.payload == ["PEP"] and hit.fetched_at == old  # keeps its own date
+    assert c.fallbacks and "FMP" in c.fallbacks[-1]
+    with pytest.raises(DataSourceError):
+        c.get_or_fetch("price", "quote-KO", limited)  # a stale price is never served
+    with pytest.raises(DataSourceError):
+        c.get_or_fetch("reference", "peers-KO", missing)  # a definite answer is not covered up
+    c.write("estimates", "est-KO", [1], fetched_at=datetime.now(timezone.utc) - timedelta(days=10))
+    with pytest.raises(DataSourceError):
+        c.get_or_fetch("estimates", "est-KO", limited)  # consensus older than a week is not used

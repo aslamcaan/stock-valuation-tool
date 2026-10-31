@@ -18,6 +18,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from core.http import DataSourceError
+
+# oldest copy served when a refresh fails for a passing reason; prices and news are never served stale
+STALE_FALLBACK = {"estimates": timedelta(days=7), "price": None, "news": None, "ai": None}
+STALE_FALLBACK_DEFAULT = timedelta(days=30)
+
 MINUTE = 60
 HOUR = 60 * MINUTE
 DAY = 24 * HOUR
@@ -70,6 +76,7 @@ class Cache:
                        "fetched_at TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (category, digest))")
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
+        self.fallbacks: list[str] = []  # stale copies served after a failed refresh (for the report notes)
 
     def _lock(self, path: Path) -> threading.Lock:
         with self._guard:
@@ -156,8 +163,30 @@ class Cache:
                 hit = self.read(category, key)
                 if hit is not None:
                     return hit
-            payload = fetch()
+            try:
+                payload = fetch()
+            except DataSourceError as exc:
+                stale = self._fallback(category, key, exc)
+                if stale is None:
+                    raise
+                return stale
             return self.write(category, key, payload, binary=binary)
+
+    def _fallback(self, category: str, key: str, exc: DataSourceError) -> Cached | None:
+        """The last good copy when a refresh fails for a passing reason (rate limit, server error, no connection),
+        if it is recent enough for its category. It keeps its own fetch date, so every number still shows its age; a 404
+        or other definite answer is never covered up."""
+        if exc.status is not None and exc.status != 429 and exc.status < 500:
+            return None
+        limit = STALE_FALLBACK.get(category, STALE_FALLBACK_DEFAULT)
+        if limit is None:
+            return None
+        hit = self.read(category, key, allow_stale=True)
+        if hit is None or _now() - hit.fetched_at > limit:
+            return None
+        self.fallbacks.append(f"{exc.source} could not be refreshed, so its {category} data fetched "
+                              f"{hit.fetched_at_iso[:10]} was used")  # no status text: the data is present
+        return hit
 
     def clear(self, category: str | None = None) -> int:
         target = self.root / category if category else self.root

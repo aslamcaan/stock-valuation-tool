@@ -104,6 +104,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
     if holder is not None:
         holder["report"] = rep
     p = Progress(events)
+    fallbacks_from = len(getattr(svc.cache, "fallbacks", []))  # stale copies served during this run
 
     def cost():
         return svc.ai.report_cost(rid)
@@ -217,7 +218,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
             p("Modelling desk", FAILED, str(exc))
             rep.stopped = str(exc)
             return
-        model.notes += peer_notes
+        model.notes += peer_notes + list(dict.fromkeys(getattr(svc.cache, "fallbacks", [])[fallbacks_from:]))
         rep.model = model
         rep.forensic = _forensic(cd, model)
         vd = model.verdict

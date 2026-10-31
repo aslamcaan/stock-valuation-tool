@@ -129,6 +129,19 @@ def why_rating(rep) -> None:
          f"{''.join(rows)}{total}</div></div></div>")
 
 
+def value_strip(m) -> str:
+    """The model's value range (DCF bear to bull, or the financial toolkit's methods) against price and fair value."""
+    vd, v, fin = m.verdict, m.valuation, getattr(m, "financial", None)
+    if fin is not None:
+        pts = [x.value for x in fin.methods.values() if x.value is not None]
+        return _range_strip(min(pts), max(pts), "Valuation methods", vd.price, vd.fair_value) if pts else ""
+    if v is not None and len(v.scenarios) == 3:
+        b, base, bu = (v.per_us_share(s_.value_per_share) for s_ in v.scenarios)
+        if None not in (b, bu):
+            return _range_strip(min(b, bu), max(b, bu), "DCF bear to bull", vd.price, vd.fair_value, base)
+    return ""
+
+
 def verdict_card(rep) -> None:
     m, cd = rep.model, rep.company
     vd, v = m.verdict, m.valuation
@@ -153,15 +166,7 @@ def verdict_card(rep) -> None:
         _kpi("Verdict", vd.verdict or "–", f"Confidence: {vd.confidence or '–'}",
              "; ".join(vd.confidence_reasons), VERDICT_COLOUR.get(vd.verdict), word=True),
     ]
-    strip = ""
-    if fin is not None:
-        pts = [x.value for x in fin.methods.values() if x.value is not None]
-        if pts:
-            strip = _range_strip(min(pts), max(pts), "Valuation methods", vd.price, vd.fair_value)
-    elif len(v.scenarios) == 3:
-        b, base, bu = (v.per_us_share(s_.value_per_share) for s_ in v.scenarios)
-        if None not in (b, bu):
-            strip = _range_strip(min(b, bu), max(b, bu), "DCF bear to bull", vd.price, vd.fair_value, base)
+    strip = value_strip(m)
 
     tg = m.analyst_targets
     stats = []

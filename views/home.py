@@ -11,7 +11,7 @@ from core.http import DataSourceError
 from datasources.search import label, search
 from ui.format import when
 from ui.state import get_services
-from ui.theme import MUTED, VERDICT_COLOUR, dot
+from ui.theme import ACCENT, BORDER, FAINT, FONT, MUTED, SURFACE, SURFACE_2, TEXT, VERDICT_COLOUR, dot
 
 svc = get_services()
 try:
@@ -70,8 +70,19 @@ with mid:
     def _search(term: str) -> list[tuple[str, dict]]:
         return [(label(m), m) for m in search(rows, term, limit=10)]
 
+    # the searchbox renders in its own frame, so the page CSS cannot reach it: the theme goes in as react-select styles
+    field = {"fontFamily": FONT, "fontSize": "15px"}
+    look = {
+            "dropdown": {"fill": ACCENT, "rotate": True},
+            "clear": {"fill": MUTED},
+            "searchbox": {"control": {**field, "backgroundColor": SURFACE, "border": f"1px solid {BORDER}",
+                                      "borderRadius": "10px", "boxShadow": "none", "minHeight": "44px"},
+                          "input": {**field, "color": TEXT}, "singleValue": {**field, "color": TEXT},
+                          "placeholder": {**field, "color": FAINT},
+                          "menuList": {**field, "backgroundColor": SURFACE_2},
+                          "option": {"color": TEXT, "backgroundColor": SURFACE_2, "highlightColor": "rgba(255,122,26,.18)"}}}
     picked = st_searchbox(_search, label="Stock name or ticker", placeholder="Search a company or ticker, e.g. Grab, UBER, Coca-Cola",
-                          key="company_search")
+                          key="company_search", style_overrides=look)
     if picked:
         st.session_state["selected"] = picked
     picked = st.session_state.get("selected")

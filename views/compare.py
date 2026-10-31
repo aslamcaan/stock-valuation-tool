@@ -7,7 +7,7 @@ import streamlit as st
 from desks.pipeline import load
 from ui.financial import _fmt
 from ui.format import money, plain_table, when
-from ui.report import football
+from ui.report import football, value_strip
 from ui.theme import ACCENT, RATING_COLOUR, VERDICT_COLOUR, esc, note
 from ui.state import get_services
 
@@ -16,6 +16,7 @@ MULTIPLES = [("pe_trailing", "P/E (trailing)"), ("pe_forward", "P/E (forward)"),
 METRICS = [("revenue_growth", "Revenue growth", "pct"), ("operating_margin", "Operating margin", "pct"),
            ("fcf_margin", "FCF margin", "pct"), ("roic", "ROIC", "pct"), ("net_debt_to_ebitda", "Net debt / EBITDA", "x"),
            ("interest_cover", "Interest cover", "x"), ("roe", "Return on equity", "pct")]
+LOWER_IS_STRONGER = {"net_debt_to_ebitda"}
 CORPORATE_ONLY = {"operating_margin", "fcf_margin", "roic", "net_debt_to_ebitda", "interest_cover"}
 
 svc = get_services()
@@ -66,6 +67,15 @@ def fmt(x, kind):
     return f"{x:.1%}" if kind == "pct" else f"{x:.2f}x" if kind == "x" else money(x)
 
 
+def stronger(values: dict[str, float | None], lower_is_better: bool) -> str:
+    """The ticker with the stronger figure, or "–" when either is missing or they tie."""
+    vals = {t: x for t, x in values.items() if x is not None}
+    if len(vals) < 2 or len(set(vals.values())) < 2:
+        return "–"
+    pick = min if lower_is_better else max
+    return pick(vals, key=vals.get)
+
+
 def latest_period(rep) -> str:
     h = rep.company.historicals_usd
     return h.ltm.label if h.ltm else h.fy_labels[-1]
@@ -99,7 +109,7 @@ for col, rep in zip(cols, reps):
     col.markdown(
         f"<div class='vt-head'><div class='vt-id'><span class='vt-ticker'>{esc(rep.ticker)}</span>"
         f"<span class='vt-name'>{esc(rep.company.profile.name)}</span></div>"
-        f"<div class='vt-kpis two'>{''.join(kpis)}</div>"
+        f"<div class='vt-kpis two'>{''.join(kpis)}</div>{value_strip(rep.model)}"
         f"<div class='vt-stats'><span>{esc(basis)}{esc(adj)}</span><span>Report <span class='n'>"
         f"{esc(when(rep.created_at))}</span></span></div></div>", unsafe_allow_html=True)
 
@@ -108,7 +118,7 @@ for col, rep in zip(cols, reps):
 st.markdown("### Key metrics")
 table = []
 for key, name, kind in METRICS:
-    row = {"Metric": name}
+    row, raw = {"Metric": name}, {}
     for rep in reps:
         p = latest_period(rep)
         if key in CORPORATE_ONLY and getattr(rep.model, "financial", None) is not None:
@@ -119,10 +129,13 @@ for key, name, kind in METRICS:
             used = rep.company.historicals_usd.fy_labels[-1]
             val = rep.company.analysis.m(key, used)
         row[f"{rep.ticker} ({p})"] = fmt(val, kind) + (f" ({used})" if used != p and val is not None else "")
+        raw[rep.ticker] = val
+    row["Stronger"] = stronger(raw, key in LOWER_IS_STRONGER)
     table.append(row)
 st.markdown(plain_table([list(r.values()) for r in table], list(table[0].keys())), unsafe_allow_html=True)
-st.caption("Operating margin, FCF margin, ROIC, net debt / EBITDA and interest cover do not describe a bank, insurer "
-           "or REIT; their sector metrics are below.")
+st.caption("Stronger: the higher figure, except net debt / EBITDA where lower is stronger. Operating margin, FCF "
+           "margin, ROIC, net debt / EBITDA and interest cover do not describe a bank, insurer or REIT; their sector "
+           "metrics are below.")
 for rep in reps:
     fin = getattr(rep.model, "financial", None)
     if fin is not None:

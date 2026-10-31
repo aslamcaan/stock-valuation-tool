@@ -919,6 +919,27 @@ def render_report(rep, extra_tabs: list | None = None) -> None:
 __all__ = ["render_report", "calc_value", "PER_SHARE"]
 
 
+# --- history --------------------------------------------------------------------------------------------------------
+def what_changed(old: dict, new: dict) -> list[str]:
+    """Plain statements of what moved between two versions, largest effects first (code, not AI)."""
+    out = []
+    names = {"dcf": "DCF", "comps": "peer multiples", "history": "own-history multiples", "sotp": "sum of the parts"}
+    for k, label in names.items():
+        a, b = (old.get("components") or {}).get(k), (new.get("components") or {}).get(k)
+        if a and b and abs(b / a - 1) >= 0.03:
+            out.append(f"{label} {money(a)} → {money(b)}")
+    if old.get("stage") and new.get("stage") and old["stage"] != new["stage"]:
+        out.append(f"stage {old['stage']} → {new['stage']}")
+    for k, label, tol in (("wacc", "WACC", 0.001), ("growth", "year-1 growth", 0.005), ("margin", "target margin", 0.005)):
+        a, b = old.get(k), new.get(k)
+        if a is not None and b is not None and abs(b - a) >= tol:
+            out.append(f"{label} {a:.1%} → {b:.1%}")
+    a, b = old.get("price"), new.get("price")
+    if a and b and abs(b / a - 1) >= 0.02:
+        out.append(f"price {money(a)} → {money(b)}")
+    return out
+
+
 # --- what if --------------------------------------------------------------------------------------------------------
 def what_if(rep) -> None:
     """Drag the DCF's main drivers and watch the fair value move. Each change reprices the model in Python (the

@@ -39,6 +39,21 @@ class CostCapExceeded(Exception):
     pass
 
 
+def api_error_message(desk: str, exc: Exception) -> str:
+    """A readable reason for an Anthropic API failure (never the key or the full request)."""
+    text = str(getattr(exc, "message", "") or exc)
+    if "credit balance" in text.lower():
+        return f"{desk}: the Anthropic account is out of credit (top up under Plans & Billing); AI desks skipped"
+    status = getattr(exc, "status_code", None)
+    if status == 429:
+        return f"{desk}: the Anthropic API is rate limiting requests; try again in a minute"
+    if status in (401, 403):
+        return f"{desk}: the Anthropic API key was refused"
+    if status is None:
+        return f"{desk}: the Anthropic API could not be reached ({type(exc).__name__})"
+    return f"{desk}: the Anthropic API returned an error (HTTP {status})"
+
+
 class AIError(Exception):
     pass
 
@@ -201,6 +216,12 @@ class AIClient:
         try:
             return self._call(request, key, report_id, desk, model, content, schema, effort, max_tokens,
                               web_search_uses, cache_category, with_sources)
+        except AIError:
+            raise
+        except Exception as exc:  # the API refused or could not be reached: the report goes on without this desk
+            if type(exc).__module__.split(".")[0] != "anthropic":
+                raise
+            raise AIError(api_error_message(desk, exc)) from exc
         finally:
             self.ledger.release(report_id, estimate)
 

@@ -15,7 +15,7 @@ from engine.valuation import ValuationError
 from exports.excel import export_bytes
 from exports.pdf import build_pdf
 from ui.format import CSS, money
-from ui.report import render_report, verdict_card, what_if
+from ui.report import render_report, verdict_card, what_changed, what_if
 from ui.run_panel import desk_nodes, panel as run_panel
 from ui.state import get_services
 
@@ -237,6 +237,76 @@ def _log_tab() -> None:
     st.caption(f"AI cost for this report: {money(rep.ai_cost, 3)}")
 
 
+@st.cache_data(show_spinner=False, max_entries=300)
+def version_facts(report_id: str) -> dict:
+    """The figures of one saved version that explain a change between runs (empty if it cannot be read)."""
+    try:
+        r = load(report_id, get_services().store)
+    except Exception:  # a deleted or unreadable version still shows its logged call
+        return {}
+    m = r.model
+    if m is None:
+        return {}
+    out = {"components": dict(m.verdict.components or {}), "price": m.verdict.price,
+           "rating": r.md.rating if r.md else None,
+           "reason": (r.md.view.get("reasoning_lines") or [""])[0] if r.md else ""}
+    v = m.valuation
+    if v is not None and v.plan is not None:
+        k = len(v.plan.skipped)
+        out.update(wacc=v.wacc.wacc.value, growth=v.plan.path("revenue_growth")[k],
+                   margin=v.plan.drivers["operating_margin"].chosen.value, stage=v.classification.stage_label)
+    return out
+
+
+def _history_tab() -> None:
+    import plotly.graph_objects as go
+    from ui.theme import ACCENT, RATING_COLOUR, TEXT, VERDICT_COLOUR, esc, plotly_layout
+    st.markdown("#### History")
+    calls = sorted((c for c in svc.store.calls() if c["ticker"] == rep.ticker),
+                   key=lambda c: (c["call_date"], c.get("call_time") or ""))
+    if len(calls) < 2:
+        st.caption(f"This is the only completed report for {rep.ticker}. Re-run it later to see how the call moves.")
+        return
+    xs = [f"{c['call_date']} {c.get('call_time') or ''}".strip() for c in calls]
+    fig = go.Figure()
+    fig.add_scatter(x=xs, y=[c["price"] for c in calls], name="Price", mode="lines+markers",
+                    line=dict(color=TEXT, width=1.5, dash="dot"), marker=dict(size=6),
+                    hovertemplate="Price %{y:$,.2f}<extra></extra>")
+    fig.add_scatter(x=xs, y=[c["fair_value"] for c in calls], name="Fair value", mode="lines+markers+text",
+                    line=dict(color=ACCENT, width=2.5), marker=dict(size=9),
+                    text=[c.get("rating") or c.get("verdict") or "" for c in calls], textposition="top center",
+                    textfont=dict(size=11, color=ACCENT), hovertemplate="Fair value %{y:$,.2f}<extra></extra>")
+    fig.update_layout(**plotly_layout(height=320, showlegend=True, xaxis=dict(type="category"),
+                                      legend=dict(orientation="h", y=1.12, x=0)))
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    st.caption("Orange: the tool's fair value at each run, labelled with the MD's rating (or the verdict when the AI "
+               "desks did not run). Dotted: the share price at the time.")
+    facts = [version_facts(c["report_id"]) for c in calls]
+    items = []
+    for i in range(len(calls) - 1, -1, -1):  # newest first
+        c, f = calls[i], facts[i]
+        label = c.get("rating") or c.get("verdict") or "–"
+        colour = RATING_COLOUR.get(c.get("rating")) or VERDICT_COLOUR.get(c.get("verdict"), ACCENT)
+        gap = c["fair_value"] / c["price"] - 1 if c.get("price") else None
+        head = (f"<b style='color:{colour}'>{esc(label)}</b> · fair value {esc(money(c['fair_value']))} vs price "
+                f"{esc(money(c['price']))}" + (f" ({gap:+.0%})" if gap is not None else ""))
+        if i == 0:
+            body = "First completed report."
+        else:
+            prev = calls[i - 1]
+            move = c["fair_value"] / prev["fair_value"] - 1 if prev.get("fair_value") else None
+            changes = what_changed(facts[i - 1], f) if f and facts[i - 1] else []
+            body = ((f"Fair value {move:+.1%}" if move is not None else "")
+                    + (": " + "; ".join(changes) if changes else
+                       (" (the inputs that drive it barely moved)" if f and facts[i - 1] else "")) + ".")
+            if (prev.get("rating") or None) != (c.get("rating") or None) and c.get("rating"):
+                body += f" Rating {prev.get('rating') or 'not rated'} → {c['rating']}."
+        if f.get("reason"):
+            body += f" MD: {f['reason']}"
+        items.append(f"<div class='ev'>{head}<span class='d'>{esc(xs[i])}</span><p>{esc(body)}</p></div>")
+    st.markdown("<div class='vt-timeline'>" + "".join(items) + "</div>", unsafe_allow_html=True)
+
+
 def _what_if_tab() -> None:
     st.markdown("#### What if")
     if rep.model is None:
@@ -245,4 +315,5 @@ def _what_if_tab() -> None:
     what_if(rep)
 
 
-render_report(rep, extra_tabs=[("What if", _what_if_tab), ("Edit assumptions", _edit_tab), ("Desk log", _log_tab)])
+render_report(rep, extra_tabs=[("What if", _what_if_tab), ("History", _history_tab),
+                               ("Edit assumptions", _edit_tab), ("Desk log", _log_tab)])

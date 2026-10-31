@@ -97,8 +97,26 @@ class StubMarket(MarketData):
                              "listing": symbol}, "Stub", TODAY.isoformat())
 
 
+class BrokeAI(FakeAI):
+    """Every call fails the way an exhausted Anthropic account does."""
+
+    def call(self, *, report_id, desk, **_):
+        from desks.ai import AIError
+        self.desks.append(desk)
+        raise AIError(f"{desk}: the Anthropic account is out of credit (top up under Plans & Billing); AI desks skipped")
+
+
 @pytest.fixture(scope="module")
 def report(tmp_path_factory):
+    yield from _run(tmp_path_factory, FakeAI)
+
+
+@pytest.fixture(scope="module")
+def broke_report(tmp_path_factory):
+    yield from _run(tmp_path_factory, BrokeAI)
+
+
+def _run(tmp_path_factory, ai_class):
     import desks.modelling as modelling
     import desks.pipeline as pipeline
     mp = pytest.MonkeyPatch()
@@ -115,7 +133,7 @@ def report(tmp_path_factory):
         svc.cache.write("damodaran", cache_key(dam.BASE + dam.FILES[name]),
                         (FIXTURES / "damodaran" / fname).read_bytes(), binary=True)
     svc.market = StubMarket(svc.fmp, svc.tiingo, svc.finnhub)
-    svc.ai = FakeAI(svc.cache, CostLedger(svc.db, 1.0, 5.0))
+    svc.ai = ai_class(svc.cache, CostLedger(svc.db, 1.0, 5.0))
 
     filing = FilingText("10-K", "2026-02-20", "2025-12-31", "https://www.sec.gov/test", {"mdna": FILING})
     mp.setattr(pipeline, "latest_annual_report", lambda svc, cik, years_back=0: filing)
@@ -153,3 +171,51 @@ def test_the_report_saves_and_reloads(report):
     rep, svc = report
     again = load(rep.report_id, svc.store)
     assert again.model.verdict.fair_value == pytest.approx(rep.model.verdict.fair_value)
+
+
+def test_a_report_without_ai_credit_still_values_the_company(broke_report):
+    """JPM, 2026-10-31: an out-of-credit API error escaped the pipeline and the whole report failed."""
+    rep, svc = broke_report
+    assert rep.model is not None and rep.model.verdict.fair_value is not None
+    assert rep.md is None and rep.desk_status["MD"][0] == "failed"
+    assert "out of credit" in rep.desk_status["MD"][1]
+
+
+def test_api_errors_become_readable_ai_errors(tmp_path):
+    from core.cache import Cache
+    from core.db import Database
+    from desks.ai import AIError
+
+    class BadRequestError(Exception):  # stands in for anthropic.BadRequestError (same module, status and message)
+        status_code = 400
+    BadRequestError.__module__ = "anthropic._exceptions"
+
+    class Refusing:
+        class messages:
+            @staticmethod
+            def create(**_):
+                raise BadRequestError("Your credit balance is too low to access the Anthropic API.")
+
+    ai = AIClient("test-key", Cache(tmp_path / "c"), CostLedger(Database(tmp_path / "t.sqlite"), 1.0, 5.0),
+                  client=Refusing())
+    with pytest.raises(AIError, match="out of credit"):
+        ai.call(report_id="r", desk="MD", model="claude-haiku-5-5", system="s", content="c",
+                schema={"type": "object", "properties": {}})
+
+    class Other(Exception):  # an error from our own code is not dressed up as an API failure
+        pass
+    Refusing.messages.create = staticmethod(lambda **_: (_ for _ in ()).throw(Other("bug")))
+    with pytest.raises(Other):
+        ai.call(report_id="r", desk="MD", model="claude-haiku-5-5", system="s", content="d",
+                schema={"type": "object", "properties": {}})
+
+
+def test_what_changed_between_versions_names_the_drivers():
+    from ui.report import what_changed
+    old = {"components": {"dcf": 62.72, "comps": 19.05, "history": 80.0}, "wacc": 0.083, "growth": 0.15,
+           "margin": 0.12, "stage": "High growth", "price": 71.27}
+    new = {"components": {"dcf": 65.89, "comps": 61.57, "history": 80.5}, "wacc": 0.081, "growth": 0.152,
+           "margin": 0.12, "stage": "High growth", "price": 65.25}
+    assert what_changed(old, new) == ["DCF $62.72 → $65.89", "peer multiples $19.05 → $61.57", "WACC 8.3% → 8.1%",
+                                      "price $71.27 → $65.25"]
+    assert what_changed(old, old) == []

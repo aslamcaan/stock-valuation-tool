@@ -14,6 +14,7 @@ from engine.valuation import ValuationError
 from exports.excel import export_bytes
 from exports.pdf import build_pdf
 from ui.format import CSS, STATE_COLOUR, STATE_ICON, money
+from ui.theme import MUTED, esc
 from ui.report import render_report, verdict_card
 from ui.state import get_services
 
@@ -200,16 +201,20 @@ if rep is None:
     st.info("Pick a stock on the Search page to run a report, or open a recent one.")
     st.stop()
 
-top = st.columns([2, 1, 1, 1, 1])
-top[0].caption(f"Saved report {rep.report_id}")
 if getattr(rep, "save_error", None):
     st.warning(rep.save_error)
-if top[1].button("Re-run (new version)"):
+exportable = rep.model is not None and (getattr(rep.model, "financial", None) is not None or
+                                        (rep.model.valuation is not None and rep.model.valuation.dcf is not None))
+bar = st.columns([3.2, 1, 1, 1, 1], vertical_alignment="center")
+bar[0].caption(f"Saved report {rep.report_id}")
+if bar[1].button("Re-run", icon=":material/refresh:", width="stretch",
+                 help="Runs every desk again and saves a new dated version (the saved one is kept)."):
     start_run(rep.ticker, rep.overrides or None)
     st.rerun()
 if rep.model is not None and "edited" not in st.session_state and \
-        top[2].button("Refresh news", help="Re-runs the news desk only, then the impact analysis and the MD's news "
-                                           "summary. The base valuation and rating stay as they are."):
+        bar[2].button("News", icon=":material/newspaper:", width="stretch",
+                      help="Refresh news: re-runs the news desk only, then the impact analysis and the MD's news "
+                           "summary. The base valuation and rating stay as they are."):
     with st.spinner("Refreshing news: searching, verifying and analysing the impact (about a minute)…"):
         try:
             st.session_state.report = refresh_news(rep, svc)
@@ -217,33 +222,45 @@ if rep.model is not None and "edited" not in st.session_state and \
             st.error(f"News refresh failed: {type(exc).__name__}: {exc}")
         else:
             st.rerun()
-exportable = rep.model is not None and (getattr(rep.model, "financial", None) is not None or
-                                        (rep.model.valuation is not None and rep.model.valuation.dcf is not None))
 if exportable:
     try:
-        top[3].download_button("Download Excel model", export_bytes(rep), file_name=f"{rep.report_id}.xlsx",
-                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        top[4].download_button("Download PDF report", build_pdf(rep), file_name=f"{rep.report_id}.pdf",
-                               mime="application/pdf")
+        bar[3].download_button("Excel", export_bytes(rep), file_name=f"{rep.report_id}.xlsx", icon=":material/table_view:",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               width="stretch", help="The full model with live formulas.")
+        bar[4].download_button("PDF", build_pdf(rep), file_name=f"{rep.report_id}.pdf", icon=":material/picture_as_pdf:",
+                               mime="application/pdf", width="stretch", help="The report as a research note.")
     except Exception as exc:  # an export problem must not hide the report
-        top[3].caption(f"Export unavailable: {exc}")
+        bar[3].caption(f"Export unavailable: {exc}")
 if "edited" in st.session_state:
-    st.info("Showing your edited assumptions (not saved). Use Re-run to save a new dated version with AI commentary.")
-    if st.button("Back to the saved version"):
+    c1, c2 = st.columns([4, 1], vertical_alignment="center")
+    c1.info("Showing your edited assumptions (not saved). Use Re-run to save a new dated version with AI commentary.")
+    if c2.button("Back to the saved version", width="stretch"):
         st.session_state.pop("edited")
         st.rerun()
 
-render_report(rep)
-if rep.model is not None and getattr(rep.model, "financial", None) is not None:
-    with st.expander("Edit assumptions (live recalculation)"):
+
+def _edit_tab() -> None:
+    st.markdown("#### Edit assumptions")
+    if rep.model is not None and getattr(rep.model, "financial", None) is not None:
         edit_form_financial(rep)
-elif rep.model is not None and rep.model.valuation.dcf_inputs is not None:
-    with st.expander("Edit assumptions (live recalculation)"):
+    elif rep.model is not None and rep.model.valuation.dcf_inputs is not None:
         edit_form(rep)
-with st.expander("Desk log"):
+    else:
+        st.caption("This report has no model to recalculate.")
+
+
+def _log_tab() -> None:
+    st.markdown("#### Desk log")
+    html_rows = []
     for d, (state, msg) in rep.desk_status.items():
-        st.markdown(f"{STATE_ICON.get(state, '·')} **{d}** — {msg}")
+        html_rows.append(f"<div><span style='color:{STATE_COLOUR.get(state, MUTED)};display:inline-block;width:1.4em'>"
+                         f"{STATE_ICON.get(state, '·')}</span><b style='display:inline-block;width:8.5em'>{esc(d)}</b>"
+                         f"{esc(msg)}</div>")
+    st.markdown(f"<div class='vt-card vt-desk'>{''.join(html_rows)}</div>", unsafe_allow_html=True)
     if rep.model:
         for n in rep.model.notes:
             st.caption(n)
     st.caption(f"AI cost for this report: {money(rep.ai_cost, 3)}")
+
+
+render_report(rep, extra_tabs=[("Edit assumptions", _edit_tab), ("Desk log", _log_tab)])

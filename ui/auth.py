@@ -11,15 +11,16 @@ import time
 import streamlit as st
 
 from core.config import PROJECT_ROOT, load_settings
+from ui.theme import LOGO
 
 MAX_ATTEMPTS = 5
 LOCKOUT_SECONDS = 60
 
 
 def _login_screen(password: str) -> None:
-    st.markdown("<div class='vt-login'><div class='vt-logo'>◆</div><h1>Stock Valuation Tool</h1>"
-                "<p class='vt-muted'>Equity research and valuation · private</p></div>",
-                unsafe_allow_html=True)
+    st.markdown(f"<div class='vt-login'>{LOGO.format(s=44)}<h1>Stock Valuation Tool</h1>"
+                "<p class='vt-muted'>Equity research and valuation. Private site: enter the password to continue.</p>"
+                "</div>", unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
         locked_until = st.session_state.get("auth_locked_until", 0.0)

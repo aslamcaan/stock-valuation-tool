@@ -82,4 +82,4 @@ def test_debug_page_runs_data_desk(offline_env):
 def test_compare_needs_two_saved_reports(offline_env):
     at = AppTest.from_file("../views/compare.py", default_timeout=30).run()
     assert not at.exception and [t.value for t in at.title] == ["Compare"]
-    assert "at least two companies" in at.info[0].value
+    assert any("at least two companies" in m.value for m in at.markdown)

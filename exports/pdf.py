@@ -1,29 +1,95 @@
 """PDF report (reportlab): the report as a clean, printable document."""
 from __future__ import annotations
 
+import re
 from io import BytesIO
 
 from reportlab.graphics.shapes import Drawing, Line, Rect, String
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from engine.rubric import LABELS, WEIGHTS
 from ui.format import millions, money, mult, pct
 from ui.report import DISCLAIMER
 
-BLUE = colors.HexColor("#0969da")
-GREY = colors.HexColor("#57606a")
-LIGHT = colors.HexColor("#eaeef2")
+INK = colors.HexColor("#0b1a2e")      # masthead navy
+BLUE = colors.HexColor("#1f5fbf")
+GREY = colors.HexColor("#5b6573")
+RULE = colors.HexColor("#c9d1db")
+LIGHT = colors.HexColor("#eef2f6")
+GREEN, RED, AMBER = colors.HexColor("#1a7f37"), colors.HexColor("#c4302b"), colors.HexColor("#9a6700")
+VERDICT = {"Undervalued": GREEN, "Overvalued": RED, "Fairly valued": AMBER}
+RATING = {"Strong Buy": GREEN, "Buy": GREEN, "Hold": AMBER, "Sell": RED, "Strong Sell": RED}
+MASTHEAD = 30 * mm
 REPLACE = {"→": "->", "≥": ">=", "≤": "<=", "×": "x", "−": "-", " ": " ", "◌": "", "✓": "", "✗": ""}
 
 ss = getSampleStyleSheet()
-H1 = ParagraphStyle("h1", parent=ss["Heading1"], fontSize=16, spaceAfter=4)
-H2 = ParagraphStyle("h2", parent=ss["Heading2"], fontSize=12, spaceBefore=8, spaceAfter=4, textColor=BLUE)
-BODY = ParagraphStyle("body", parent=ss["BodyText"], fontSize=8.5, leading=11)
+H1 = ParagraphStyle("h1", parent=ss["Heading1"], fontName="Helvetica-Bold", fontSize=18, leading=22, textColor=INK,
+                    spaceAfter=1)
+H2 = ParagraphStyle("h2", parent=ss["Heading2"], fontName="Helvetica-Bold", fontSize=10.5, leading=13, spaceBefore=12,
+                    spaceAfter=6, textColor=INK)
+BODY = ParagraphStyle("body", parent=ss["BodyText"], fontName="Helvetica", fontSize=8.5, leading=11.5)
 SMALL = ParagraphStyle("small", parent=BODY, fontSize=7, textColor=GREY, leading=9)
+BODY_R = ParagraphStyle("body_r", parent=BODY, alignment=TA_RIGHT)
+SMALL_R = ParagraphStyle("small_r", parent=SMALL, alignment=TA_RIGHT)
+_NUM = re.compile(r"[-–+]?\$?\(?-?[\d,]*\.?\d+\)?(%|x|m|bn)?|[-–]|n/a")
+KPI_L = ParagraphStyle("kl", parent=SMALL, fontSize=6.5, textColor=GREY)
+KPI_V = ParagraphStyle("kv", parent=BODY, fontName="Helvetica-Bold", fontSize=12.5, leading=15)
+
+
+def _date(ts) -> str:
+    from ui.format import when
+    return when(ts)
+
+
+def _pages(rep):
+    """Page furniture: a navy masthead on page 1, a running header on later pages, a footer with page numbers."""
+    name, ticker = rep.company.profile.name, rep.company.profile.ticker
+    w, h = A4
+
+    def footer(c, doc):
+        c.setFont("Helvetica", 6.8)
+        c.setFillColor(GREY)
+        c.drawString(14 * mm, 8 * mm, "Not investment advice. Every figure traces to a dated source: see "
+                                      "Assumptions and data provenance.")
+        c.drawRightString(w - 14 * mm, 8 * mm, f"Page {doc.page}")
+
+    def first(c, doc):
+        c.saveState()
+        c.setFillColor(INK)
+        c.rect(0, h - MASTHEAD, w, MASTHEAD, stroke=0, fill=1)
+        c.setFillColor(colors.HexColor("#4c8dff"))
+        for i, bh in enumerate((2.5, 4.5, 6.5)):  # the app's mark: three rising bars
+            c.roundRect(14 * mm + i * 3 * mm, h - 19.5 * mm, 1.8 * mm, bh * mm, 0.8 * mm, stroke=0, fill=1)
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 9.5)
+        c.drawString(25 * mm, h - 14.5 * mm, "STOCK VALUATION TOOL")
+        c.setFont("Helvetica", 7.5)
+        c.setFillColor(colors.HexColor("#a9b8cc"))
+        c.drawString(25 * mm, h - 19 * mm, "Equity research note")
+        c.drawRightString(w - 14 * mm, h - 14.5 * mm, _date(rep.created_at))
+        c.drawRightString(w - 14 * mm, h - 19 * mm, f"Report {rep.report_id}")
+        footer(c, doc)
+        c.restoreState()
+
+    def later(c, doc):
+        c.saveState()
+        c.setFont("Helvetica-Bold", 7.5)
+        c.setFillColor(INK)
+        c.drawString(14 * mm, h - 9 * mm, f"{ticker}  {name}")
+        c.setFont("Helvetica", 7.5)
+        c.setFillColor(GREY)
+        c.drawRightString(w - 14 * mm, h - 9 * mm, f"Stock Valuation Tool · {_date(rep.created_at)}")
+        c.setStrokeColor(RULE)
+        c.setLineWidth(0.5)
+        c.line(14 * mm, h - 11 * mm, w - 14 * mm, h - 11 * mm)
+        footer(c, doc)
+        c.restoreState()
+    return first, later
 
 
 def clean(s) -> str:
@@ -38,13 +104,29 @@ def P(text, style=BODY) -> Paragraph:
 
 
 def table(rows, header, widths=None) -> Table:
-    data = [[P(h, SMALL) for h in header]] + [[P(c) for c in r] for r in rows]
-    t = Table(data, colWidths=widths, repeatRows=1)
-    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), LIGHT), ("LINEBELOW", (0, 0), (-1, 0), 0.6, GREY),
-                           ("LINEBELOW", (0, 1), (-1, -1), 0.2, LIGHT), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ncol = max((len(r) for r in rows), default=len(header))
+    numeric = [i > 0 and bool(rows) and all(_NUM.fullmatch(str(r[i]).strip()) for r in rows if i < len(r))
+               for i in range(ncol)]
+    head = [[P(h, SMALL_R if i < ncol and numeric[i] else SMALL) for i, h in enumerate(header)]] if any(header) else []
+    data = head + [[P(c, BODY_R if i < ncol and numeric[i] else BODY) for i, c in enumerate(r)] for r in rows]
+    t = Table(data, colWidths=widths, repeatRows=1 if head else 0)
+    t.setStyle(TableStyle([*([("LINEABOVE", (0, 0), (-1, 0), 0.8, INK), ("LINEBELOW", (0, 0), (-1, 0), 0.5, INK)] if head else []),
+                           ("LINEBELOW", (0, 1), (-1, -1), 0.25, RULE), ("VALIGN", (0, 0), (-1, -1), "TOP"),
                            ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
                            ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]))
     return t
+
+
+LINE_LABEL = {"ebitda": "EBITDA", "sbc": "Share-based compensation", "cfo": "Cash from operations",
+              "fcf": "Free cash flow", "capex": "Capital expenditure", "eps_diluted": "Diluted EPS"}
+
+
+def _line(ln: str) -> str:
+    return LINE_LABEL.get(ln, ln.replace("_", " ").capitalize())
+
+
+def _intrinsic(method: str) -> bool:
+    return not method.lower().startswith(("comps", "peer", "own history", "52-week", "analyst"))
 
 
 def football_drawing(rep, width=170 * mm) -> Drawing:
@@ -61,9 +143,8 @@ def football_drawing(rep, width=170 * mm) -> Drawing:
         y = height - 20 - (i + 1) * row_h
         d.add(String(0, y + 2, clean(b.method)[:44], fontSize=6.5, fillColor=GREY))
         d.add(Rect(x(b.low), y, max(x(b.high) - x(b.low), 1), row_h - 4,
-                   fillColor=BLUE if "DCF" in b.method else colors.HexColor("#8c959f"), strokeColor=None))
-    for val, colour, text in ((price, colors.HexColor("#cf222e"), f"Price {money(price)}"),
-                              (fv, colors.HexColor("#1a7f37"), f"Fair value {money(fv)}")):
+                   fillColor=BLUE if _intrinsic(b.method) else colors.HexColor("#a3acb7"), strokeColor=None))
+    for val, colour, text in ((price, INK, f"Price {money(price)}"), (fv, BLUE, f"Fair value {money(fv)}")):
         if val:
             d.add(Line(x(val), 8, x(val), height - 10, strokeColor=colour, strokeWidth=1))
             d.add(String(x(val) + 2, height - 10, text, fontSize=6.5, fillColor=colour))
@@ -74,23 +155,37 @@ def build_pdf(rep) -> bytes:
     m, cd = rep.model, rep.company
     v, vd = m.valuation, m.verdict
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm, topMargin=14 * mm,
-                            bottomMargin=14 * mm, title=f"{cd.profile.name} ({cd.profile.ticker})")
-    s = []
-    s.append(P(f"{cd.profile.name} ({cd.profile.ticker})", H1))
-    s.append(P(f"{cd.profile.exchange} · {cd.profile.sic_description} · report {rep.report_id} · {rep.created_at} UTC",
-               SMALL))
-    # 0. verdict card
-    card = [["Share price", money(vd.price), "Fair value", f"{money(vd.fair_value)} ({vd.gap:+.1%})" if vd.gap is not None else "-"],
-            ["Verdict", vd.verdict or "-", "Confidence", vd.confidence or "-"],
-            ["MD rating", rep.md.rating if rep.md else "-", "Conviction", rep.md.conviction if rep.md else "-"],
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm, topMargin=16 * mm,
+                            bottomMargin=16 * mm, title=f"{cd.profile.name} ({cd.profile.ticker})",
+                            author="Stock Valuation Tool")
+    p = cd.profile
+    s = [Spacer(1, MASTHEAD - 10 * mm), P(p.name, H1), P(f"{p.ticker} · {p.exchange} · {p.sic_description}", SMALL),
+         Spacer(1, 6)]
+    # 0. rating box: the call first, as on a sell-side note
+    rating = rep.md.rating if rep.md else None
+
+    def kpi(label, value, colour=INK):
+        return [Paragraph(clean(label).upper(), KPI_L),
+                Paragraph(f"<font color='#{colour.hexval()[2:]}'>{clean(value)}</font>", KPI_V)]
+    box = Table([[kpi("Rating", rating or "Not rated", RATING.get(rating, GREY)),
+                  kpi("Verdict", vd.verdict or "-", VERDICT.get(vd.verdict, INK)),
+                  kpi("Share price", money(vd.price)), kpi("Fair value", money(vd.fair_value), BLUE),
+                  kpi("Upside", "-" if vd.gap is None else f"{vd.gap:+.1%}", GREEN if (vd.gap or 0) > 0 else RED)]],
+                colWidths=[40 * mm, 40 * mm, 34 * mm, 34 * mm, 34 * mm])
+    box.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), LIGHT), ("LINEAFTER", (0, 0), (-2, -1), 0.5, RULE),
+                             ("LINEABOVE", (0, 0), (-1, 0), 1.2, INK), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                             ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 7)]))
+    s += [box, Spacer(1, 6)]
+    card = [["Confidence", vd.confidence or "-", "Conviction", rep.md.conviction if rep.md else "-"],
             ["Stage", v.classification.stage_label, "Toolkit", v.classification.toolkit] if v is not None else
             ["Toolkit", f"{m.financial.toolkit} (no DCF)", "Cost of equity", pct(m.financial.cost_of_equity.value)]]
     if v is not None and len(v.scenarios) == 3:
         b, base, bu = (v.per_us_share(x.value_per_share) for x in v.scenarios)
-        card.append(["Bear / base / bull", f"{money(b)} / {money(base)} / {money(bu)}", "Analyst target",
-                     f"{money((m.analyst_targets or {}).get('median'))}" if m.analyst_targets else "not available"])
-    s.append(table(card, ["", "", "", ""], [32 * mm, 55 * mm, 32 * mm, 55 * mm]))
+        card.append(["Bear / base / bull", f"{money(b)} / {money(base)} / {money(bu)}", "WACC", pct(v.wacc.wacc.value)])
+    card.append(["Analyst target", money((m.analyst_targets or {}).get("median")) if m.analyst_targets else
+                 "not available", "Price", f"{m.inputs.price.source}, {_date(m.inputs.price.period)}"])
+    s.append(table(card, ["", "", "", ""], [32 * mm, 55 * mm, 32 * mm, 63 * mm]))
     if rep.md:
         for line in rep.md.view.get("reasoning_lines", [])[:4]:
             s.append(P(f"• {line}"))
@@ -133,14 +228,13 @@ def build_pdf(rep) -> bytes:
     s.append(P(f"3. Historicals ({h.currency} m)", H2))
     lines = ["revenue", "operating_income", "net_income_attributable", "ebitda", "sbc", "cfo", "capex", "fcf",
              "cash_and_investments", "total_debt", "total_equity", "shares_diluted_weighted"]
-    s.append(table([[ln.replace("_", " ").capitalize()] + [millions(h.v(ln, p)) for p in cols] for ln in lines],
+    s.append(table([[_line(ln)] + [millions(h.v(ln, p)) for p in cols] for ln in lines],
                    ["Line"] + cols, [60 * mm] + [30 * mm] * len(cols)))
     # 4. analysis commentary
     s.append(P("4. Financial analysis", H2))
     for section, lines_ in cd.analysis.commentary.items():
         if lines_:
-            s.append(P(f"<b>{section.replace('_', ' ').capitalize()}:</b> " + clean(" ".join(lines_)), BODY))
-    s.append(PageBreak())
+            s.append(Paragraph(f"<b>{section.replace('_', ' ').capitalize()}:</b> " + clean(" ".join(lines_)), BODY))
     # 6-7 stage and forecast
     s.append(P("6. Company stage and forecast approach", H2))
     s.append(P(f"{v.classification.stage_label}: {v.classification.stage_reason}."))
@@ -211,7 +305,7 @@ def _financial_body(s: list, rep) -> None:
     h = cd.historicals_usd
     cols = h.fy_labels[-4:]
     s.append(P("3. Historicals (US$ m)", H2))
-    s.append(table([[ln.replace("_", " ").capitalize()] + [millions(h.v(ln, p)) for p in cols]
+    s.append(table([[_line(ln)] + [millions(h.v(ln, p)) for p in cols]
                     for ln in FS_LINES[fv.toolkit]], ["Line"] + cols, [60 * mm] + [30 * mm] * len(cols)))
     s.append(P(f"4. Sector metrics ({fv.period})", H2))
 
@@ -224,7 +318,6 @@ def _financial_body(s: list, rep) -> None:
                    ["Group", "Metric", "Computed", "Reported (10-K)"], [30 * mm, 80 * mm, 36 * mm, 36 * mm]))
     s.append(P("Reported figures are read from the 10-K text; quotes are in the app and the Excel Metrics tab.",
                SMALL))
-    s.append(PageBreak())
     s.append(P("6. Toolkit and why no DCF", H2))
     s.append(P(fv.why_no_dcf))
     s.append(P("7. Valuation methods", H2))
@@ -275,23 +368,22 @@ def _finish(doc, s: list, rep, buf) -> bytes:
     m = rep.model
     fin = getattr(m, "financial", None) is not None
     n = (lambda k: k - 5) if fin else (lambda k: k)  # financial reports have fewer sections before these
-    s.append(PageBreak())
     if rep.review:
         s.append(P(f"{n(18)}. Review desk notes", H2))
         s.append(table([[c["assumption"], c["severity"], c["challenge"], c["resolution"]]
                         for c in rep.review.get("challenges", [])], ["Assumption", "Severity", "Challenge", "Resolution"],
                        [30 * mm, 15 * mm, 75 * mm, 62 * mm]))
         bc = rep.review.get("bear_case", {})
-        s.append(P(f"<b>Bear case.</b> {clean(bc.get('thesis', ''))}", BODY))
+        s.append(Paragraph(f"<b>Bear case.</b> {clean(bc.get('thesis', ''))}", BODY))
         for x in bc.get("points", []):
             s.append(P(f"• {x}"))
         if rep.md:
-            s.append(P(f"<b>MD response.</b> {clean(rep.md.view.get('bear_case_response', ''))}", BODY))
+            s.append(Paragraph(f"<b>MD response.</b> {clean(rep.md.view.get('bear_case_response', ''))}", BODY))
     s.append(P(f"{n(19)}. Main risks", H2))
     items = (rep.md.view.get("key_risks") if rep.md else None) or \
             [{"risk": x["title"], "quote": x["quote"]} for x in (rep.research.data.get("risk_factors", []) if rep.research else [])]
     for x in items:
-        s.append(P(f"• <b>{clean(x['risk'])}</b> - \"{clean(x.get('quote', ''))}\"", BODY))
+        s.append(Paragraph(f"• <b>{clean(x['risk'])}</b> - \"{clean(x.get('quote', ''))}\"", BODY))
     s.append(P(f"{n(20)}. Flags", H2))
     s.append(table([[f.level.upper(), f.title, f.message] for f in m.flags], ["Level", "Flag", "Detail"],
                    [18 * mm, 45 * mm, 119 * mm]))
@@ -303,5 +395,6 @@ def _finish(doc, s: list, rep, buf) -> bytes:
                    ["Source", "What", "Detail", "Fetched"], [35 * mm, 40 * mm, 72 * mm, 35 * mm]))
     s.append(KeepTogether([P(f"{n(22)}. Disclaimer", H2), P(DISCLAIMER, SMALL)]))
     s.append(Spacer(1, 4))
-    doc.build(s)
+    first, later = _pages(rep)
+    doc.build(s, onFirstPage=first, onLaterPages=later)
     return buf.getvalue()

@@ -8,33 +8,11 @@ from __future__ import annotations
 import html
 
 from engine.values import DAYS, MILLIONS, MULTIPLE, PER_SHARE, RATIO, SHARES_M, Value
+from ui.theme import AMBER, BLUE, CSS, GREEN, MUTED, RED  # noqa: F401  (re-exported for the views)
 
 STATE_ICON = {"done": "✓", "running": "◌", "failed": "✗", "waiting": "·", "skipped": "–"}
-# Dark theme palette (see .streamlit/config.toml).
-GREEN, RED, AMBER, BLUE, MUTED = "#3fb950", "#f85149", "#d29922", "#4c8dff", "#8b949e"
 STATE_COLOUR = {"done": GREEN, "running": BLUE, "failed": RED, "waiting": MUTED, "skipped": MUTED}
-FLAG_ICON = {"hard_stop": "⛔", "red": "🔴", "amber": "🟠", "info": "ℹ️"}
-
-CSS = """
-<style>
-.vt-table {border-collapse: collapse; width: 100%; font-size: 0.86rem; margin-bottom: 0.6rem;
-           font-variant-numeric: tabular-nums;}
-.vt-table th {text-align: right; padding: 5px 8px; border-bottom: 1px solid #30363d; color: #8b949e; font-weight: 600;}
-.vt-table th:first-child, .vt-table td:first-child {text-align: left;}
-.vt-table td {text-align: right; padding: 4px 8px; border-bottom: 1px solid #1f262e;}
-.vt-table tr:hover td {background: #161d26;}
-.vt-table td.tr {cursor: help; text-decoration: underline dotted #6e7681;}
-.vt-table tr.sub td {color: #8b949e; font-style: italic;}
-.vt-card {border: 1px solid #262d36; border-radius: 12px; padding: 1.1rem 1.3rem; background: #11161d;}
-.vt-verdict {font-size: 1.6rem; font-weight: 700; letter-spacing: -0.01em;}
-.vt-muted {color: #8b949e; font-size: 0.85rem;}
-.vt-desk {font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; line-height: 1.7;}
-.vt-login {text-align: center; margin: 12vh 0 1.5rem;}
-.vt-login h1 {font-size: 2rem; margin: 0.4rem 0 0.2rem;}
-.vt-logo {font-size: 2.4rem; color: #4c8dff;}
-[data-testid="stMetricValue"] {font-variant-numeric: tabular-nums;}
-</style>
-"""
+FLAG_ICON = {"hard_stop": "⛔", "red": "🔴", "amber": "🟠", "info": "ℹ️"}  # plain-text logs only; the UI uses chips
 
 
 def money(x: float | None, nd: int = 2, prefix: str = "$") -> str:
@@ -96,15 +74,33 @@ def traced_table(rows: list[tuple[str, list[Value | None]]], headers: list[str],
         cells = "".join(cell(v, formatter(v) if formatter and v is not None and v.value is not None else None)
                         for v in vals)
         body.append(f"<tr{cls}><td>{html.escape(label)}</td>{cells}</tr>")
-    return f"<table class=\"vt-table\"><thead><tr><th></th>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    return (f"<div class=\"vt-scroll\"><table class=\"vt-table\"><thead><tr><th></th>{head}</tr></thead>"
+            f"<tbody>{''.join(body)}</tbody></table></div>")
 
 
 def plain_table(rows: list[list[str]], headers: list[str]) -> str:
     head = "".join(f"<th>{html.escape(h)}</th>" for h in headers)
     body = "".join("<tr>" + "".join(f"<td>{html.escape(str(c))}</td>" for c in r) + "</tr>" for r in rows)
-    return f"<table class=\"vt-table\"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+    # prose cells (evidence, challenges, notes) read left-aligned in the text face; figures stay right-aligned
+    cls = "vt-table text" if any(len(str(c)) > 40 for r in rows for c in r) else "vt-table"
+    return (f"<div class=\"vt-scroll\"><table class=\"{cls}\"><thead><tr>{head}</tr></thead>"
+            f"<tbody>{body}</tbody></table></div>")
 
 
 def calc_value(x: float | None, unit: str, formula: str, currency: str | None = "USD") -> Value:
     """Wrap a computed number that is not already a Value, so it can still be traced."""
     return Value(x, currency, unit, "current", "calculated", formula=formula)
+
+
+def when(ts: str | None) -> str:
+    """'2026-10-30T20:00:01+00:00' -> '30 Oct 2026, 20:00 UTC'; plain dates -> '30 Oct 2026'; else unchanged."""
+    from datetime import datetime
+    if not ts:
+        return "–"
+    try:
+        d = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return str(ts)
+    if len(str(ts)) <= 10:
+        return f"{d.day} {d:%b %Y}"
+    return f"{d.day} {d:%b %Y, %H:%M}" + (" UTC" if d.utcoffset() is not None and not d.utcoffset() else "")

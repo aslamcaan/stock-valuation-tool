@@ -8,14 +8,18 @@ import streamlit as st
 
 from engine.history_multiples import price_on_or_before
 from engine.track import HORIZONS, evaluate, hit_rates
-from ui.format import money
+from ui.format import money, plain_table
+from ui.theme import esc, note
 from ui.state import get_services
 
 svc = get_services()
 st.title("Track Record")
+st.caption("Every report that reaches a verdict is logged with its date, price and fair value. Returns are measured "
+           "from the call against the S&P 500 and the company's sector ETF.")
 calls = svc.store.calls()
 if not calls:
-    st.info("No completed reports yet. Every report that reaches a verdict is logged here automatically.")
+    st.markdown(note("No completed reports yet. Every report that reaches a verdict is logged here automatically."),
+                unsafe_allow_html=True)
     st.stop()
 
 c1, c2, c3 = st.columns(3)
@@ -52,6 +56,18 @@ rows = [{"Ticker": r.call["ticker"], "Date": r.call["call_date"], "Time": r.call
          "Price now": money(r.price_now), "Return": p(r.ret), "S&P 500": p(r.spy_ret),
          f"Sector ETF": f"{p(r.sector_ret)} ({r.call['sector_etf']})",
          "Moved toward fair value": {True: "yes", False: "no", None: "–"}[r.toward_fair_value]} for r in results]
+rets = [r.ret for r in results if r.ret is not None]
+excess = [r.ret - r.spy_ret for r in results if r.ret is not None and r.spy_ret is not None]
+toward = [r.toward_fair_value for r in results if r.toward_fair_value is not None]
+tiles = [("Calls", f"{len(results)}", f"{len({r.call['ticker'] for r in results})} companies"),
+         ("Average return", p(sum(rets) / len(rets)) if rets else "–", "since each call"),
+         ("Average vs S&P 500", p(sum(excess) / len(excess)) if excess else "–", "excess return"),
+         ("Moved toward fair value", f"{sum(toward)} of {len(toward)}" if toward else "–", "price vs the call's fair value")]
+st.markdown("<div class='vt-head' style='padding-top:.2rem'><div class='vt-kpis' style='grid-template-columns:"
+            "repeat(4,minmax(0,1fr));border-top:none;margin-top:0'>"
+            + "".join(f"<div class='vt-kpi'><div class='l'>{esc(a)}</div><div class='v'>{esc(b)}</div>"
+                      f"<div class='s'>{esc(c)}</div></div>" for a, b, c in tiles) + "</div></div>",
+            unsafe_allow_html=True)
 st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
 st.subheader("Hit rate by rating")
@@ -64,9 +80,7 @@ for group, by_h in hr.items():
         row[h] = "–" if not x["calls"] else (f"{x['hit_rate']:.0%} of {x['calls']}" if x["hit_rate"] is not None
                                              else f"{x['calls']} calls, avg {x['average_excess']:+.1%}")
     table.append(row)
-st.dataframe(pd.DataFrame(table), hide_index=True)
+if table:
+    st.markdown(plain_table([list(r.values()) for r in table], list(table[0].keys())), unsafe_allow_html=True)
 st.caption("A Buy is a hit if it beat the S&P 500 over the horizon; a Sell is a hit if it lagged. Horizons appear as "
            "calls age.")
-toward = [r.toward_fair_value for r in results if r.toward_fair_value is not None]
-if toward:
-    st.markdown(f"Price moved toward the fair value in **{sum(toward)} of {len(toward)}** calls.")

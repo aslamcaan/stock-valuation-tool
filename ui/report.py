@@ -10,9 +10,11 @@ from data_desk.standardise import DERIVED_LABELS
 from data_desk.tags import LINES
 from engine.analysis import METRIC_SECTION
 from engine.rubric import LABELS, WEIGHTS
-from engine.values import MULTIPLE, PER_SHARE, RATIO, Value
-from ui.format import (AMBER, BLUE, CSS, FLAG_ICON, GREEN, MUTED, RED, calc_value, fmt_value, millions, money, mult,
-                       pct, plain_table, trace_text, traced_table)
+from engine.values import MULTIPLE, PER_SHARE, RATIO
+from ui.format import (calc_value, fmt_value, millions, money, mult, pct, plain_table, trace_text, traced_table,
+                       when)
+from ui.theme import (BLUE, CSS, GREEN, MONO, RATING_COLOUR, RED, TEXT, VERDICT_COLOUR, chip, esc,
+                      note, plotly_layout)
 
 NAMES = {**{k: v.label for k, v in LINES.items()}, **DERIVED_LABELS}
 IS_LINES = ["revenue", "cost_of_revenue", "gross_profit", "rnd", "sga", "operating_income", "interest_expense",
@@ -29,13 +31,12 @@ SECTION_TITLES = {"growth": "Growth", "profitability": "Profitability", "returns
                   "capital_allocation": "Capital allocation", "track_record": "Management track record"}
 
 
+def html_note(text: str) -> None:
+    html(note(text))
+
+
 def html(s: str) -> None:
     st.markdown(s, unsafe_allow_html=True)
-
-
-def _metric(label: str, v: Value | None, text: str | None = None, delta: str | None = None) -> None:
-    st.metric(label, text if text is not None else fmt_value(v), delta=delta, help=trace_text(v) if v else None,
-              delta_color="off")
 
 
 def statement_table(h, lines: list[str], main_only: bool = True) -> str:
@@ -46,65 +47,109 @@ def statement_table(h, lines: list[str], main_only: bool = True) -> str:
     return traced_table(rows, cols)
 
 
-# --- 0. verdict card -------------------------------------------------------------------------------------------
+# --- 0. header --------------------------------------------------------------------------------------------------
+def _kpi(label: str, value: str, sub: str = "", title: str = "", colour: str | None = None, word: bool = False) -> str:
+    style = f" style='color:{colour}'" if colour else ""
+    return (f"<div class='vt-kpi'><div class='l'>{esc(label)}</div>"
+            f"<div class='v{' word' if word else ''}'{style} title='{esc(title)}'>{esc(value)}</div>"
+            f"<div class='s' title='{esc(sub)}'>{esc(sub) or '&nbsp;'}</div></div>")
+
+
+def _range_strip(lo: float, hi: float, label: str, price: float, fv: float | None, base: float | None = None) -> str:
+    """The model's value range against the share price and fair value, on one axis. The two marker labels sit on
+    the outer side of their marks so they never overlap."""
+    pts = [lo, hi, price] + ([fv] if fv else [])
+    a, b = min(pts), max(pts)
+    pad = (b - a) * 0.06 or abs(b) * 0.05 or 1.0
+    a, b = a - pad, b + pad
+
+    def x(v):
+        return f"{(v - a) / (b - a) * 100:.2f}%"
+    marks = [f"<div class='band' style='left:{x(lo)};width:calc({x(hi)} - {x(lo)})'></div>",
+             f"<div class='mark' style='left:{x(price)};background:{TEXT}'></div>"]
+    side_price = "l" if (fv is None or price <= fv) else "r"
+    marks.append(f"<div class='lab {side_price}' style='left:{x(price)};color:{TEXT}'>Price {esc(money(price))}</div>")
+    if fv:
+        side_fv = "r" if side_price == "l" else "l"
+        marks += [f"<div class='mark' style='left:{x(fv)};background:{BLUE}'></div>",
+                  f"<div class='lab {side_fv}' style='left:{x(fv)};color:{BLUE}'>Fair value {esc(money(fv))}</div>"]
+    legend = (f"<span><i style='background:rgba(76,141,255,.28);border:1px solid rgba(76,141,255,.55)'></i>{esc(label)} "
+              f"<span class='n'>{esc(money(lo))} – {esc(money(hi))}</span>"
+              + (f" (base <span class='n'>{esc(money(base))}</span>)" if base is not None else "") + "</span>")
+    return (f"<div class='vt-range' role='img' aria-label='{esc(label)}: {esc(money(lo))} to {esc(money(hi))}; "
+            f"price {esc(money(price))}'><div class='track'></div>{''.join(marks)}</div>"
+            f"<div class='vt-legend'>{legend}</div>")
+
+
 def verdict_card(rep) -> None:
     m, cd = rep.model, rep.company
     vd, v = m.verdict, m.valuation
-    st.subheader(f"{cd.profile.name} ({cd.profile.ticker}) · {cd.profile.exchange}")
-    price = m.inputs.price
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        _metric("Share price", price, money(price.value))
-        st.caption(f"{price.source} · {price.period}")
-    with c2:
-        _metric("Fair value", m.trace.get("fair_value"), money(vd.fair_value),
-                delta=None if vd.gap is None else f"{vd.gap:+.1%} vs price")
-        imp = getattr(rep, "impact", None)
-        if imp is not None and not imp.error and imp.adjusted is not None:
-            st.caption(f"News-adjusted: {money(imp.adjusted_fair_value)} (base stays news-free; see section 16)")
-    with c3:
-        colour = {"Undervalued": GREEN, "Overvalued": RED}.get(vd.verdict, AMBER)
-        html(f"<div class='vt-muted'>Verdict</div><div class='vt-verdict' style='color:{colour}'>{vd.verdict}</div>"
-             f"<div class='vt-muted'>Confidence: <b>{vd.confidence}</b></div>")
-    with c4:
-        if rep.md:
-            html(f"<div class='vt-muted'>MD rating</div><div class='vt-verdict'>{rep.md.rating}</div>"
-                 f"<div class='vt-muted'>Conviction: <b>{rep.md.conviction}</b></div>")
-        else:
-            html("<div class='vt-muted'>MD rating</div><div class='vt-verdict'>–</div>"
-                 "<div class='vt-muted'>AI desks did not run</div>")
-    if vd.confidence == "Low":
-        st.warning("Low confidence: " + "; ".join(vd.confidence_reasons))
-    c1, c2, c3 = st.columns(3)
+    p = cd.profile
     fin = getattr(m, "financial", None)
+    price = m.inputs.price
+    stage = fin.toolkit.capitalize() if fin is not None else v.classification.stage_label
+    tags = [p.exchange, cd.historicals.currency + " reporting" if cd.historicals.currency != "USD" else "USD", stage]
+    ident = (f"<div class='vt-id'><span class='vt-ticker'>{esc(p.ticker)}</span><span class='vt-name'>{esc(p.name)}</span>"
+             + "".join(f"<span class='vt-tag'>{esc(t)}</span>" for t in tags if t) + "</div>")
+
+    imp = getattr(rep, "impact", None)
+    fv_sub = (f"News-adjusted {money(imp.adjusted_fair_value)}" if imp is not None and not imp.error
+              and imp.adjusted is not None else "Blend of the methods below")
+    gap_col = None if vd.gap is None else (GREEN if vd.gap > 0 else RED)
+    md = rep.md
+    kpis = [
+        _kpi("Share price", money(price.value), f"{price.source} · {when(price.period)[:11].strip(', ')}", trace_text(price)),
+        _kpi("Fair value", money(vd.fair_value), fv_sub, trace_text(m.trace.get("fair_value")), BLUE),
+        _kpi("Upside", "–" if vd.gap is None else f"{vd.gap:+.1%}", "fair value vs price", colour=gap_col),
+        _kpi("Verdict", vd.verdict or "–", f"Confidence: {vd.confidence or '–'}",
+             "; ".join(vd.confidence_reasons), VERDICT_COLOUR.get(vd.verdict), word=True),
+        _kpi("MD rating", md.rating if md else "–", f"Conviction: {md.conviction}" if md else "AI desks did not run",
+             colour=RATING_COLOUR.get(md.rating) if md else None, word=True),
+    ]
+    strip = ""
     if fin is not None:
-        c1.markdown(f"**Cost of equity:** {pct(fin.cost_of_equity.value)} · **Long-run growth:** "
-                    f"{pct(fin.growth.value)}")
+        pts = [x.value for x in fin.methods.values() if x.value is not None]
+        if pts:
+            strip = _range_strip(min(pts), max(pts), "Valuation methods", vd.price, vd.fair_value)
     elif len(v.scenarios) == 3:
-        b, base, bu = (v.per_us_share(s.value_per_share) for s in v.scenarios)
-        c1.markdown(f"**Bear / base / bull (DCF):** {money(b)} / {money(base)} / {money(bu)}")
+        b, base, bu = (v.per_us_share(s_.value_per_share) for s_ in v.scenarios)
+        if None not in (b, bu):
+            strip = _range_strip(min(b, bu), max(b, bu), "DCF bear to bull", vd.price, vd.fair_value, base)
+
     t = m.analyst_targets
-    c2.markdown(f"**Analyst target:** {money(t.get('median') or t.get('consensus'))} "
-                f"(range {money(t.get('low'))}–{money(t.get('high'))})" if t else
-                "**Analyst target:** not available (FMP free plan)")
-    if fin is not None:
-        c3.markdown(f"**Toolkit:** {fin.toolkit} (no DCF; see section 6)")
+    stats = []
+    if t:
+        stats.append(f"Analyst target <span class='n'>{esc(money(t.get('median') or t.get('consensus')))}</span> "
+                     f"<span class='n' style='color:var(--vt-muted)'>({esc(money(t.get('low')))}–{esc(money(t.get('high')))})</span>")
     else:
-        c3.markdown(f"**Stage:** {v.classification.stage_label} · **Toolkit:** {v.classification.toolkit}")
+        stats.append("Analyst target: not available (FMP free plan)")
+    if fin is not None:
+        stats.append(f"Cost of equity <span class='n'>{pct(fin.cost_of_equity.value)}</span>")
+        stats.append(f"Long-run growth <span class='n'>{pct(fin.growth.value)}</span>")
+    else:
+        stats.append(f"WACC <span class='n'>{pct(v.wacc.wacc.value)}</span>")
+        stats.append(f"Toolkit <b>{esc(v.classification.toolkit)}</b>")
+    stats.append(f"Report <span class='n'>{esc(when(rep.created_at))}</span>")
+    stats.append(f"AI cost <span class='n'>{esc(money(rep.ai_cost, 3))}</span>")
+
+    key = [f for f in m.flags if f.level in ("hard_stop", "red", "amber")]
+    chips = "".join(chip(f.level, f.title, f.message) for f in key[:6])
+    if len(key) > 6:
+        chips += f"<span class='vt-chip info'>+{len(key) - 6} more in Review &amp; flags</span>"
+    html(f"<div class='vt-head'>{ident}<div class='vt-kpis'>{''.join(kpis)}</div>{strip}"
+         f"<div class='vt-stats'>{''.join(f'<span>{x}</span>' for x in stats)}</div>"
+         + (f"<div class='vt-chips'>{chips}</div>" if chips else "") + "</div>")
+    if vd.confidence == "Low":
+        st.warning("Low confidence: " + "; ".join(vd.confidence_reasons) + ".")
     if rep.md and rep.md.view.get("reasoning_lines"):
-        for line in rep.md.view["reasoning_lines"][:4]:
-            st.markdown(f"- {line}")
-    key = [f for f in m.flags if f.level in ("hard_stop", "red", "amber")][:5]
-    if key:
-        st.markdown("**Key flags:** " + " · ".join(f"{FLAG_ICON[f.level]} {f.title}" for f in key))
-    st.caption(f"Report {rep.report_id} · created {rep.created_at} UTC · AI cost ${rep.ai_cost:.3f}")
+        st.markdown("\n".join(f"- {line}" for line in rep.md.view["reasoning_lines"][:4]))
 
 
 # --- 1. investment view ---------------------------------------------------------------------------------------
 def investment_view(rep) -> None:
     md = rep.md
     if not md:
-        st.info("The MD did not run for this report (AI desks off, or the AI cost cap was reached).")
+        html_note("The MD did not run for this report (AI desks off, or the AI cost cap was reached).")
         return
     view = md.view
     st.markdown(f"**Thesis.** {view.get('thesis', '')}")
@@ -134,7 +179,7 @@ def investment_view(rep) -> None:
 def business(rep) -> None:
     r = rep.research
     if not r or not r.data:
-        st.info("The research desk did not run, so the business overview is not available.")
+        html_note("The research desk did not run, so the business overview is not available.")
         return
     d = r.data
     st.markdown(d.get("business_summary", ""))
@@ -210,7 +255,7 @@ def analysis(rep) -> None:
 def benchmarking(rep) -> None:
     c = rep.model.comps
     if not c:
-        st.info("No usable peers, so benchmarking is not available.")
+        html_note("No usable peers, so benchmarking is not available.")
         return
     rows = [[b["label"], pct(b["company"]) if "debt" not in b["label"] else mult(b["company"]),
              pct(b["peer_median"]) if "debt" not in b["label"] else mult(b["peer_median"]),
@@ -384,32 +429,65 @@ def scenarios(rep) -> None:
                          ["growth \\ margin"] + [f"{m * 100:+.0f}" for m in s2["margin_shift"]]))
 
 
+def _family(method: str) -> str:
+    m = method.lower()
+    if m.startswith(("52-week", "analyst")):
+        return "market"
+    if m.startswith(("comps", "peer", "own history")):
+        return "multiples"
+    return "intrinsic"
+
+
+FAMILY_COLOUR = {"intrinsic": "rgba(76,141,255,.75)", "multiples": "rgba(154,164,175,.55)", "market": "rgba(107,118,130,.35)"}
+
+
 def football(rep) -> None:
     bars = [b for b in rep.model.football if b.low is not None and b.high is not None]
     if not bars:
-        st.info("No ranges available.")
+        html_note("No valuation ranges are available for this report.")
         return
-    price = rep.model.verdict.price
+    price, fv = rep.model.verdict.price, rep.model.verdict.fair_value
     fig = go.Figure()
-    for b in reversed(bars):
-        fig.add_trace(go.Bar(y=[b.method], x=[b.high - b.low], base=[b.low], orientation="h",
-                             marker_color=BLUE if "DCF" in b.method else MUTED,
-                             hovertemplate=f"{b.method}: {money(b.low)} – {money(b.high)}<extra>{b.note}</extra>",
-                             showlegend=False))
-    fig.add_vline(x=price, line_color=RED, annotation_text=f"Price {money(price)}")
-    if rep.model.verdict.fair_value:
-        fig.add_vline(x=rep.model.verdict.fair_value, line_dash="dash", line_color=GREEN,
-                      annotation_text=f"Fair value {money(rep.model.verdict.fair_value)}", annotation_position="bottom")
-    fig.update_layout(height=60 + 34 * len(bars), margin=dict(l=10, r=10, t=30, b=10), plot_bgcolor="rgba(0,0,0,0)",
-                      xaxis_title="US$ per share")
-    st.plotly_chart(fig, width="stretch")
+    for b in reversed(bars):  # first method at the top
+        span = b.high - b.low
+        colour = FAMILY_COLOUR[_family(b.method)]
+        tip = f"<b>{b.method}</b><br>{money(b.low)} – {money(b.high)}" + (f"<br>{b.note}" if b.note else "")
+        if span > 0:
+            fig.add_trace(go.Bar(y=[b.method], x=[span], base=[b.low], orientation="h", marker_color=colour,
+                                 marker_line_width=0, width=0.55, hovertemplate=tip + "<extra></extra>"))
+        else:  # a single point estimate
+            fig.add_trace(go.Scatter(y=[b.method], x=[b.low], mode="markers", hovertemplate=tip + "<extra></extra>",
+                                     marker=dict(symbol="line-ns", size=16, line=dict(width=3, color=colour))))
+    fig.add_vline(x=price, line_color=TEXT, line_width=1.5)
+    fig.add_annotation(x=price, y=1, yref="paper", yanchor="bottom", text=f"Price {money(price)}", showarrow=False,
+                       font=dict(family=MONO, size=11, color=TEXT), xanchor="right" if (fv or 0) > price else "left",
+                       xshift=-6 if (fv or 0) > price else 6)
+    if fv:
+        fig.add_vline(x=fv, line_color=BLUE, line_width=1.5, line_dash="dot")
+        fig.add_annotation(x=fv, y=1, yref="paper", yanchor="bottom", text=f"Fair value {money(fv)}", showarrow=False,
+                           font=dict(family=MONO, size=11, color=BLUE), xanchor="left" if fv > price else "right",
+                           xshift=6 if fv > price else -6)
+    ref = max(x for x in (price, fv or 0) if x)
+    cap = 3 * ref
+    for b in bars:
+        if b.high > cap:  # an extreme range (e.g. a peer P/E near zero earnings): cut at 3x and say where it ends
+            fig.add_annotation(x=cap, y=b.method, text=f"→ {money(b.high, 0)}", showarrow=False, xanchor="right",
+                               font=dict(family=MONO, size=10, color=TEXT))
+    lo_x = min(min(b.low for b in bars), price, fv or price)
+    fig.update_layout(**plotly_layout(height=90 + 38 * len(bars), bargap=0.4, margin=dict(l=10, r=20, t=34, b=46),
+                                      xaxis=dict(title=dict(text="US$ per share"), tickprefix="$", side="bottom",
+                                                 range=[max(0.0, lo_x * 0.85), min(cap, max(b.high for b in bars) * 1.05)]),
+                                      yaxis=dict(automargin=True)))
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    st.caption("Blue: intrinsic methods (DCF, residual income, dividend model, NAV). Grey: peer and historical "
+               "multiples. Faint: analyst targets and the 52-week range, for reference. Hover a bar for its source.")
 
 
 # --- 18-22. review, risks, flags, provenance, disclaimer ---------------------------------------------------------------
 def review_notes(rep) -> None:
     r = rep.review
     if not r:
-        st.info("The review desk did not run for this report.")
+        html_note("The review desk did not run for this report.")
         return
     html(plain_table([[c["assumption"], c["severity"], c["challenge"], c["resolution"]] for c in r.get("challenges", [])],
                      ["Assumption", "Severity", "Challenge", "Resolution"]))
@@ -449,7 +527,8 @@ def risks(rep) -> None:
 
 def flags(rep) -> None:
     for f in rep.model.flags:
-        with st.expander(f"{FLAG_ICON[f.level]} {f.title}" + (f" ({f.period})" if f.period else "")):
+        tag = {"hard_stop": ":red[**Hard stop**]", "red": ":red[**Red**]", "amber": ":orange[**Amber**]"}.get(f.level, ":gray[Info]")
+        with st.expander(f"{tag} · {f.title}" + (f" ({f.period})" if f.period else "")):
             st.markdown(f.message)
             if f.numbers:
                 st.json({k: v for k, v in f.numbers.items()})
@@ -716,7 +795,20 @@ def news_section(rep) -> None:
                 st.caption(d)
 
 
-def render_report(rep) -> None:
+TABS = {  # section name (without its number) -> tab
+    "Investment view": "Overview", "Business overview": "Overview", "Football field": "Overview",
+    "Main risks": "Overview",
+    "Historicals": "Financials", "Financial analysis": "Financials", "Industry benchmarking": "Financials",
+    "Sector metrics": "Financials", "Peer comparison": "Financials",
+    "News and impact analysis": "News & ownership", "Ownership and insider activity": "News & ownership",
+    "Review desk notes": "Review & flags", "Flags": "Review & flags",
+    "Assumptions table and data provenance": "Sources",
+}
+TAB_ORDER = ["Overview", "Valuation", "Financials", "News & ownership", "Review & flags", "Sources"]
+
+
+def render_report(rep, extra_tabs: list | None = None) -> None:
+    """Header, then the numbered sections grouped into tabs (numbers match the PDF). `extra_tabs`: [(name, fn)]."""
     html(CSS)
     if rep.stopped and rep.model is None:
         st.error(rep.stopped)
@@ -725,14 +817,24 @@ def render_report(rep) -> None:
         st.warning(rep.stopped)
     verdict_card(rep)
     fin = getattr(rep.model, "financial", None)
+    groups: dict[str, list] = {t: [] for t in TAB_ORDER}
     for title, fn in (financial_sections() if fin is not None else SECTIONS):
-        with st.expander(title, expanded=title.startswith(("1.", "15.")) or (fin is not None and "Football" in title)):
-            try:
-                fn(rep)
-            except Exception as exc:  # one broken section must not hide the rest of the report
-                st.error(f"This section could not be displayed: {type(exc).__name__}: {exc}")
-    st.markdown(f"### {17 if fin is not None else 22}. Disclaimer")
-    st.caption(DISCLAIMER)
+        groups[TABS.get(title.split(". ", 1)[1], "Valuation")].append((title, fn))
+    names = [t for t in TAB_ORDER if groups[t]] + [n for n, _ in (extra_tabs or [])]
+    for name, tab in zip(names, st.tabs(names)):
+        with tab:
+            for title, fn in groups.get(name, []):
+                st.markdown(f"#### {title}")
+                try:
+                    fn(rep)
+                except Exception as exc:  # one broken section must not hide the rest of the report
+                    st.error(f"This section could not be displayed: {type(exc).__name__}: {exc}")
+            if name == "Sources":
+                st.markdown(f"#### {17 if fin is not None else 22}. Disclaimer")
+                st.caption(DISCLAIMER)
+            for n, fn in extra_tabs or []:
+                if n == name:
+                    fn()
 
 
 __all__ = ["render_report", "calc_value", "PER_SHARE"]

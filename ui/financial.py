@@ -8,6 +8,7 @@ from engine.classify import BANK, INSURER, REIT
 from engine.financials import method_label
 from engine.values import MULTIPLE, PER_SHARE, RATIO
 from ui.format import money, mult, pct, plain_table, trace_text, traced_table
+from ui.theme import note
 
 FS_LINES = {
     BANK: ["net_interest_income", "noninterest_income", "noninterest_expense", "provision_credit_losses",
@@ -132,7 +133,7 @@ def sector_benchmarks(rep) -> None:
     peers = {p["ticker"] for k in ("comps_pb", "comps_pe", "comps_pffo", "cap_rate")
              for p in fv.detail.get(k, {}).get("peers", [])}
     if not peers:
-        st.info("No usable peers, so peer comparison is not available.")
+        st.markdown(note("No usable peers, so peer comparison is not available."), unsafe_allow_html=True)
         return
     st.markdown("Peer multiples are in section 7 (valuation methods). Peers: " + ", ".join(sorted(peers)))
 

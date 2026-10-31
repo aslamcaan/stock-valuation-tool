@@ -203,10 +203,12 @@ if rep.model is not None and "edited" not in st.session_state and \
             st.rerun()
 if exportable:
     try:
-        bar[3].download_button("Excel", export_bytes(rep), file_name=f"{rep.report_id}.xlsx", icon=":material/table_view:",
+        # built only when clicked: the workbook evaluates every formula so its values show in any viewer (a few seconds)
+        bar[3].download_button("Excel", lambda: export_bytes(rep), file_name=f"{rep.report_id}.xlsx",
+                               icon=":material/table_view:",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                               width="stretch", help="The full model with live formulas.")
-        bar[4].download_button("PDF", build_pdf(rep), file_name=f"{rep.report_id}.pdf", icon=":material/picture_as_pdf:",
+                               width="stretch", help="The full model with live formulas (takes a few seconds to build).")
+        bar[4].download_button("PDF", lambda: build_pdf(rep), file_name=f"{rep.report_id}.pdf", icon=":material/picture_as_pdf:",
                                mime="application/pdf", width="stretch", help="The report as a research note.")
     except Exception as exc:  # an export problem must not hide the report
         bar[3].caption(f"Export unavailable: {exc}")

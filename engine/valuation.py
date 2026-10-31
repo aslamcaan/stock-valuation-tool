@@ -63,6 +63,7 @@ class EngineInputs:
     rating_table_small: list[dict]
     consensus: list[ConsensusYear] = field(default_factory=list)
     segments: list[Segment] = field(default_factory=list)
+    segments_reason: str = ""  # why no segments reached the SOTP (e.g. the filing's segment revenues were missing)
     one_off_adjustments: dict[str, float] = field(default_factory=dict)  # FY label -> amount added back to EBIT
     overrides: dict = field(default_factory=dict)
 
@@ -276,7 +277,8 @@ def value_company(i: EngineInputs) -> Valuation:
                           {"tv_share": dcf.tv_share_of_ev}))
 
     sotp = run_sotp(i.segments, sum(x for _, x in bridge_t), shares.value) if i.segments else \
-        SOTPResult(False, "no segment revenue and profit data yet (the research desk extracts it from the annual report)")
+        SOTPResult(False, i.segments_reason or "no segment revenue and profit data (the research desk extracts it from "
+                          "the annual report)")
 
     asset_value = None
     if cls.stage == DECLINING:

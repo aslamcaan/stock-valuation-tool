@@ -65,7 +65,14 @@ def company_metrics(cd: CompanyData, svc, ei: EngineInputs) -> CompanyMetrics:
 def segments_from_research(svc, cd: CompanyData, research: dict, notes: list[str]) -> list[Segment]:
     """Segments with an EV/Sales multiple from the research desk's US-listed comparables (computed by code)."""
     segs = research.get("segments") or []
-    if len(segs) < 2 or cd.historicals.currency != "USD":
+    if len(segs) < 2:
+        notes.append("SOTP: the annual report gave fewer than two segments")
+        return []
+    if cd.historicals.currency != "USD":
+        notes.append(f"SOTP: not applied to {cd.historicals.currency} reporting (segment comparables are US-listed)")
+        return []
+    if not any(s.get("revenue_millions") for s in segs):
+        notes.append("SOTP: the research desk found segment profits but not segment revenues in the filing")
         return []
     total = cd.historicals.v("revenue", cd.historicals.fy_labels[-1]) or 0
     if total <= 0 or sum(s.get("revenue_millions") or 0 for s in segs) < 0.9 * total:
@@ -146,7 +153,11 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
                 research, cd.historicals.fy_labels,
                 {p: cd.historicals.v("operating_income", p) for p in cd.historicals.fy_labels}, notes)
         say("Valuing segments for the sum of the parts")
+        before = len(notes)
         ei.segments = segments_from_research(svc, cd, research, notes)
+        if not ei.segments:
+            ei.segments_reason = next((n.removeprefix("SOTP: ") for n in notes[before:] if n.startswith("SOTP: ")),
+                                      "the annual report gave fewer than two segments")
         conv = research.get("convertible_debt") or {}
         if conv.get("present") and not any(f.code == "convertible_debt" for f in cd.flags):
             extra_flags.append(Flag(AMBER, "convertible_debt", "Convertible debt outstanding",

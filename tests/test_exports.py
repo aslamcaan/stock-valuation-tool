@@ -57,3 +57,21 @@ def test_excel_banking_conventions(rep):
 def test_pdf_builds(rep):
     pdf = build_pdf(rep)
     assert pdf[:4] == b"%PDF" and len(pdf) > 5000
+
+
+def test_excel_stores_every_formula_result(rep):
+    """Protected View, previews and phone viewers show stored results only: the DCF, WACC and Summary sheets were
+    blank before results were stored. Every formula keeps its formula and now carries its value."""
+    from io import BytesIO
+    from openpyxl import load_workbook
+    from exports.excel import export_bytes
+    b = export_bytes(rep)
+    wf, wv = load_workbook(BytesIO(b)), load_workbook(BytesIO(b), data_only=True)
+    formulas = [(ws.title, c.coordinate) for ws in wf.worksheets for row in ws.iter_rows() for c in row
+                if isinstance(c.value, str) and c.value.startswith("=")]
+    assert len(formulas) > 1000  # still live formulas
+    blank = [(t, ref) for t, ref in formulas if wv[t][ref].value is None and wf[t][ref].value != '=""'
+             and "\"\")" not in wf[t][ref].value and ',"")' not in wf[t][ref].value]
+    assert blank == []
+    assert wv["DCF"]["B35"].value == pytest.approx(rep.model.valuation.dcf.value_per_share)
+    assert wv["Summary"]["B12"].value == rep.model.verdict.verdict

@@ -15,6 +15,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from engine.comps import NM_ABOVE
+from exports.cached_values import with_cached_values
 
 BLUE, BLACK, GREEN, RED = "0000FF", "000000", "008000", "C00000"
 YELLOW = PatternFill("solid", fgColor="FFF2CC")
@@ -269,6 +270,9 @@ def build_workbook(rep) -> Workbook:
         inp.ws.column_dimensions[col_letter].width = 13
     inp.ws.column_dimensions["C"].width = 13
     I["bridge"] = "+".join(I[f"bridge_{b}"] for b, _ in v.bridge)
+    # peer and past EVs net only cash, so their multiples already price any investments: the multiples bridge leaves
+    # out long-term investments (as the app does), or they would be counted twice
+    I["bridge_multiples"] = "+".join(I[f"bridge_{b}"] for b, _ in v.bridge if b != "Long-term investments") or "0"
 
     # --- Historicals and Ratios --------------------------------------------------------------------------------------
     h = ei.historicals
@@ -460,7 +464,7 @@ def build_workbook(rep) -> Workbook:
             if key == "pe_trailing":
                 co.formula(f"D{r_}", f"{cc}{last + 1}*B{r_}/{I['shares']}*{I['adr']}", PS)
             else:
-                co.formula(f"D{r_}", f"({cc}{last + 1}*B{r_}+{I['bridge']})/{I['shares']}*{I['adr']}", PS)
+                co.formula(f"D{r_}", f"({cc}{last + 1}*B{r_}+{I['bridge_multiples']})/{I['shares']}*{I['adr']}", PS)
             implied.append(f"D{r_}")
             r_ += 1
         if implied:
@@ -493,13 +497,13 @@ def build_workbook(rep) -> Workbook:
                 if y in x.series:
                     hm.input(f"{col(2 + j)}{r_}", x.series[y], MULT)
             hm.formula(f"{mc}{r_}", f"MEDIAN(B{r_}:{col(1 + len(years))}{r_})", MULT)
-            bridge_total = sum(b.value for _, b in v.bridge)
+            bridge_total = sum(b.value for n, b in v.bridge if n != "Long-term investments")
             if x.key == "pe_trailing":
                 metric = x.implied_price / ei.adr_ratio * v.diluted_shares.value / x.median
                 f = f"{mc}{r_}*{col(3 + len(years))}{r_}/{I['shares']}*{I['adr']}"
             else:
                 metric = (x.implied_price / ei.adr_ratio * v.diluted_shares.value - bridge_total) / x.median
-                f = f"({mc}{r_}*{col(3 + len(years))}{r_}+{I['bridge']})/{I['shares']}*{I['adr']}"
+                f = f"({mc}{r_}*{col(3 + len(years))}{r_}+{I['bridge_multiples']})/{I['shares']}*{I['adr']}"
             hm.input(f"{col(3 + len(years))}{r_}", metric, NUM)
             hm.formula(f"{col(4 + len(years))}{r_}", f, PS)
             implied.append(f"{col(4 + len(years))}{r_}")
@@ -569,7 +573,8 @@ def build_workbook(rep) -> Workbook:
     return wb
 
 
-def export_bytes(rep) -> bytes:
+def export_bytes(rep, cached: bool = True) -> bytes:
+    """The workbook as bytes; `cached` stores each formula's result too, so previews and Protected View show numbers."""
     buf = BytesIO()
     build_workbook(rep).save(buf)
-    return buf.getvalue()
+    return with_cached_values(buf.getvalue()) if cached else buf.getvalue()

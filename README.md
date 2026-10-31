@@ -18,24 +18,98 @@ flowchart LR
     U[Search: name or ticker] --> D[Data desk<br/>SEC XBRL, prices, FX,<br/>Damodaran, FRED]
     D --> C{Data checks<br/>hard stops}
     C -- fail --> X[Stop: says which check broke]
-    C -- pass --> R[Research desk · AI Haiku<br/>reads the annual report:<br/>segments, risks, one-offs]
-    C -- pass --> P[Peers<br/>FMP + Finnhub candidates]
-    R --> M[Modelling desk · code<br/>stage, forecast, WACC, DCF,<br/>comps, history, scenarios, verdict]
+    C -- pass --> R[Research desk · AI Haiku<br/>annual reports: segments,<br/>risks, one-offs]
+    C -- pass --> N[News desk · AI<br/>dated, verified news]
+    C -- pass --> P[Peers<br/>SEC frames + FMP]
+    R --> M[Modelling desk · code<br/>stage, forecast, WACC, DCF,<br/>comps, history, reverse DCF, verdict]
     P --> M
     M --> V[Review desk · AI Sonnet<br/>challenges, cycle judgement,<br/>bear and bull cases]
     V -- stage override --> M
-    V --> MD[MD · AI Sonnet + code<br/>rubric, rating, investment view]
-    MD --> O[Report · Excel · PDF<br/>Track Record]
+    N --> I[Impact analyst · AI sizes, code prices<br/>news effects, abnormal returns]
+    M --> I
+    V --> MD[MD · AI Sonnet + code<br/>rubric, rating capped by verdict,<br/>investment view]
+    I --> MD
+    MD --> O[Report · What if · History<br/>Excel · PDF · Track Record]
 ```
 
-| Desk | Type | Job |
-|---|---|---|
-| Data desk | Code | Fetch filings and market data, normalise units and FX, run data checks |
-| Research desk | AI (Haiku) | Read Item 1 / 1A / 7 and the segment note; every quote and number is verified against the filing |
-| Modelling desk | Code | Classify the company, build the forecast, run every valuation method, apply the verdict rules |
-| Review desk | AI (Sonnet) | Challenge assumptions, explain flags, judge the cycle, write the strongest bear and bull cases |
-| MD | AI (Sonnet) + code | Score the qualitative half of the rubric; code scores the rest, maps it to a rating and allows one notch |
-| News desk, impact analyst | Release 2 | Not built yet |
+| # | Desk | Type | Job |
+|---|---|---|---|
+| 1 | Data desk | Code | Fetch up to ten years of XBRL facts from SEC EDGAR (refetched whenever a newer 10-Q or 10-K has been filed), normalise units and FX, build LTM, cross-check against FMP |
+| 2 | Data checks | Code | Hard stops (balance sheet out by more than 0.5%, market cap more than 3% from FMP's) and red/amber flags |
+| 3 | Research desk | AI (Haiku) | Read the latest annual report (and the reports from two and four years back for one-off items): segments, geography, KPIs, risks, one-offs, convertibles, share classes. Every quote and number is verified against the filing text |
+| 4 | News desk | AI (web search) | Company, industry and macro news; anything undated, stale or unverifiable is dropped |
+| 5 | Modelling desk | Code | Classify the life-cycle stage, build the forecast, run every valuation method, blend them and apply the verdict rules |
+| 6 | Review desk | AI (Sonnet) | Challenge the weakest assumptions, review the stage, judge the cycle, write the strongest bear and bull cases |
+| 7 | Impact analyst | AI sizes, code prices | Size each material news item's effect on the model; code reprices it and measures the abnormal return against the S&P 500 and the sector ETF |
+| 8 | MD | AI (Sonnet) + code | Score the qualitative half of the rubric; code scores the rest, maps it to a rating, allows one notch and caps the rating by the verdict |
+
+## What a report analyses
+
+**Header.** Price, blended fair value, upside, verdict (Undervalued / Fairly valued / Overvalued) with confidence,
+the MD's rating and conviction, the DCF bear-to-bull range against the price, analyst targets, WACC and flags.
+
+**Rating.** Nine criteria scored 1-5: four by code (valuation gap, business quality, financial strength, estimate
+revisions) and five by the MD with cited evidence (moat, management, governance, industry, catalysts). The weighted
+score maps to Strong Sell ... Strong Buy; the MD may move it one notch with a written reason. **The rating cannot
+point against the valuation:** an Overvalued verdict caps it at Hold, an Undervalued one floors it at Hold.
+
+**Valuation** (corporate toolkit):
+- *Stage classification* (early, high growth, mature growth, mature stable, cyclical, declining) from growth,
+  margins, volatility and profitability history; it decides which methods and fades apply.
+- *Forecast*: analyst consensus for every year with at least three analysts, then a fade to industry growth and the
+  target margin; the source of every driver is stated. Margins are cleaned of one-off items read from three annual
+  reports (KO's FY2025 clean margin equals its reported comparable margin of 31.2%).
+- *WACC*: FRED 10-year yield + industry beta (Damodaran, relevered) x implied ERP + country risk weighted by the
+  company's revenue geography; synthetic-rating cost of debt.
+- *DCF* on operating income (never net income), with a terminal ROIC fade and the statutory terminal tax rate.
+- *Sum of the parts* when the filing gives segment figures; *comparable companies* (peers from SEC frames, EV/Sales
+  dropped when the margin gap to peers makes it misleading); *own five-year multiples*.
+- *Reverse DCF*: the growth or margin the price implies, the discount rate the price implies, and a DCF on
+  sell-side conventions, so the gap to analysts' targets is explained rather than hidden.
+- *Scenarios and sensitivity*: bear / base / bull, and WACC x terminal growth and growth x margin grids.
+
+Banks, insurers and REITs get their own toolkits (justified P/TBV or P/B, residual income, dividend discount, NAV
+on a peer-implied cap rate, P/FFO) because a DCF does not fit them.
+
+**Financial analysis.** Growth, profitability, returns (ROIC, ROE with DuPont), quality of earnings, working capital,
+leverage and debt maturities, capital allocation, the EPS track record of the last 12 quarters, Beneish M-score and
+Altman Z, and benchmarking against Damodaran industry medians and the peer set.
+
+**News, ownership and review.** Dated news with each item's sized effect and whether the market has priced it in;
+insider transactions (Form 4), major holders (13D/G) and short interest; the review desk's challenges and cases; every
+flag explained.
+
+**Interactive tabs.** *What if*: sliders for WACC, terminal growth, growth, margin and terminal ROIC reprice the DCF
+in Python (about 10 ms), with presets for the base case, sell-side conventions and the market's discount rate.
+*History*: fair value against price across every dated report of the company, with a code-written note of what
+changed. *Edit assumptions*: rerun the whole valuation on your inputs. *Desk log*: every desk's status and the number
+guard's log.
+
+**Exports.** An Excel model with live formulas (blue inputs, green links) whose fair value equals the app's, and a
+PDF of the full report.
+
+**Other pages.** Compare (two saved reports side by side), Track Record (every call with the MD's reasons, and the
+price move since), How it works, and a Debug page with the raw responses.
+
+## Accuracy safeguards
+
+- All arithmetic is Python; AI reads, judges and writes. Every figure is stored with value, currency, unit, period,
+  source, XBRL tag and fetch time, and can be traced from the report.
+- US GAAP and IFRS tag maps with fallbacks; restated figures; non-December and 52/53-week years; ADR ratios; FX from
+  FRED (period averages for flows, period ends for balances).
+- EDGAR is cross-checked against FMP on revenue, net income, cash, debt and shares (amber flag above 2%).
+- Flags include net income far above operating income, negative FCF, terminal value above 80% of EV, WACC outside
+  6-15%, convertible debt, multiple share classes and margins near a 10-year high (possible cyclical peak).
+- Every number in AI text is checked against the computed results; a failing sentence is regenerated once, then
+  dropped and logged. Fetched text is data, never instructions. The AI desks never see the user's view of a stock.
+- If the Anthropic API fails (e.g. out of credit) the report still completes its valuation without the AI desks.
+
+## Why the DCF is often below analysts' targets
+
+Sell-side targets are mostly multiples. On a 7-8% WACC built from a 5% risk-free rate, quality large caps trading at
+2-3% free-cash-flow yields come out well below their prices. The report shows why: for KO the price implies a
+discount rate of about 4.9% against the model's 7.9%, and a DCF on sell-side conventions (the company's own tax
+rate, today's ROIC held, 3% terminal growth) closes part of the gap. The model keeps its own assumptions and says so.
 
 ### Code layout
 
@@ -43,11 +117,11 @@ flowchart LR
 |---|---|
 | `core/` | Settings (`.env` / Streamlit secrets), response cache with per-source TTLs, HTTP with rate limits and key redaction, store on SQLite (local) or Postgres (deployed) |
 | `datasources/` | SEC EDGAR, FMP, FRED, Damodaran, Tiingo and Finnhub clients; FMP-first market data with free fallbacks |
-| `data_desk/` | XBRL extraction (US GAAP + IFRS tag map, restatements, 52/53-week years, LTM), derived lines, FX, data checks, peers, filings text |
-| `engine/` | **Pure** valuation engine: classification, forecast, WACC, DCF, scenarios, comps, history multiples, verdict, rubric, bridge |
-| `desks/` | AI client (structured outputs, cost caps, response cache), number guard, research / review / MD desks, modelling desk, pipeline |
+| `data_desk/` | XBRL extraction (US GAAP + IFRS tag map, restatements, 52/53-week years, LTM), derived lines, FX, data checks, peers, filing text, ownership |
+| `engine/` | **Pure** valuation engine: classification, forecast, WACC, DCF, scenarios, reverse DCF, comps, history multiples, SOTP, financial-sector toolkits, forensic scores, verdict, rubric, news repricing |
+| `desks/` | AI client (structured outputs, cost caps, response cache), number guard, research / news / review / impact / MD desks, modelling desk, pipeline |
 | `exports/` | Excel model with live formulas, PDF report, formula verifier |
-| `views/`, `ui/` | Streamlit app: password gate, search, run screen and report, Track Record, debug page |
+| `views/`, `ui/` | Streamlit app: password gate, search, run screen, report (incl. What if and History), Compare, Track Record, How it works, Debug |
 
 ## Setup
 
@@ -95,7 +169,7 @@ Without `APP_PASSWORD` the deployed app stays locked. The theme is in `.streamli
 ## Tests
 
 ```bash
-pytest              # offline: 187 tests, recorded fixtures, no network
+pytest              # offline: about 360 tests, recorded fixtures, no network
 pytest -m live      # live API smoke tests (uses your keys and quotas)
 ```
 
@@ -111,9 +185,10 @@ Golden tests (PROMPT.md section 15):
 | 4 | AAPL: September year end, LTM | Pass |
 | 5 | KO classified as mature stable | Pass |
 | 6 | Cyclical (MU): classified cyclical, mid-cycle normalisation | Pass |
-| 7-9 | JPM, O, TRV financial-sector toolkits | Release 3 |
+| 7-9 | JPM, TRV, O: bank, insurer and REIT toolkits read the reported KPIs | Pass |
 | 10 | Determinism: same cached data gives identical numbers, verdict and rating | Pass (offline test and live check) |
 | 11 | Number guard: invented numbers caught, regenerated once, then dropped | Pass |
+| 12 | Whole report offline (`test_pipeline_offline.py`): every desk runs on recorded data with a fake AI, including the out-of-credit path | Pass |
 
 Excel exports were recalculated in full: UBER (9,611 formulas), KO (5,249) and GRAB (9,584) have no formula errors,
 and the workbook's fair value equals the app's. The GRAB workbook was also opened and recalculated in Microsoft
@@ -121,17 +196,19 @@ Excel (`python scripts/excel_check.py file.xlsx`, Windows only, needs `requireme
 
 ## Screenshots for a portfolio
 
-1. `streamlit run app.py`, search "Grab", press **Analyse** and capture the progress panel while the desks run.
-2. Capture the verdict card at the top of the report and the football field (section 15).
-3. Hover over any number in the historicals table to show its trace (filing, tag, fetch time).
-4. Download the Excel model and capture the DCF and Sensitivity tabs (blue inputs, green links).
-5. Capture the Track Record page after a few reports.
+1. The landing page, then search a company and capture the progress panel while the desks run.
+2. The report header (verdict, rating, value range) and the "How the rating was scored" panel.
+3. The Valuation tab: the football field and the reverse DCF's "Why the DCF can differ from analysts' targets".
+4. The What if tab after pressing "Market's discount rate", and the History tab of a company with several reports.
+5. Hover any number in the Financials tab to show its trace (filing, tag, fetch time).
+6. The Excel model's DCF and Sensitivity tabs, and the Compare page.
 
 ## Known limitations
 
-- **US-listed companies only** (SEC filers). Banks, insurers and REITs get their own toolkits in Release 3; until then they run through the corporate model and show "missing key line" flags.
-- **Assumption-based.** The DCF is driven by stated rules (consensus for years 1-2, fades to industry levels, statutory tax in the terminal value). With a 5.2% ten-year Treasury yield, large caps trading at 2-3% free-cash-flow yields come out well below their prices on the DCF alone; the reverse DCF shows what the price implies.
+- **US-listed companies only** (SEC filers, including 20-F foreign filers such as TSM).
+- **Assumption-based.** The DCF is driven by stated rules (consensus for years 1-2, fades to industry levels, statutory tax in the terminal value). Large caps trading at 2-3% free-cash-flow yields come out well below their prices on the DCF alone; the reverse DCF shows what the price implies (see above). With the verdict gate, Hold is the most common rating for quality large caps.
 - **Free data plans.** On the free FMP plan, analyst estimates, price targets and statements are blocked for many symbols (e.g. GRAB, ASML, MU), so forecasts fall back to history and the report says so. FMP allows about 250 calls a day and Tiingo about 50 an hour; heavy use hits these limits and the app degrades to the remaining sources.
+- **AI cost.** A full report costs about US$0.15-0.50 of AI. The caps default to US$0.50 a report and US$2 a day (set in `.env`).
 - **Temperature.** The current Claude models reject sampling settings, so "temperature 0" is replaced by caching every AI response by its exact request: re-running a stock on the same data gives the same text.
 - **Filing extraction** relies on standard Item headings; integrated annual reports (e.g. ASML) extract only partly.
 - **Estimate revisions** come from the tool's own daily consensus snapshots, so they appear only after 30/60/90 days of use.

@@ -1,4 +1,5 @@
-"""Forensic scores (pure Python): Beneish M-score (earnings manipulation risk) and Altman Z-score (distress risk).
+"""Forensic scores (pure Python): Beneish M-score (earnings manipulation risk), Altman Z-score (distress risk) and
+Piotroski F-score (financial strength).
 
 Both use reported statement lines only, each traced to its tag and period. Where an input is missing the score says
 so: a missing ratio that has a neutral value (1.0) is set to it and listed; a missing core input means no score.
@@ -14,6 +15,10 @@ Both run on the reporting-currency statements: every term is a same-currency rat
   Z'' = 6.56 X1 + 3.26 X2 + 6.72 X3 + 1.05 X4          safe > 2.60, distress < 1.10
   X1 working capital / assets, X2 retained earnings / assets, X3 EBIT / assets, X4 equity (market value for Z, book
   for Z'') / total liabilities, X5 sales / assets.
+Piotroski (2000), nine pass/fail tests on a fiscal year against the one before, one point each:
+  profitability: ROA > 0, CFO > 0, ROA up, CFO > net income (accruals); leverage and liquidity: long-term debt /
+  average assets down, current ratio up, no new shares (weighted diluted shares not up); efficiency: gross margin up,
+  asset turnover up. 8-9 strong, 0-2 weak. A test whose inputs are missing is not scored, and the score says so.
 """
 from __future__ import annotations
 
@@ -216,6 +221,67 @@ def altman(h, sic: str | None, period: str, market_cap: float | None, market_cap
 
 
 
+def piotroski(h, sic: str | None, year: str, prior: str) -> ForensicScore:
+    """F-score for `year` against `prior` (and the year before `prior` for average assets, when reported)."""
+    s = ForensicScore("Piotroski F-score", year, None, "", model="9 tests (Piotroski 2000)")
+    if is_financial(sic):
+        s.reading = "not meaningful for banks and insurers"
+        return s
+    g = _Reader(h)
+    labels = list(h.fy_labels)
+    before = labels[labels.index(prior) - 1] if prior in labels and labels.index(prior) > 0 else None
+
+    def avg_assets(y, y0):
+        a1, a0 = g("total_assets", y), g("total_assets", y0) if y0 else None
+        return (a1 + a0) / 2 if a1 is not None and a0 is not None else a1
+
+    ta1, ta0 = avg_assets(year, prior), avg_assets(prior, before)
+    def ni(y):  # some filers tag only net income attributable to the parent
+        x = g("net_income", y)
+        return x if x is not None else g("net_income_attributable", y)
+
+    ni1, ni0 = ni(year), ni(prior)
+    cfo1 = g("cfo", year)
+    roa1, roa0 = _div(ni1, ta1), _div(ni0, ta0)
+
+    def ratio(n, d, y):
+        return _div(g(n, y), g(d, y))
+
+    lev1, lev0 = _div(g("long_term_debt", year) or 0.0, ta1), _div(g("long_term_debt", prior) or 0.0, ta0)
+    cr1, cr0 = ratio("current_assets", "current_liabilities", year), ratio("current_assets", "current_liabilities", prior)
+    sh1, sh0 = g("shares_diluted_weighted", year), g("shares_diluted_weighted", prior)
+    gm1, gm0 = ratio("gross_profit", "revenue", year), ratio("gross_profit", "revenue", prior)
+    at1, at0 = _div(g("revenue", year), ta1), _div(g("revenue", prior), ta0)
+    tests = {
+        "ROA positive": None if roa1 is None else roa1 > 0,
+        "CFO positive": None if cfo1 is None else cfo1 > 0,
+        "ROA up": None if None in (roa1, roa0) else roa1 > roa0,
+        "CFO above net income": None if None in (cfo1, ni1) else cfo1 > ni1,
+        "Long-term debt / assets down": None if None in (lev1, lev0) else lev1 <= lev0,
+        "Current ratio up": None if None in (cr1, cr0) else cr1 > cr0,
+        "No new shares": None if None in (sh1, sh0) else sh1 <= sh0 * 1.005,  # rounding in reported share counts
+        "Gross margin up": None if None in (gm1, gm0) else gm1 > gm0,
+        "Asset turnover up": None if None in (at1, at0) else at1 > at0,
+    }
+    s.inputs = g.inputs
+    scored = {k: v for k, v in tests.items() if v is not None}
+    s.components = {k: 1.0 if v else 0.0 for k, v in scored.items()}
+    missing = [k for k, v in tests.items() if v is None]
+    if len(scored) < 7:
+        s.reading = "not computed: missing inputs for " + ", ".join(missing)
+        return s
+    s.value = float(sum(1 for v in scored.values() if v))
+    s.figures = {"tests_scored": len(scored), "strong_from": 8, "weak_to": 2}
+    s.reading = (f"strong ({s.value:.0f} of {len(scored)})" if s.value >= 8 else
+                 f"weak ({s.value:.0f} of {len(scored)})" if s.value <= 2 else f"middling ({s.value:.0f} of {len(scored)})")
+    if missing:
+        s.notes.append("Not scored (inputs not reported): " + ", ".join(missing) + ".")
+    failed = [k for k, v in scored.items() if not v]
+    if failed:
+        s.notes.append("Failed: " + ", ".join(failed) + ".")
+    return s
+
+
 def _consecutive(prior: str, year: str) -> bool:
     """FY2024 -> FY2025: Beneish compares a year with the one before it, never across a gap."""
     try:
@@ -229,7 +295,8 @@ def forensic_scores(h, sic: str | None, market_cap: float | None, market_cap_sou
     Altman's market-value term uses today's market cap, so only the latest year gets the original Z's X4 from
     market data; earlier years are shown only for Z'' (book equity)."""
     labels = list(h.fy_labels)
-    out = {"beneish": [beneish(h, sic, y, p) for p, y in zip(labels, labels[1:]) if _consecutive(p, y)]}
+    out = {"beneish": [beneish(h, sic, y, p) for p, y in zip(labels, labels[1:]) if _consecutive(p, y)],
+           "piotroski": [piotroski(h, sic, y, p) for p, y in zip(labels, labels[1:]) if _consecutive(p, y)]}
     if is_manufacturer(sic):
         out["altman"] = [altman(h, sic, labels[-1], market_cap, market_cap_source)] if labels else []
     else:

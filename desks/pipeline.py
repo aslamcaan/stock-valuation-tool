@@ -395,7 +395,7 @@ def _forensic(cd, model) -> dict:
                 mc, src = None, f"no {h.currency}/US$ rate to convert the market cap"
         return forensic_scores(h, cd.profile.sic, mc, src)
     except Exception as exc:  # a forensic score is a cross-check; it must never stop the valuation
-        return {"beneish": [], "altman": [], "error": f"{type(exc).__name__}: {exc}"}
+        return {"beneish": [], "altman": [], "piotroski": [], "error": f"{type(exc).__name__}: {exc}"}
 
 
 def extras_for_ai(rep: FullReport) -> dict:
@@ -422,11 +422,13 @@ def extras_for_ai(rep: FullReport) -> dict:
     if fs:
         b = next((x for x in reversed(fs.get("beneish", [])) if x.value is not None), None)
         a = next((x for x in reversed(fs.get("altman", [])) if x.value is not None), None)
+        f_ = next((x for x in reversed(fs.get("piotroski", [])) if x.value is not None), None)
 
         def view(x):  # notes contain figures as text; they are passed as numbers too, so they can be quoted
             return {"model": x.name, "period": x.period, "score": round(x.value, 2), "reading": x.reading,
                     "notes": x.notes, **getattr(x, "figures", {})}
-        out["forensic"] = {"beneish_m": None if b is None else view(b), "altman": None if a is None else view(a)}
+        out["forensic"] = {"beneish_m": None if b is None else view(b), "altman": None if a is None else view(a),
+                           "piotroski_f": None if f_ is None else view(f_)}
     return out
 
 

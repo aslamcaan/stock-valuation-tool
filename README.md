@@ -92,8 +92,8 @@ Banks, insurers and REITs get their own toolkits (justified P/TBV or P/B, residu
 on a peer-implied cap rate, P/FFO) because a DCF does not fit them.
 
 **Financial analysis.** Growth, profitability, returns (ROIC, ROE with DuPont), quality of earnings, working capital,
-leverage and debt maturities, capital allocation, the EPS track record of the last 12 quarters, Beneish M-score and
-Altman Z, and benchmarking against Damodaran industry medians and the peer set.
+leverage and debt maturities, capital allocation, the EPS track record of the last 12 quarters, Beneish M-score,
+Altman Z and Piotroski F-score (nine pass/fail strength tests; KO 7, MSFT 6, TSM 9), and benchmarking against Damodaran industry medians and the peer set.
 
 **News, ownership and review.** Dated news with each item's sized effect and whether the market has priced it in;
 insider transactions (Form 4), major holders (13D/G) and short interest; the review desk's challenges and cases; every

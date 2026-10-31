@@ -414,3 +414,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   instead of the peer being dropped (data_desk.peers.usd_market_cap). KOF: US$24.8bn, EV/EBIT 11.3x. This let KO's
   SOTP apply on re-model: five filed segments + corporate costs = $51.94 a share (DCF $43.47); fair value on
   re-model $65.32 (the saved report shows the old run until KO is re-run).
+- Piotroski F-score (engine.forensic.piotroski): nine pass/fail tests per fiscal year; a test without inputs is not
+  scored (fewer than 7 scored: no score); net income attributable as the fallback. Shown with the failed tests;
+  saved reports get it computed from their stored statements. FY latest: KO 7, MSFT 6, UBER 6, CVX 5, GRAB 5, TSM 9;
+  JPM not meaningful (bank).

@@ -327,7 +327,7 @@ def analysis(rep) -> None:
                 st.caption("Earnings beat/miss history not available.")
         for line in a.commentary.get(section, []):
             st.markdown(f"- {line}")
-    forensic_block(getattr(rep, "forensic", None))
+    forensic_block(with_piotroski(getattr(rep, "forensic", None), rep))
 
 
 def benchmarking(rep) -> None:
@@ -720,6 +720,20 @@ def md_text(x: str) -> str:
 QUALITY_BADGE = {"Trusted": "🟢 Trusted", "Established": "🔵 Established", "Unverified": "🟠 Unverified"}
 
 
+def with_piotroski(fs, rep):
+    """Reports saved before the F-score was added get it computed now from their stored statements (pure code)."""
+    if not fs or fs.get("piotroski") or rep.company is None:
+        return fs
+    from engine.forensic import _consecutive, piotroski
+    h = rep.company.historicals
+    labels = list(h.fy_labels)
+    try:
+        return {**fs, "piotroski": [piotroski(h, rep.company.profile.sic, y, p)
+                                    for p, y in zip(labels, labels[1:]) if _consecutive(p, y)]}
+    except Exception:  # a cross-check: never stop the page
+        return fs
+
+
 def forensic_block(fs) -> None:
     st.markdown("**Forensic scores** (code, from reported statement lines)")
     if not fs or not (fs.get("beneish") or fs.get("altman")):
@@ -727,12 +741,17 @@ def forensic_block(fs) -> None:
                    + (f": {fs['error']}" if fs and fs.get("error") else "."))
         return
     rows = []
-    for s_ in fs.get("beneish", [])[-4:] + fs.get("altman", [])[-4:]:
-        rows.append({"Score": s_.name, "Year": s_.period, "Value": "n/a" if s_.value is None else f"{s_.value:.2f}",
+    for s_ in fs.get("beneish", [])[-4:] + fs.get("altman", [])[-4:] + fs.get("piotroski", [])[-4:]:
+        f_score = s_.name.startswith("Piotroski")
+        failed = [k for k, v in s_.components.items() if not v]
+        rows.append({"Score": s_.name, "Year": s_.period,
+                     "Value": "n/a" if s_.value is None else f"{s_.value:.0f}" if f_score else f"{s_.value:.2f}",
                      "Reading": s_.reading,
-                     "Components": ", ".join(f"{k} {v:.2f}" for k, v in s_.components.items())})
+                     "Components": ("failed: " + ", ".join(failed) if failed else "every scored test passed")
+                     if f_score and s_.components else ", ".join(f"{k} {v:.2f}" for k, v in s_.components.items())})
     st.dataframe(rows, hide_index=True, width="stretch")
-    latest = [x for x in (fs.get("beneish") or [])[-1:] + (fs.get("altman") or [])[-1:]]
+    latest = [x for x in (fs.get("beneish") or [])[-1:] + (fs.get("altman") or [])[-1:]
+              + (fs.get("piotroski") or [])[-1:]]
     for x in latest:
         st.caption(f"{x.name} ({x.model}): " + "; ".join(x.notes) if x.notes else f"{x.name}: {x.model}.")
     with st.expander("Forensic score inputs (line, period, value, source)"):

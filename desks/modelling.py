@@ -142,7 +142,9 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
         if geo_crp is not None:
             ei.crp = geo_crp
         if cd.historicals.currency == "USD":
-            ei.one_off_adjustments = one_off_adjustments(research, cd.historicals.fy_labels)
+            ei.one_off_adjustments = one_off_adjustments(
+                research, cd.historicals.fy_labels,
+                {p: cd.historicals.v("operating_income", p) for p in cd.historicals.fy_labels}, notes)
         say("Valuing segments for the sum of the parts")
         ei.segments = segments_from_research(svc, cd, research, notes)
         conv = research.get("convertible_debt") or {}

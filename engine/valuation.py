@@ -13,8 +13,8 @@ from engine.dcf import DCFError, DCFInputs, DCFResult, run_dcf
 from engine.flags import AMBER, HARD_STOP, INFO, Flag
 from engine.forecast import ConsensusYear, ForecastPlan, build_plan, to_dcf_inputs
 from engine.model import Historicals
-from engine.scenarios import (DEFAULT_SCENARIOS, ScenarioResult, grid_growth_margin, grid_wacc_growth, reverse_dcf,
-                              run_scenarios)
+from engine.scenarios import (DEFAULT_SCENARIOS, ScenarioResult, grid_growth_margin, grid_wacc_growth, implied_wacc,
+                              reverse_dcf, run_scenarios, street_conventions)
 from engine.shares import diluted_shares
 from engine.sotp import Segment, SOTPResult, run_sotp
 from engine.values import MILLIONS, PER_SHARE, RATIO, SHARES_M, Value, calc
@@ -258,6 +258,12 @@ def value_company(i: EngineInputs) -> Valuation:
         scen, scen_value = run_scenarios(dcf_inputs, DEFAULT_SCENARIOS, max_terminal_growth=g_cap)
         sens1, sens2 = grid_wacc_growth(dcf_inputs), grid_growth_margin(dcf_inputs)
         rev = reverse_dcf(dcf_inputs, ordinary_price.value)
+        eff, roic_now = a.metrics.get("effective_tax_rate", {}).get(last), a.metrics.get("roic", {}).get(last)
+        street_in, street_changes = street_conventions(dcf_inputs, eff.value if eff else None,
+                                                       roic_now.value if roic_now else None, i.risk_free.value)
+        if street_changes:
+            rev["street"] = {"value_per_share": run_dcf(street_in).value_per_share, "changes": street_changes,
+                             "implied_wacc": implied_wacc(street_in, ordinary_price.value)}
         if cls.stage == CYCLICAL:
             from dataclasses import replace
             held = tuple(replace(y, operating_margin=cur_margin.value) for y in dcf_inputs.years)

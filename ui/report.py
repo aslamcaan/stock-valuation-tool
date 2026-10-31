@@ -469,6 +469,23 @@ def reverse_dcf(rep) -> None:
                     f"(base case {pct(m['base_terminal_margin'])}).")
     else:
         st.markdown(f"Margins alone: {m.get('reason', 'not solved')}.")
+    w, street = r.get("wacc", {}), r.get("street")
+    if w.get("solved") or street:
+        st.markdown("#### Why the DCF can differ from analysts' targets")
+    if w.get("solved"):
+        st.markdown(f"Holding everything else, the price implies a discount rate of **{pct(w['implied_wacc'])}** "
+                    f"against our WACC of {pct(w['base_wacc'])} (risk-free rate "
+                    f"{pct(rep.model.inputs.risk_free.value)}).")
+    if street:
+        v = rep.model.valuation
+        st.markdown(f"With three common sell-side conventions in place of our more cautious ones, at the same discount "
+                    f"rate, the DCF is **{money(v.per_us_share(street['value_per_share']))}** (base "
+                    f"{money(v.per_us_share(v.dcf.value_per_share))}): " + "; ".join(street["changes"]) + "."
+                    + (f" On those conventions the price implies a discount rate of "
+                       f"**{pct(street['implied_wacc'])}**." if street.get("implied_wacc") else ""))
+        st.caption("Analysts' price targets usually rest on an earnings multiple the stock has traded on, which "
+                   "assumes the market's pricing is right; the DCF tests it at a required return built from the "
+                   "risk-free rate, beta and the equity risk premium.")
 
 
 def scenarios(rep) -> None:

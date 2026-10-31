@@ -147,7 +147,7 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
                         formula="latest fiscal-year revenue growth") if growth_hist else None
     best_hist = max((x for _, x in growth_hist[-10:]), default=None)
     cons_growth, prev_rev, cons_detail = [], base_rev.value, []
-    for lab in labels[:skipped_n + 2]:
+    for lab in labels[:n - 1]:  # every year with enough analysts; the last explicit year converges on terminal growth
         c = cons_by_label.get(lab)
         if c and c.revenue and c.analysts >= MIN_ANALYSTS and prev_rev:
             cons_growth.append(c.revenue / prev_rev - 1)
@@ -160,8 +160,10 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
     ind_g = industry_growth.value if industry_growth is not None else g
     ind_g = min(max(ind_g, g), 0.20)
     if use_cons:
-        first2 = cons_growth[:skipped_n + 2]
-        g_source = "analyst consensus (FMP mean; median not published) for years 1-2"
+        first2 = cons_growth
+        k_cons = len(first2) - skipped_n
+        g_source = (f"analyst consensus (FMP mean; median not published) for years 1-{k_cons}" if k_cons > 1 else
+                    "analyst consensus (FMP mean; median not published) for year 1")
         cons_v = Value(first2[skipped_n], None, RATIO, labels[skipped_n], "FMP analyst estimates",
                        note="; ".join(cons_detail))
         disp = [(c.revenue_high - c.revenue_low) / c.revenue
@@ -197,15 +199,13 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
         first2 = [h1] * (skipped_n + 2)
         cons_v = None
         confidence = "Low" if stage in (EARLY, CYCLICAL) else "Medium"
-    y2 = first2[-1]
-    if stage == HIGH_GROWTH:
-        # 5 explicit years (consensus / history, easing halfway to the industry rate), then 5 fade years
-        mid = y2 + 0.5 * (ind_g - y2)
-        tail = _lerp(y2, mid, 3) + _lerp(mid, g, horizon - 5)
-    elif horizon == 10:
-        tail = _lerp(y2, ind_g, 3) + _lerp(ind_g, g, horizon - 5)
+    y2, k = first2[-1], len(first2)  # k years set by consensus or history; the rest ease towards terminal growth
+    if horizon == 10 and k < skipped_n + 5:
+        # 5 explicit years (easing halfway to the industry rate for high growth, to it otherwise), then 5 fade years
+        mid = y2 + 0.5 * (ind_g - y2) if stage == HIGH_GROWTH else ind_g
+        tail = _lerp(y2, mid, skipped_n + 5 - k) + _lerp(mid, g, horizon - 5)
     else:
-        tail = _lerp(y2, g, horizon - 2)
+        tail = _lerp(y2, g, n - k)
     growth_path = first2 + tail
     growth_path = growth_path[:n]
     if "revenue_growth" in overrides:

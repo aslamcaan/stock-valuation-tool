@@ -408,3 +408,78 @@ def test_impairments_are_added_back_to_the_margin_history():
         hit.historicals.lines.setdefault("goodwill_intangible_impairment", {})[p] = Value(
             0.06 * rev, oi.currency, MILLIONS, p, "test")
     assert value_company(hit).plan.drivers["operating_margin"].chosen.value == pytest.approx(base)
+
+
+def test_consensus_growth_is_used_for_every_covered_year():
+    """KO's consensus runs to FY2030; using only two years let a one-off (the CCBA deconsolidation, flat FY2027) set
+    the whole path. Every year with enough analysts is used; the last explicit year converges on terminal growth."""
+    from tests.engine_fixtures import engine_inputs
+    i = engine_inputs("KO")
+    v = value_company(i)
+    plan, row = v.plan, v.plan.drivers["revenue_growth"]
+    cons = {c.fiscal_year_end: c for c in i.consensus}
+    prev = i.historicals.v("revenue", i.historicals.fy_labels[-1])
+    expected = []
+    for end in plan.year_ends[:len(plan.labels) - 1]:
+        c = next((x for e, x in cons.items() if abs((e - end).days) <= 20), None)
+        if c is None or c.analysts < 3:
+            break
+        expected.append(c.revenue / prev - 1)
+        prev = c.revenue
+    assert len(expected) >= 3
+    assert row.path[:len(expected)] == pytest.approx(expected)
+    assert row.path[-1] == pytest.approx(plan.terminal_growth.value)
+    assert f"years 1-{len(expected) - len(plan.skipped)}" in row.source
+
+
+def test_implied_wacc_and_sell_side_conventions():
+    from tests.engine_fixtures import engine_inputs
+    v = value_company(engine_inputs("KO"))
+    w = v.reverse["wacc"]
+    assert w["solved"] and w["implied_wacc"] < w["base_wacc"]  # KO trades above our DCF
+    street = v.reverse["street"]
+    assert street["value_per_share"] > v.dcf.value_per_share
+    assert street["implied_wacc"] > w["implied_wacc"]  # kinder conventions need less of a discount-rate cut
+    assert any("terminal tax" in c for c in street["changes"]) and any("terminal growth 3.0%" in c
+                                                                        for c in street["changes"])
+
+
+
+def test_implied_wacc_reprices_the_dcf_to_the_price():
+    from dataclasses import replace
+    from engine.dcf import run_dcf
+    from tests.engine_fixtures import engine_inputs
+    i = engine_inputs("KO")
+    v = value_company(i)
+    w = v.reverse["wacc"]["implied_wacc"]
+    assert run_dcf(replace(v.dcf_inputs, wacc=w)).value_per_share == pytest.approx(i.price.value / i.adr_ratio, rel=1e-4)
+
+
+def test_one_off_items_from_an_earlier_report_fill_only_older_years():
+    from desks.research import ResearchResult, merge_one_offs
+    # a modern 10-K's MD&A discusses two years: FY2025 and FY2024 from the latest, FY2023-22 from two years earlier
+    latest = ResearchResult({"one_off_items": [{"fiscal_year": "2024", "amount_millions": 100}]}, [], {}, "10-K 2025")
+    two_back = ResearchResult({"one_off_items": [{"fiscal_year": "2024", "amount_millions": 90},  # newer report wins
+                                                 {"fiscal_year": "2023", "amount_millions": 50},
+                                                 {"fiscal_year": "2022", "amount_millions": 70}]}, [], {}, "10-K 2023")
+    four_back = ResearchResult({"one_off_items": [{"fiscal_year": "2022", "amount_millions": 65},  # already covered
+                                                  {"fiscal_year": "2021", "amount_millions": 30}]}, [], {}, "10-K 2021")
+    assert merge_one_offs(latest, [two_back, None, four_back], latest_fy=2025) == 3
+    assert [(x["fiscal_year"], x["amount_millions"]) for x in latest.data["one_off_items"]] == [
+        ("2024", 100), ("2023", 50), ("2022", 70), ("2021", 30)]
+    assert "FY2022, FY2023 from 10-K 2023" in latest.source and "FY2021 from 10-K 2021" in latest.source
+
+
+def test_one_off_year_larger_than_half_of_operating_income_is_not_used():
+    from data_desk.valuation_inputs import one_off_adjustments
+    items = {"one_off_items": [
+        {"fiscal_year": "2025", "amount_millions": 400, "effect": "charge", "in_operating_income": True},
+        {"fiscal_year": "2024", "amount_millions": 900, "effect": "charge", "in_operating_income": True},
+        {"fiscal_year": "2024", "amount_millions": 300, "effect": "charge", "in_operating_income": True},
+        {"fiscal_year": "2023", "amount_millions": 50, "effect": "gain", "in_operating_income": True},
+        {"fiscal_year": "2023", "amount_millions": 80, "effect": "charge", "in_operating_income": False}]}
+    notes = []
+    out = one_off_adjustments(items, ["FY2023", "FY2024", "FY2025"],
+                              {"FY2023": 2000.0, "FY2024": 2000.0, "FY2025": 2000.0}, notes)
+    assert out == {"FY2025": 400.0, "FY2023": -50.0}
+    assert len(notes) == 1 and "FY2024" in notes[0]

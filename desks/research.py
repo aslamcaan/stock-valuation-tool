@@ -72,9 +72,11 @@ report and extract facts for the analysts. Rules:
   quote containing at least one of the values. Empty name and values if
   the company reports no such metric.
 - risk_factors: the 6 most material risks for valuation, each with a verbatim quote.
-- one_off_items: impairments, restructuring, litigation, gains or losses on investments or disposals, and similar
-  items called out as unusual, with the amount (positive number), whether it reduced profit ("charge") or
-  increased it ("gain"), the fiscal year, and whether it sits inside operating income.
+- one_off_items: impairments, restructuring, litigation, gains or losses on investments or disposals, remeasurements
+  of contingent consideration, and similar items called out as unusual, for EACH fiscal year the filing discusses
+  (usually three), with the amount (positive number), whether it reduced profit ("charge") or increased it ("gain"),
+  the fiscal year, and whether it sits inside operating income. List each item once: never a total and also the
+  items that make it up.
 - guidance: any forward-looking targets management gives.
 - convertible_debt / share_classes: whether convertible notes or multiple share classes exist, with a quote."""
 
@@ -159,6 +161,51 @@ def verify(data: dict, source_text: str) -> tuple[dict, list[str]]:
         out["business_quote"] = ""
         dropped.append("business_quote not found in the filing")
     return out, dropped
+
+
+ONE_OFFS_ONLY = _obj({"one_off_items": PARTS["risks"]["properties"]["one_off_items"]})
+
+
+def run_one_offs(ai: AIClient, report_id: str, company: str, ticker: str, filing) -> ResearchResult:
+    """One-off items from an earlier annual report's MD&A, so the margin history is cleaned for five years, not
+    only the years the latest report discusses."""
+    mdna = filing.sections.get("mdna", "")
+    if not mdna:
+        return ResearchResult({"one_off_items": []}, ["no MD&A section in the earlier annual report"], {})
+    content = (f"Company: {company} ({ticker}). Annual report: {filing.form} filed {filing.filing_date} for the "
+               f"period ending {filing.report_date}.\n\n<filing section=\"mdna\" form=\"{filing.form}\" "
+               f"filed=\"{filing.filing_date}\">\n{mdna}\n</filing>")
+    data = ai.call(report_id=report_id, desk="Research desk", model=HAIKU, system=SYSTEM,
+                   content=f"Extract only: one_off_items.\n\n{content}", schema=ONE_OFFS_ONLY, effort="low",
+                   max_tokens=6000)
+    data, dropped = verify({"one_off_items": data.get("one_off_items", [])}, mdna)
+    return ResearchResult({"one_off_items": data.get("one_off_items", [])}, dropped, {"mdna": len(mdna)},
+                          f"{filing.form} filed {filing.filing_date} ({filing.url})")
+
+
+def _fy(item: dict) -> int | None:
+    y = str(item.get("fiscal_year", ""))[-4:]
+    return int(y) if y.isdigit() else None
+
+
+def merge_one_offs(latest: ResearchResult, earlier: list[ResearchResult | None], latest_fy: int) -> int:
+    """Add earlier reports' items (newest report first) for fiscal years no newer report discusses: a 10-K's MD&A
+    covers two or three years, and the newer, restated figures win. Returns how many were added."""
+    covered = {latest_fy} | {y for x in latest.data.get("one_off_items", []) if (y := _fy(x))}
+    total = 0
+    for r in earlier:
+        if r is None:
+            continue
+        add = [x for x in r.data.get("one_off_items", []) if (y := _fy(x)) and y < latest_fy and y not in covered]
+        for x in add:
+            x["source"] = r.source
+        latest.data["one_off_items"] = list(latest.data.get("one_off_items", [])) + add
+        latest.dropped += [f"earlier report: {d}" for d in r.dropped]
+        if add:
+            latest.source += f"; one-off items for {', '.join(sorted({f'FY{_fy(x)}' for x in add}))} from {r.source}"
+        covered |= {_fy(x) for x in r.data.get("one_off_items", []) if _fy(x)}
+        total += len(add)
+    return total
 
 
 def run_research(ai: AIClient, report_id: str, company: str, ticker: str, filing) -> ResearchResult:

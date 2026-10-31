@@ -222,8 +222,13 @@ def crp_from_filing_geography(svc, geo: list[dict], source: str) -> Value | None
                       "; ".join(f"{lab} {w:.0%} -> {how} CRP {x:.2%}" for lab, w, x, how in parts))
 
 
-def one_off_adjustments(research: dict, fy_labels: list[str]) -> dict[str, float]:
-    """FY label -> amount to add back to operating income (charges added back, gains removed)."""
+ONE_OFF_CAP = 0.5  # a year's net one-offs above half its operating income is more likely a double count than real
+
+
+def one_off_adjustments(research: dict, fy_labels: list[str], operating_income: dict[str, float] | None = None,
+                        notes: list[str] | None = None) -> dict[str, float]:
+    """FY label -> amount to add back to operating income (charges added back, gains removed). With
+    `operating_income`, a year whose net adjustment exceeds half of it is dropped and noted."""
     out: dict[str, float] = {}
     for item in research.get("one_off_items", []):
         amt = item.get("amount_millions")
@@ -231,4 +236,11 @@ def one_off_adjustments(research: dict, fy_labels: list[str]) -> dict[str, float
         if not amt or not item.get("in_operating_income") or fy not in fy_labels:
             continue
         out[fy] = out.get(fy, 0.0) + (abs(amt) if item.get("effect") == "charge" else -abs(amt))
+    for fy, adj in list(out.items()):
+        oi = (operating_income or {}).get(fy)
+        if oi and abs(adj) > ONE_OFF_CAP * abs(oi):
+            del out[fy]
+            if notes is not None:
+                notes.append(f"One-off items for {fy} ({adj:,.0f}m) exceed half of operating income ({oi:,.0f}m): "
+                             f"not used (possible double count)")
     return out

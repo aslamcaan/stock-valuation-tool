@@ -284,6 +284,12 @@ def build_pdf(rep) -> bytes:
     if rv.get("growth", {}).get("solved"):
         s.append(P(f"13. Reverse DCF: the price implies {pct(rv['growth']['implied_cagr'])} revenue CAGR over "
                    f"{rv['years']} years (base case {pct(rv['base_cagr'])})."))
+    if rv.get("wacc", {}).get("solved"):
+        s.append(P(f"The price implies a discount rate of {pct(rv['wacc']['implied_wacc'])} against our WACC of "
+                   f"{pct(rv['wacc']['base_wacc'])}.", SMALL))
+    if rv.get("street"):
+        s.append(P(f"At common sell-side conventions ({'; '.join(rv['street']['changes'])}), same discount rate: "
+                   f"DCF {money(v.per_us_share(rv['street']['value_per_share']))}.", SMALL))
     s.append(P("14. Scenarios and sensitivity", H2))
     s.append(table([[x.scenario.name, f"{x.scenario.probability:.0%}", x.scenario.describe(),
                      money(v.per_us_share(x.value_per_share)) if x.result else "-"] for x in v.scenarios],

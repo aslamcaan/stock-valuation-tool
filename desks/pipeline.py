@@ -30,7 +30,7 @@ from desks.impact import ImpactResult, impact_payload, run_impact, run_news_view
 from desks.md import MDResult, run_md
 from desks.modelling import ValuationReport, run_modelling
 from desks.news import NewsResult, run_news
-from desks.research import ResearchResult, run_research
+from desks.research import ResearchResult, merge_one_offs, run_one_offs, run_research
 from desks.review import STAGES, run_review
 from desks.summary import build_summary
 from engine.forensic import ForensicScore, forensic_scores
@@ -146,6 +146,16 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
             p("Research desk", FAILED, "No annual report found on EDGAR")
             return None
         r = run_research(svc.ai, rid, cd.profile.name, cd.profile.ticker, filing)
+        earlier = []  # one-off items for the years before the latest MD&A's two or three: a 5-year clean margin history
+        for back in (2, 4):
+            try:
+                p("Research desk", RUNNING, f"Reading the annual report from {back} years earlier for one-off items…")
+                older = latest_annual_report(svc, cd.profile.statements_cik, years_back=back)
+                if older is not None:
+                    earlier.append(run_one_offs(svc.ai, rid, cd.profile.name, cd.profile.ticker, older))
+            except Exception as exc:  # the latest report's items are still usable
+                r.dropped.append(f"annual report from {back} years earlier not read: {type(exc).__name__}: {exc}")
+        merge_one_offs(r, earlier, int(filing.report_date[:4]))
         p("Research desk", DONE, f"Read {filing.form} filed {filing.filing_date}: {len(r.data.get('segments', []))} "
                                  f"segments, {len(r.data.get('risk_factors', []))} risks, "
                                  f"{len(r.data.get('one_off_items', []))} one-off items"

@@ -133,6 +133,34 @@ def _solve(value_at, target: float, lo: float, hi: float, steps: int = 24, tol: 
     return None
 
 
+STREET_TERMINAL_GROWTH = 0.03  # a common sell-side terminal growth for mature companies (capped at the risk-free rate)
+
+
+def street_conventions(inp: DCFInputs, effective_tax: float | None, current_roic: float | None,
+                       risk_free: float) -> tuple[DCFInputs, list[str]]:
+    """The base case with three common sell-side conventions in place of our cautious ones, same discount rate:
+    the company's own tax rate in perpetuity (not the statutory rate), today's return on capital held (not faded
+    halfway to WACC), and 3% terminal growth (not 2.5%). Each is applied only where it is more generous."""
+    changes, out = [], inp
+    if effective_tax is not None and inp.terminal_tax_rate is not None and 0 <= effective_tax < inp.terminal_tax_rate:
+        out = replace(out, terminal_tax_rate=effective_tax)
+        changes.append(f"terminal tax {effective_tax:.1%} (own effective rate) instead of {inp.terminal_tax_rate:.1%}")
+    if current_roic is not None and inp.terminal_roic is not None and min(current_roic, 0.40) > inp.terminal_roic:
+        out = replace(out, terminal_roic=min(current_roic, 0.40))
+        changes.append(f"terminal ROIC {min(current_roic, 0.40):.1%} (today's, capped at 40%) instead of "
+                       f"{inp.terminal_roic:.1%}")
+    g = min(STREET_TERMINAL_GROWTH, risk_free)
+    if g > inp.terminal_growth and g < inp.wacc:
+        out = replace(out, terminal_growth=g)
+        changes.append(f"terminal growth {g:.1%} instead of {inp.terminal_growth:.1%}")
+    return out, changes
+
+
+def implied_wacc(inp: DCFInputs, price: float) -> float | None:
+    """The discount rate at which the DCF equals the price, everything else held."""
+    return _solve(lambda w: run_dcf(replace(inp, wacc=w)).value_per_share, price, inp.terminal_growth + 0.005, 0.25)
+
+
 def reverse_dcf(inp: DCFInputs, price: float) -> dict:
     """What the share price implies, holding everything else at the base case:
     - growth: a uniform shift to every year's revenue growth (reported as the implied revenue CAGR);
@@ -157,6 +185,8 @@ def reverse_dcf(inp: DCFInputs, price: float) -> dict:
     else:
         out["margin"] = {"solved": True, "margin_shift": m, "implied_terminal_margin": base_tm + m,
                          "base_terminal_margin": base_tm}
+    w = implied_wacc(inp, price)
+    out["wacc"] = {"solved": w is not None, "implied_wacc": w, "base_wacc": inp.wacc}
     out["solved"] = out["growth"]["solved"] or out["margin"]["solved"]
     return out
 

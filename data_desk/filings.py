@@ -141,10 +141,16 @@ def annual_report_html(svc, cik: int, f) -> tuple[str, str]:
     return "\n".join(parts), doc.fetched_at_iso
 
 
-def latest_annual_report(svc, cik: int) -> FilingText | None:
+def latest_annual_report(svc, cik: int, years_back: int = 0) -> FilingText | None:
+    """The latest annual report, or with `years_back` the one for a fiscal year that many years earlier."""
     filings = svc.edgar.filings(cik, forms={"10-K", "20-F", "40-F"})
     if not filings:
         return None
     f = filings[0]
+    if years_back:
+        year = int(f.report_date[:4]) - years_back
+        f = next((x for x in filings if x.report_date and int(x.report_date[:4]) == year), None)
+        if f is None:
+            return None
     html_text, fetched = annual_report_html(svc, cik, f)
     return FilingText(f.form, f.filing_date, f.report_date, f.url(cik), extract_sections(html_text, f.form), fetched)

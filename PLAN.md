@@ -327,3 +327,16 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   ~6% is needed to reach the price. The saved Oct 26 KO report predates long-term investments in the bridge.
   Open: AAPL -48.6% (DCF $101; WACC 9.8% from a 1.34 regression beta; no consensus while FMP is rate-limited);
   FMP consensus shows KO revenue flat FY2026-FY2027 (49,826 -> 49,846), not yet explained.
+- 2026-10-31 Gap to analyst targets (user: "clearly something is wrong if banks are valuing it higher"). Rebuilding
+  KO's DCF with sell-side assumptions one at a time (today's data + saved consensus): ours $42.89 -> consensus all
+  years $45.84 -> comparable margin ~31% $55.01 -> own tax rate in the terminal value $58.16 -> ROIC held $61.53 ->
+  3% terminal growth $67.09 -> WACC 6.5% $76.88 -> 6.0% $89.72 (price $94.08). Built: consensus revenue growth for
+  every forecast year with 3+ analysts (was years 1-2; KO's flat FY2027 from the CCBA deconsolidation had set the
+  whole path), last explicit year converging on terminal growth; research desk lists one-offs for every year the
+  MD&A discusses and reads the annual reports from 2 and 4 years earlier (MD&A only) for the older years, newer
+  reports winning for overlapping years; a year's net one-offs above half its operating income are dropped as a
+  likely double count. KO check: adjustments FY2021-25 846 / 1,212 / 1,951 / 3,995 / 1,189 (FY2021 and FY2023
+  equal KO's XBRL OtherCostAndExpenseOperating; clean FY2025 margin 31.2% = KO's reported comparable margin);
+  margin target 25.5% -> 29.0%; DCF $50.47 (weighted $52.59). Reverse DCF adds the implied discount rate (KO 4.9%
+  vs our 7.0%) and a DCF at three common sell-side conventions, same discount rate (own tax rate in perpetuity,
+  today's ROIC held, 3% terminal growth): KO $62.79, implying 5.6%. Shown in the report and the PDF.

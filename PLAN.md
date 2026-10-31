@@ -426,3 +426,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   the no-growth view): KO 32.8%, MSFT 44.1%, UBER 27.4%, GRAB 16.0% (all above WACC); TSM 9.2% < 12.4% WACC (amber:
   the margin fades 58% -> 39% under mean reversion while TSM earns 47% today); CVX profit falls while reinvesting
   (info). Source: Damodaran's consistency checks (reinvestment rate = g / ROC).
+- Considered slowing margin mean reversion for persistently high-margin companies (TSM). Not done: Mauboussin
+  (2007, ~1,000 companies 1997-2006) finds 41% of the top ROIC quintile still there after nine years (20% by
+  chance) but no reliable predictor of which; the fade stays, the reinvestment flag shows its cost, and the
+  Talking points page answers the question.

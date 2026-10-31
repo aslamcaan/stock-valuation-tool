@@ -155,6 +155,13 @@ qa([
      "XBRL tag used for each number is logged. Hard stops and flags catch broken statements. The engine is pure Python "
      f"with {n_tests or 'several hundred'} offline tests on recorded API responses, including a whole report run "
      "offline. Every number on screen can be hovered for its source, tag and fetch date."),
+    ("\"Isn't fading TSMC's margin towards the industry too harsh?\"",
+     "It's the question the tool raises itself. The forecast closes half the gap between the company's margin and the "
+     "industry's, because returns mostly revert: in Mauboussin's study of about 1,000 companies, 41% of the top fifth "
+     "by ROIC were still in the top fifth nine years later. That's twice chance, but most fall back, and he found no "
+     "reliable way to tell in advance which will stay. So the model keeps the fade, and a consistency check flags its "
+     "cost: TSMC's forecast earns 9.2% on new capital against a 12.4% WACC while it earns 47% today. The What if tab "
+     "lets you raise the target margin and see what it is worth."),
     ("\"How did you build the WACC?\"",
      "Risk-free rate from FRED's 10-year Treasury; an industry unlevered beta from Damodaran, relevered at the "
      "company's market debt-to-equity; times Damodaran's implied equity risk premium; plus country risk weighted by "

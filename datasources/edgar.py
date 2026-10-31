@@ -8,10 +8,11 @@ import re
 
 from dataclasses import dataclass
 
-from core.cache import Cache, Cached
+from core.cache import Cache, Cached, CacheMiss
 from core.http import DataSourceError, RateLimiter, cache_key, get
 
 SOURCE = "SEC EDGAR"
+PERIODIC_FORMS = {"10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "40-F"}
 TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
 COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
@@ -120,6 +121,26 @@ class EdgarClient:
                         "description": f.description, "url": f.url(cik)})
         out.sort(key=lambda x: x["filing_date"], reverse=True)
         return out, c.fetched_at_iso
+
+    def refresh_if_newer_filing(self, cik: int) -> str | None:
+        """Refetch the cached companyfacts and filings list when a periodic report has been filed since they were
+        fetched (their cache lasts 30 days, which would hide a new 10-Q). Uses the hour-long filings check.
+        Returns the newer filing ("10-Q filed 2026-07-29") or None."""
+        try:
+            recent, _ = self.recent_filings_fresh(cik, PERIODIC_FORMS)
+        except (DataSourceError, CacheMiss):  # offline or EDGAR down: keep what is cached
+            return None
+        if not recent:
+            return None
+        newest = recent[0]["filing_date"]
+        found = None
+        for category, url in (("companyfacts", COMPANYFACTS_URL.format(cik=int(cik))),
+                              ("filings", SUBMISSIONS_URL.format(cik=int(cik)))):
+            hit = self.cache.read(category, cache_key(url), allow_stale=True)
+            if hit is not None and hit.fetched_at.date().isoformat() <= newest:  # fetched on or before that filing
+                self._json(category, url, force=True)
+                found = f"{recent[0]['form']} filed {newest}"
+        return found
 
     def raw_xml(self, url: str) -> Cached:
         """A filing's raw XML (Form 4, Schedule 13D/G), cached 30 days. EDGAR lists the rendered form

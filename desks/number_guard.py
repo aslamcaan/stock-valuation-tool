@@ -127,7 +127,7 @@ def number_allowed(text_num: str, unit: str | None, allowed: list[float], cur: s
                    negative_ok: bool = True) -> bool:
     num = float(text_num.replace(",", ""))
     bare = cur is None and unit is None and text_num.lstrip("-").isdigit()
-    if bare and (abs(num) <= 10 or (len(text_num) == 4 and 1990 <= num <= 2100)):
+    if bare and (abs(num) <= 10 or (len(text_num.lstrip("-")) == 4 and 1990 <= abs(num) <= 2100)):
         return True
     signs = (1, -1) if negative_ok and not text_num.startswith("-") else (1,)
     for cand, tol in zip(_candidates(num, unit), _scaled_tol(_tolerance(text_num, unit), unit)):
@@ -155,8 +155,8 @@ def check_text(text: str, allowed: list[float], sources: str = "", contextual: l
         for m in NUM_RE.finditer(work):
             cur = (m.group("cur") or None) and m.group("cur").lower()
             num = m.group("num")
-            if (m.group("sign") or m.group("paren")) and not num.startswith("-"):
-                num = "-" + num  # "-$200m", "−$200m", "$(1.20)"
+            if (m.group("sign") or (m.group("paren") and cur)) and not num.startswith("-"):
+                num = "-" + num  # "-$200m", "−$200m", "$(1.20)"; a bracketed aside "(28.7%)" or "(2026)" is not negative
             if cur not in USD_SIGNS:
                 ok = re.sub(r"\s+", " ", m.group(0).strip()).lower() in src
             else:

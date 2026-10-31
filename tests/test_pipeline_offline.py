@@ -231,3 +231,19 @@ def test_hero_chart_plots_the_closes_against_fair_value():
     fv = float(re.search(r"<line class='fvl' x1='0' y1='([\d.]+)'", svg).group(1))
     assert ys[-1] < fv < ys[0]  # the fair value (120) sits between the first (101) and last (130) close
     assert "cx='800.0'" in svg  # the dot marks the latest close
+
+
+def test_a_new_10q_refetches_the_cached_xbrl(tmp_path, monkeypatch):
+    """KO and MSFT, 2026-10-31: Q3 10-Qs filed 28 Oct were hidden by the 30-day companyfacts cache."""
+    from core.cache import Cache
+    from datasources.edgar import EdgarClient
+    ed = EdgarClient(Cache(tmp_path / "c"), "Test t@example.com")
+    url = COMPANYFACTS_URL.format(cik=21344)
+    ed.cache.write("companyfacts", cache_key(url), {"old": True})
+    fetched = []
+    monkeypatch.setattr(ed, "_json", lambda category, u, force=False: fetched.append((category, force)))
+    monkeypatch.setattr(ed, "recent_filings_fresh", lambda cik, forms: ([{"form": "10-Q", "filing_date": "2099-10-28"}], ""))
+    assert ed.refresh_if_newer_filing(21344) == "10-Q filed 2099-10-28"
+    assert fetched == [("companyfacts", True)]  # the filings list was not cached, so only the facts are refetched
+    monkeypatch.setattr(ed, "recent_filings_fresh", lambda cik, forms: ([{"form": "10-Q", "filing_date": "2000-01-01"}], ""))
+    assert ed.refresh_if_newer_filing(21344) is None  # nothing filed since the cache was filled

@@ -148,6 +148,9 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
     cik = svc.edgar.cik_for(ticker)
     if cik is None:
         raise DataDeskError(f"{ticker} is not in the SEC company list.")
+    newer = svc.edgar.refresh_if_newer_filing(cik)
+    if newer:
+        log(f"New filing since the cached data ({newer}): refetched from EDGAR")
     log("Fetching SEC filings list")
     sub = svc.edgar.submissions(cik).payload
     log("Fetching XBRL financial statements (companyfacts)")

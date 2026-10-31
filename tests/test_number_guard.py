@@ -102,3 +102,12 @@ def test_ratio_does_not_let_a_hundredfold_percentage_through():
 def test_currency_codes_need_the_figure_verbatim_in_sources():
     assert not check_text("Sales were EUR 1.2bn.", []).ok
     assert check_text("Sales were EUR 1.2bn.", [], sources="... sales were EUR 1.2bn in 2025 ...").ok
+
+
+def test_bracketed_asides_are_not_accounting_negatives():
+    """KO review, 2026-10-31: "(2026 guidance 20.9%)" and "(28.7%)" were read as -2026 and -28.7% and dropped."""
+    allowed = [0.209, 0.287, 0.179]
+    assert check_text("Effective tax 17.9% (2026 guidance 20.9%).", allowed).ok
+    assert check_text("Above the 10-year maximum (28.7%).", allowed).ok
+    assert not check_text("Above the 10-year maximum (31.4%).", allowed).ok  # still checked, just not negated
+    assert check_text("EPS was $(1.20) last year.", [-1.2]).ok  # currency in brackets is still a negative

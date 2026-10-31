@@ -58,3 +58,13 @@ def test_commentary_uses_computed_figures(uber):
     assert f"{a.m('revenue_growth', 'FY2025') * 100:.1f}%" in text
     assert f"{a.m('operating_margin', 'FY2025') * 100:.1f}%" in text
     assert "4,488m" in text  # FY2025 net income minus operating income (10,053 - 5,565)
+
+
+def test_track_record_uses_the_last_three_years_only(uber):
+    """KO, 2026-10-31: FMP returned 136 quarters and the report said 'beat in 86 of the last 136 quarters'."""
+    h, _ = uber
+    hist = [{"date": f"{1990 + q // 4}-{3 * (q % 4) + 3:02d}-30", "eps_actual": 1.0, "eps_estimate": 2.0 if q < 100 else 0.5}
+            for q in range(136)]
+    tr = analyse(h, hist).track_record
+    assert tr["quarters"] == 12 and tr["eps_beats"] == 12  # only the newest 12 (all beats) count
+    assert tr["rows"][0]["date"] > tr["rows"][-1]["date"]

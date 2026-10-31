@@ -79,6 +79,9 @@ def _div(name: str, num: Value | None, den: Value | None, period: str, formula: 
     return calc(lambda n, d: n / d * scale, formula, period, unit, None, n=num, d=den)
 
 
+TRACK_RECORD_QUARTERS = 12  # three years of reported quarters
+
+
 def analyse(h: Historicals, earnings_history: list[dict] | None = None,
             default_tax_rate: float = DEFAULT_TAX_RATE) -> Analysis:
     a = Analysis()
@@ -226,7 +229,9 @@ def analyse(h: Historicals, earnings_history: list[dict] | None = None,
                 a.debt_maturity.append((f"Year {i + 1}" if i < 5 else "After year 5", v))
 
     if earnings_history:
-        rows = [r for r in earnings_history if r.get("eps_actual") is not None and r.get("eps_estimate") is not None]
+        rows = sorted((r for r in earnings_history if r.get("eps_actual") is not None
+                       and r.get("eps_estimate") is not None), key=lambda r: str(r.get("date") or ""), reverse=True)
+        rows = rows[:TRACK_RECORD_QUARTERS]  # the recent record: FMP returns decades (KO: 136 quarters)
         beats = sum(1 for r in rows if r["eps_actual"] > r["eps_estimate"])
         a.track_record = {"quarters": len(rows), "eps_beats": beats,
                           "beat_rate": beats / len(rows) if rows else None,

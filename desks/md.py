@@ -48,7 +48,8 @@ code-scored half of the rating rubric. Your job:
 4. If your rating and the valuation verdict point in opposite directions (e.g. Buy on an overvalued stock), explain
    why explicitly in rating_vs_verdict_explanation; otherwise leave it empty.
 Rules: never calculate. Only use numbers from the computed results (rounded as shown) or verbatim filing quotes.
-UK English. Be decisive and specific."""
+UK English. Be decisive and specific.
+Write ratios such as margins, ROIC, WACC and growth as percentages to one decimal (30.9%), never as decimals (0.309); money with its unit ($10.1bn, $116m)."""
 
 
 @dataclass

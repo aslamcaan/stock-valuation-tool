@@ -39,7 +39,8 @@ stage, so set stage_review to agree with suggested_stage "none", and challenge t
 (normalised return, cost of equity, long-run growth, cap rate, peer set, reported vs computed metrics, credit or
 underwriting quality, capital).
 Rules: never calculate. Only use numbers that appear in the computed results (rounded as shown) or verbatim in the
-filing quotes. Write in UK English, concise, specific to this company."""
+filing quotes. Write in UK English, concise, specific to this company.
+Write ratios such as margins, ROIC, WACC and growth as percentages to one decimal (30.9%), never as decimals (0.309); money with its unit ($10.1bn, $116m)."""
 
 
 def run_review(ai: AIClient, report_id: str, summary: dict, sources: str) -> tuple[dict, list[str]]:

@@ -242,6 +242,12 @@ def investment_view(rep) -> None:
 
 
 # --- 2. business overview ---------------------------------------------------------------------------------------
+def filled_columns(rows: list[list], headers: list[str]) -> tuple[list[list], list[str]]:
+    """Drop columns the filing left empty in every row (e.g. segment revenue when only profit is disclosed)."""
+    keep = [i for i in range(len(headers)) if i == 0 or any(str(r[i]) not in ("", "–") for r in rows)]
+    return [[r[i] for i in keep] for r in rows], [headers[i] for i in keep]
+
+
 def business(rep) -> None:
     r = rep.research
     if not r or not r.data:
@@ -253,14 +259,16 @@ def business(rep) -> None:
         st.caption(f"“{d['business_quote']}” — {r.source}")
     if d.get("segments"):
         st.markdown("**Segments** (latest fiscal year, as reported)")
-        html(plain_table([[s["name"], millions(s.get("revenue_millions")), millions(s.get("profit_millions")),
-                           s.get("profit_metric", ""), s.get("fiscal_year", "")] for s in d["segments"]],
-                         ["Segment", "Revenue (m)", "Profit (m)", "Profit measure", "Year"]))
+        html(plain_table(*filled_columns([[s["name"], millions(s.get("revenue_millions")),
+                                            millions(s.get("profit_millions")), s.get("profit_metric", ""),
+                                            s.get("fiscal_year", "")] for s in d["segments"]],
+                                          ["Segment", "Revenue (m)", "Profit (m)", "Profit measure", "Year"])))
     if d.get("geographic_mix"):
         st.markdown("**Geographic mix**")
-        html(plain_table([[g["region"], millions(g.get("revenue_millions")),
-                           "–" if g.get("share_of_revenue_pct") is None else f"{g['share_of_revenue_pct']:.1f}%"]
-                          for g in d["geographic_mix"]], ["Region", "Revenue (m)", "Share"]))
+        html(plain_table(*filled_columns([[g["region"], millions(g.get("revenue_millions")),
+                                            "–" if g.get("share_of_revenue_pct") is None
+                                            else f"{g['share_of_revenue_pct']:.1f}%"] for g in d["geographic_mix"]],
+                                          ["Region", "Revenue (m)", "Share"])))
     if d.get("kpis"):
         st.markdown("**Operating KPIs**")
         html(plain_table([[k["name"], k["value_text"], k["period"]] for k in d["kpis"]], ["KPI", "Value", "Period"]))
@@ -572,7 +580,7 @@ def review_notes(rep) -> None:
     if not r:
         html_note("The review desk did not run for this report.")
         return
-    html(plain_table([[c["assumption"], c["severity"], c["challenge"], c["resolution"]] for c in r.get("challenges", [])],
+    html(plain_table([[c["assumption"] or "(removed: a number failed the check; see Desk log)", c["severity"], c["challenge"], c["resolution"]] for c in r.get("challenges", [])],
                      ["Assumption", "Severity", "Challenge", "Resolution"]))
     sr = r.get("stage_review", {})
     st.markdown(f"**Stage review:** {'agrees' if sr.get('agree') else 'suggests ' + sr.get('suggested_stage', '')}. "

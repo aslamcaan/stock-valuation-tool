@@ -347,3 +347,15 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   terminal ROIC and a growth shift reprice the DCF via engine.news_impact.reprice (~10 ms; comps and history held);
   presets: base case, sell-side conventions, market's discount rate (DCF = price). MSFT at the market's rate: DCF
   $520.18 vs price $521.91; CVX $229.01 fair value vs $231.45.
+
+### 2026-10-31: History tab, Compare, search box, landing chart
+- Report page **History** tab: fair value vs price across every dated report of the company (rating labels), and a
+  timeline whose "what changed" note is written by code from the saved versions (method values, WACC, year-1 growth,
+  target margin, stage, price).
+- Anthropic API failures (e.g. out of credit) become `AIError`, so a report still completes its valuation without
+  the AI desks (JPM run of 2026-10-31 failed outright before). Tested offline.
+- Compare: each company card carries the report's value strip; key metrics gain a "Stronger" column.
+- Search box themed via `style_overrides` (it renders outside the page CSS).
+- Landing hero draws the newest report's last year of daily closes (read from cache, never the network) against its
+  fair value and DCF bear-to-bull band, with the source and dates; decorative line only as a fallback.
+- Phone width (390px): no horizontal page overflow; tabs scroll sideways.

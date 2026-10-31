@@ -219,3 +219,15 @@ def test_what_changed_between_versions_names_the_drivers():
     assert what_changed(old, new) == ["DCF $62.72 → $65.89", "peer multiples $19.05 → $61.57", "WACC 8.3% → 8.1%",
                                       "price $71.27 → $65.25"]
     assert what_changed(old, old) == []
+
+
+def test_hero_chart_plots_the_closes_against_fair_value():
+    import re
+    from ui.hero import hero_svg
+    closes = [(f"2026-01-{d:02d}", 100.0 + d) for d in range(1, 31)]
+    svg = hero_svg(closes, 120.0, (90.0, 140.0), step=1)
+    ys = [float(y) for y in re.findall(r"[ML][\d.]+ ([\d.]+)", svg.split("class='line' d='")[1].split("'")[0])]
+    assert len(ys) == 30 and ys == sorted(ys, reverse=True)  # rising prices draw upwards
+    fv = float(re.search(r"<line class='fvl' x1='0' y1='([\d.]+)'", svg).group(1))
+    assert ys[-1] < fv < ys[0]  # the fair value (120) sits between the first (101) and last (130) close
+    assert "cx='800.0'" in svg  # the dot marks the latest close

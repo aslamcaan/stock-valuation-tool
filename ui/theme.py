@@ -375,6 +375,9 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
 @keyframes vt-fade-in {to {opacity: 1;}}
 @keyframes vt-halo {0% {opacity: .7; transform: scale(1);} 100% {opacity: 0; transform: scale(3.2);}}
 .vt-hero .copy {position: relative; max-width: 560px;}
+.vt-hero .src {position: absolute; right: 1.2rem; top: 1rem; font-family: var(--vt-mono); font-size: .7rem;
+  color: var(--vt-faint); opacity: 0; animation: vt-fade-in .8s ease 2.6s forwards;}
+.vt-hero .src span {color: var(--vt-accent);}
 .vt-hero h1 {font-family: var(--vt-display) !important; font-stretch: 122%; font-size: 3.1rem !important; line-height: 1.02;
   margin: 1.1rem 0 .8rem !important; letter-spacing: -0.035em; font-weight: 800 !important; padding: 0 !important;}
 .vt-hero h1 em {font-style: normal; color: var(--vt-accent);}
@@ -458,7 +461,7 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
   .vt-kpi + .vt-kpi {border-left: none; padding-left: 0;} .vt-kpi:nth-child(even) {padding-left: 1rem;}
   .vt-why, .vt-duel, .vt-rules {grid-template-columns: 1fr;}
   .vt-flow {grid-template-columns: repeat(2, minmax(0, 1fr));}
-  .vt-hero {padding: 1.8rem 1.3rem;} .vt-hero h1 {font-size: 2.2rem !important;} .vt-hero svg.chart {width: 100%; opacity: .3;}
+  .vt-hero {padding: 1.8rem 1.3rem;} .vt-hero h1 {font-size: 2.2rem !important;} .vt-hero svg.chart {width: 100%; opacity: .3;} .vt-hero .src {display: none;}
   .vt-ticker {font-size: 2rem;}
   .vt-run .scope .pct {font-size: 2.6rem;}
 }

@@ -2,14 +2,20 @@
 from __future__ import annotations
 
 import html
+from datetime import date, timedelta
 
 import streamlit as st
 from streamlit_searchbox import st_searchbox
 
 from core.cache import CacheMiss
+from core.http import cache_key
 from core.http import DataSourceError
 from datasources.search import label, search
-from ui.format import when
+from datasources.tiingo import BASE as TIINGO
+from desks.pipeline import load
+from engine.history_multiples import split_adjusted_closes
+from ui.format import money, when
+from ui.hero import hero_svg
 from ui.state import get_services
 from ui.theme import ACCENT, BORDER, FAINT, FONT, MUTED, SURFACE, SURFACE_2, TEXT, VERDICT_COLOUR, dot
 
@@ -25,7 +31,7 @@ for r in reports:  # newest first: keep each company's latest report, count the 
     latest.setdefault(r["ticker"], r)
     versions[r["ticker"]] = versions.get(r["ticker"], 0) + 1
 
-# Decorative line (an illustration, not data): it draws itself, an orange band marks a value range, a dot pulses.
+# Fallback when no report has a cached price series: a decorative line (an illustration, not data): it draws itself, an orange band marks a value range, a dot pulses.
 CHART = """<svg class='chart' viewBox='0 0 800 300' preserveAspectRatio='none' aria-hidden='true'>
 <defs><linearGradient id='vtg' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#ff7a1a' stop-opacity='.28'/>
 <stop offset='1' stop-color='#ff7a1a' stop-opacity='0'/></linearGradient></defs>
@@ -37,6 +43,52 @@ L610 120 L660 132 L720 96 L770 104 L800 88 L800 300 L0 300 Z' fill='url(#vtg)'/>
 L610 120 L660 132 L720 96 L770 104 L800 88' fill='none' stroke='#ff7a1a' stroke-width='2.5' stroke-linejoin='round'/>
 <circle class='halo' cx='770' cy='104' r='6' fill='#ff7a1a'/><circle class='dot' cx='770' cy='104' r='5' fill='#ffd2ad'/>
 </svg>"""
+
+
+
+@st.cache_data(show_spinner=False, max_entries=20)
+def hero_data(report_id: str, ticker: str, created: str) -> dict | None:
+    """The report's last year of daily closes, from the cache its own run filled (never the network), with its
+    fair value and DCF bear-to-bull range."""
+    cache = get_services().cache
+    day = date.fromisoformat(created[:10])
+    hit = None
+    for d in (day, day - timedelta(days=1)):  # the run's valuation date can sit a day before its UTC timestamp
+        start = (d - timedelta(days=365 * 6 + 30)).isoformat()
+        hit = cache.read("price", cache_key(f"{TIINGO}tiingo/daily/{ticker}/prices", {"startDate": start}),
+                         allow_stale=True)
+        if hit is not None and hit.payload:
+            break
+    if hit is None or not hit.payload:
+        return None
+    closes = sorted(split_adjusted_closes(hit.payload).items())
+    cut = (date.fromisoformat(closes[-1][0]) - timedelta(days=365)).isoformat()
+    closes = [(d, c) for d, c in closes if d >= cut]
+    try:
+        m = load(report_id, get_services().store).model
+    except Exception:
+        return None
+    if m is None or m.verdict.fair_value is None or len(closes) < 20:
+        return None
+    band, v = None, m.valuation
+    if v is not None and len(v.scenarios) == 3:
+        b, bu = v.per_us_share(v.scenarios[0].value_per_share), v.per_us_share(v.scenarios[2].value_per_share)
+        band = (min(b, bu), max(b, bu)) if None not in (b, bu) else None
+    return {"closes": closes, "fair_value": m.verdict.fair_value, "band": band, "ticker": ticker,
+            "to": closes[-1][0], "fetched": hit.fetched_at_iso[:10]}
+
+
+hero = None
+for r in list(latest.values())[:5]:  # the newest report whose price series is cached
+    hero = hero_data(r["report_id"], r["ticker"], r["created_at"])
+    if hero:
+        break
+if hero:
+    CHART = hero_svg(hero["closes"], hero["fair_value"], hero["band"])
+    CHART += (f"<div class='src'>{html.escape(hero['ticker'])} · daily close to {html.escape(when(hero['to']))} "
+              f"(Tiingo, fetched {html.escape(when(hero['fetched']))}) · <span>fair value "
+              f"{html.escape(money(hero['fair_value']))}</span>" + (" · band: DCF bear to bull" if hero["band"] else "")
+              + "</div>")
 
 try:
     rows = svc.edgar.company_tickers().payload

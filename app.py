@@ -5,11 +5,35 @@ a visitor open a page without passing the password gate. Every page runs through
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import streamlit as st
 
-from core.config import PROJECT_ROOT, load_settings
-from ui.auth import log_out, require_password
-from ui.theme import CSS, install_dollar_guard
+PACKAGES = ("core", "datasources", "data_desk", "engine", "desks", "exports", "ui", "views")
+
+
+def _drop_stale_modules() -> None:
+    """Streamlit reruns this file on every visit but keeps the project modules it has already imported. After a
+    deploy pulls new code into a running server, a new module could import a name an old one lacks (ImportError). So
+    when any source file has changed since the last run, the project's modules are dropped and imported afresh."""
+    root = Path(__file__).resolve().parent
+    stamp = max((f.stat().st_mtime for pkg in PACKAGES for f in (root / pkg).rglob("*.py")), default=0.0)
+    last = getattr(sys, "_vt_code_stamp", None)
+    sys._vt_code_stamp = stamp
+    loaded = [n for n in sys.modules if n.split(".")[0] in PACKAGES]
+    # no stamp yet but modules already loaded: they were imported by code from before this check existed
+    if loaded and (last is None or stamp > last):
+        for name in loaded:
+            del sys.modules[name]
+        st.cache_resource.clear()  # services built from the old classes
+
+
+_drop_stale_modules()
+
+from core.config import PROJECT_ROOT, load_settings  # noqa: E402 - after the stale-module check
+from ui.auth import log_out, require_password  # noqa: E402
+from ui.theme import CSS, install_dollar_guard  # noqa: E402
 
 ASSETS = PROJECT_ROOT / "ui" / "assets"
 st.set_page_config(page_title="Stock Valuation Tool", page_icon=":material/bar_chart:", layout="wide",

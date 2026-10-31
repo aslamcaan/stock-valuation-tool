@@ -6,14 +6,12 @@ yellow for warnings. Headings use Archivo (expanded), prose IBM Plex Sans, figur
 
 Motion: one signature, the orange scan (a line sweeping a chart: the landing hero and the analysis screen). Pages and
 tab panels rise in once; figures in the report header count up; nothing loops except while a report is running.
-Looping animations take a negative delay from the wall clock (`phase`), so a panel re-rendered every half second
-keeps moving smoothly instead of restarting.
+Streamlit patches re-rendered HTML in place, so animations never carry per-render timing.
 """
 from __future__ import annotations
 
 import html
 import re
-import time
 
 BG, SURFACE, SURFACE_2, BORDER = "#0a0908", "#13110e", "#1b1814", "#2b2520"
 TEXT, MUTED, FAINT = "#ede4d3", "#a39a8a", "#857b6e"
@@ -314,7 +312,7 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
 .vt-run .scope .beam {position: absolute; top: 0; bottom: 0; width: 90px; left: -90px;
   background: linear-gradient(90deg, transparent, rgba(255,122,26,.10) 75%, rgba(255,164,92,.55) 99%, transparent);
   border-right: 1px solid rgba(255,190,140,.7);
-  animation: vt-beam 3.2s var(--vt-ease-io) infinite; animation-delay: var(--p32, 0s);}
+  animation: vt-beam 3.2s var(--vt-ease-io) infinite;}
 @keyframes vt-beam {to {left: 100%;}}
 .vt-run .scope .meta {position: absolute; left: 1.4rem; bottom: 1.1rem; right: 1.4rem; display: flex;
   justify-content: space-between; align-items: flex-end; gap: 1rem;}
@@ -348,14 +346,13 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
 .vt-node.running .ic {border-color: transparent;}
 .vt-node.running .ic::before {content: ''; position: absolute; inset: -1px; border-radius: 50%;
   border: 2px solid transparent; border-top-color: var(--vt-accent); border-right-color: var(--vt-accent);
-  animation: vt-spin .9s linear infinite; animation-delay: var(--p9, 0s);}
+  animation: vt-spin .9s linear infinite;}
 .vt-node.running .ic::after {content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--vt-accent);
-  animation: vt-pulse 1.4s ease-in-out infinite; animation-delay: var(--p14, 0s);}
+  animation: vt-pulse 1.4s ease-in-out infinite;}
 .vt-node.running .ms {color: var(--vt-text);}
 .vt-node.running::after {content: ''; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px;
   background: linear-gradient(90deg, transparent, var(--vt-accent), transparent); background-size: 50% 100%;
-  background-repeat: no-repeat; animation: vt-slide 1.6s var(--vt-ease-io) infinite;
-  animation-delay: var(--p16, 0s);}
+  background-repeat: no-repeat; animation: vt-slide 1.6s var(--vt-ease-io) infinite;}
 @keyframes vt-slide {from {background-position: -100% 0;} to {background-position: 200% 0;}}
 @keyframes vt-spin {to {transform: rotate(360deg);}}
 @keyframes vt-pulse {50% {transform: scale(.5); opacity: .5;}}
@@ -489,11 +486,6 @@ def note(text: str) -> str:
 
 def dot(colour: str) -> str:
     return f"<span class='vt-dot' style='background:{colour}'></span>"
-
-
-def phase(period: float) -> str:
-    """Negative animation delay that keeps a loop in step with the wall clock across re-renders."""
-    return f"-{time.time() % period:.2f}s"
 
 
 def count(text: str) -> str:

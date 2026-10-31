@@ -1,8 +1,9 @@
 """The analysis screen shown while a report runs: a scope (an abstract signal until the data desk lands, then the
 company's own revenue history), a progress meter, and one node per desk.
 
-The panel is re-rendered every 0.4s, which replaces its HTML. Looping animations take their delay from the wall clock
-and one-off animations from the moment their state began, so nothing visibly restarts on a re-render.
+The panel is re-rendered every 0.4s. Streamlit keeps the same DOM elements and only patches what changed, so the
+animations carry no per-render timing (changing an animation's delay on a live element makes it jump). The
+percentage moves continuously: each running desk advances along an easing curve towards its typical duration.
 """
 from __future__ import annotations
 
@@ -31,12 +32,26 @@ DESK_INFO = {
 }
 
 
-def _ago(t0: float, now: float) -> str:
-    """Negative delay: a one-off animation that began at t0 is shown at its current point, or finished."""
-    return f"-{max(0.0, now - t0):.2f}s"
+# Typical seconds per desk (weights for the progress meter; a desk that runs long simply approaches its share).
+TYPICAL = {"Data desk": 25, "Data checks": 3, "Research desk": 90, "News desk": 90, "Modelling desk": 30,
+           "Review desk": 60, "Impact analyst": 45, "MD": 60}
 
 
-def _wave(now: float) -> str:
+def progress(status: dict, marks: dict, now: float) -> float:
+    """Share of the expected work done: finished desks count in full, a running desk by 1 - e^(-t/typical) (capped
+    at 95% of its share), so the meter keeps moving while a long desk works."""
+    total = sum(TYPICAL.get(d, 30) for d in status)
+    done = 0.0
+    for d, (state, _) in status.items():
+        w = TYPICAL.get(d, 30)
+        if state in (DONE, FAILED, SKIPPED):
+            done += w
+        elif state == RUNNING:
+            done += w * min(0.95, 1 - math.exp(-(now - marks[d][1]) / w))
+    return min(done / total, 1.0 if all(s in (DONE, FAILED, SKIPPED) for s, _ in status.values()) else 0.99)
+
+
+def _wave() -> str:
     """An abstract signal (not data) drawn under the scan beam before the company's figures arrive."""
     paths = []
     for k, (amp, freq, op) in enumerate(((26, 1.0, .9), (16, 1.7, .35), (34, .6, .2))):
@@ -46,11 +61,11 @@ def _wave(now: float) -> str:
             y = 100 + amp * math.sin(i / 100 * 6.283 * freq * 2 + k)
             pts.append(f"{x},{y:.1f}")
         paths.append(f"<polyline points='{' '.join(pts)}' fill='none' stroke='#ff7a1a' stroke-width='{2 if k == 0 else 1.2}'"
-                     f" stroke-opacity='{op}' class='{'line' if k == 0 else ''}' style='animation-delay:-{now % 6:.2f}s'/>")
+                     f" stroke-opacity='{op}' class='{'line' if k == 0 else ''}'/>")
     return ("<svg viewBox='0 0 1000 200' preserveAspectRatio='none' aria-hidden='true'>" + "".join(paths) + "</svg>")
 
 
-def _revenue(cd, since: float, now: float) -> str:
+def _revenue(cd) -> str:
     """The company's reported revenue by fiscal year (from the data desk), rising in once."""
     h = cd.historicals
     pts = [(fy, h.v("revenue", fy)) for fy in h.fy_labels]
@@ -66,7 +81,7 @@ def _revenue(cd, since: float, now: float) -> str:
         bars.append(f"<rect x='{i * w + w * .22:.1f}' y='{135 - bh:.1f}' width='{w * .56:.1f}' height='{bh:.1f}' rx='3' "
                     f"fill='{'#ff7a1a' if last else 'rgba(255,122,26,.32)'}' style='transform-origin:center 135px;"
                     f"transform-box:view-box;animation:vt-grow-y .9s cubic-bezier(.16,1,.3,1) both;"
-                    f"animation-delay:{_ago(since - i * .08, now)}'/>"
+                    f"animation-delay:{i * .08:.2f}s'/>"
                     f"<text x='{i * w + w / 2:.1f}' y='154' text-anchor='middle' fill='#857b6e' font-size='12' "
                     f"font-family='IBM Plex Mono, monospace'>{esc(fy)}</text>")
     return ("<svg class='bars' viewBox='0 0 800 160' preserveAspectRatio='xMidYMax meet' "
@@ -82,24 +97,21 @@ def panel(run: dict, rep, cost: float) -> str:
             marks[d] = (state, now)
     finished = sum(1 for s, _ in status.values() if s in (DONE, FAILED, SKIPPED))
     running = [d for d, (s, _) in status.items() if s == RUNNING]
-    pct = (finished + 0.5 * len(running)) / len(status)
+    pct = progress(status, marks, now)
     elapsed = now - run["started"]
 
     cd = getattr(rep, "company", None) if rep is not None else None
     if cd is not None:
-        run.setdefault("data_at", now)
-        scope = _revenue(cd, run["data_at"], now) or _wave(now)
+        scope = _revenue(cd) or _wave()
         h = cd.historicals
         caption = f"{esc(cd.profile.name)} · reported revenue, {esc(h.currency)}"
     else:
-        scope, caption = _wave(now), "Fetching filings and market data"
+        scope, caption = _wave(), "Fetching filings and market data"
 
     nodes = []
     for d, (state, msg) in status.items():
         icon = {DONE: ICON["check"], FAILED: ICON["cross"], SKIPPED: ICON["dash"]}.get(state, "")
-        since = marks[d][1]
-        pop = f" style='animation:vt-pop .5s cubic-bezier(.16,1,.3,1) both;animation-delay:{_ago(since, now)}'" \
-            if state == DONE else ""
+        pop = " style='animation:vt-pop .5s cubic-bezier(.16,1,.3,1) both'" if state == DONE else ""
         nodes.append(f"<div class='vt-node {state}'><div class='hd'><span class='ic'{pop}>{icon}</span>"
                      f"<span class='nm'>{esc(d)}</span></div><div class='ms' title='{esc(msg)}'>"
                      f"{esc(msg if state != WAITING else 'Waiting')}</div></div>")
@@ -108,9 +120,7 @@ def panel(run: dict, rep, cost: float) -> str:
     now_line = (f"<div class='now'><span class='who'>{esc(lead)}</span><span class='what'>{esc(status[lead][1])}</span>"
                 f"</div><div class='about'>{esc(DESK_INFO.get(lead, ''))}</div>") if lead else \
         "<div class='now'><span class='who'>Finishing</span><span class='what'>Saving the report…</span></div>"
-    loops = (f"--p9:{'-%.2fs' % (now % .9)};--p14:{'-%.2fs' % (now % 1.4)};--p16:{'-%.2fs' % (now % 1.6)};"
-             f"--p32:{'-%.2fs' % (now % 3.2)}")
-    return (f"<div class='vt-run' style='{loops}'><div class='scope'>{scope}<div class='beam'></div>"
+    return (f"<div class='vt-run'><div class='scope'>{scope}<div class='beam'></div>"
             f"<div class='meta'><div><div class='tk'>{caption}</div>"
             f"<div class='pct'>{pct * 100:.0f}<small>%</small></div></div></div>"
             f"<div class='clock'><b>{elapsed // 60:.0f}m {elapsed % 60:02.0f}s</b> elapsed<br>"

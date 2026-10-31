@@ -38,8 +38,9 @@ Radii: 9px buttons, 12–20px cards, pills fully rounded. Easing: ease-out expo 
 - Arrivals: page blocks and tab panels rise in once (blur 3px → 0, 12px → 0). The report header's figures count up
   (CSS `@property` counters), the rating ring fills, the value band grows and the marks drop in.
 - Hover: cards lift 3px with an orange edge; buttons glow and press to 97%.
-- Analysis screen: re-rendered every 0.4s, so loops take a wall-clock negative delay (`--p9`, `--p14`… on `.vt-run`)
-  and one-off animations a delay from when their state began. Nothing visibly restarts.
+- Analysis screen: re-rendered every 0.4s; Streamlit patches the HTML in place, so animations carry no per-render
+  timing (changing a live animation's delay makes it jump). The percentage advances continuously: each running desk
+  moves along 1 - e^(-t/typical) towards its share of the expected work.
 - `prefers-reduced-motion` turns every animation into its end state.
 
 ## Components

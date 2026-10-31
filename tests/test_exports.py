@@ -75,3 +75,33 @@ def test_excel_stores_every_formula_result(rep):
     assert blank == []
     assert wv["DCF"]["B35"].value == pytest.approx(rep.model.valuation.dcf.value_per_share)
     assert wv["Summary"]["B12"].value == rep.model.verdict.verdict
+
+
+def test_excel_sotp_sheet_shows_the_working_and_matches_the_engine(tmp_path):
+    from pycel import ExcelCompiler
+    from engine.sotp import Segment
+    ei = engine_inputs("GRAB")
+    ei.segments = [Segment("Deliveries", 1800, 300, metric="EV/EBIT", metric_value=300, multiple=18.0,
+                           multiple_source="median EV/EBIT of DASH 30.0x, UBER 18.0x"),
+                   Segment("Mobility", 1100, 40, metric="EV/EBIT", metric_value=40, multiple=12.0,
+                           multiple_source="median EV/EBIT of LYFT 12.0x"),
+                   Segment("Corporate and unallocated costs", 0.0, -60, metric="EV/EBIT", metric_value=-60,
+                           multiple=(300 * 18 + 40 * 12) / 340, multiple_source="capitalised")]
+    v = value_company(ei)
+    assert v.sotp.applicable
+    verdict = blend({"dcf": v.per_us_share(v.scenario_value), "comps": None, "history": None}, ei.price.value,
+                    sotp=v.per_us_share(v.sotp.value_per_share))
+    model = SimpleNamespace(valuation=v, inputs=ei, comps=None, history={}, verdict=verdict, assumptions=[],
+                            sources=[], flags=[], football=[], analyst_targets=None, company_metrics=None,
+                            revisions={}, trace={})
+    profile = SimpleNamespace(name="Grab", ticker="GRAB", exchange="Nasdaq", sic_description="", reporting_currency="USD")
+    rep = SimpleNamespace(model=model, company=SimpleNamespace(profile=profile, historicals=ei.historicals,
+                                                               analysis=ei.analysis),
+                          md=None, review=None, research=None, ticker="GRAB", report_id="GRAB-sotp",
+                          created_at="2026-10-15T00:00:00", valuation_date=date(2026, 10, 15))
+    path = tmp_path / "sotp.xlsx"
+    build_workbook(rep).save(path)
+    xl = ExcelCompiler(filename=str(path), plugins=["exports.pycel_ext"])
+    assert xl.evaluate("SOTP!E5") == pytest.approx(300 * 18.0)  # metric x multiple, as a formula
+    assert xl.evaluate("SOTP!E8") == pytest.approx(v.sotp.enterprise_value)
+    assert xl.evaluate("SOTP!E9") == pytest.approx(v.per_us_share(v.sotp.value_per_share))

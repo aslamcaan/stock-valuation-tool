@@ -12,11 +12,12 @@ from data_desk.builder import CompanyData
 from data_desk.xbrl import fy_label
 from data_desk.history_data import price_series, week52, year_points
 from data_desk.peers import gather_peers, latest_period, metrics_from, next_fy_eps, peer_metrics
+from data_desk.segments import match_names
 from data_desk.valuation_inputs import build_engine_inputs, crp_from_filing_geography, one_off_adjustments
 from engine.classify import CORPORATE, toolkit_for_sic
 from engine.financials import FinancialError, FinancialValuation, FinInputs, method_label, value_financial
 from engine.sotp import Segment
-from engine.comps import CompanyMetrics, CompsResult, run_comps, select_peers
+from engine.comps import NM_ABOVE, CompanyMetrics, CompsResult, run_comps, select_peers
 from engine.flags import AMBER, INFO, RED, Flag, sort_flags
 from engine.history_multiples import HistoryResult, history_multiples, implied_price
 from engine.valuation import EngineInputs, Valuation, ValuationError, value_company
@@ -62,40 +63,131 @@ def company_metrics(cd: CompanyData, svc, ei: EngineInputs) -> CompanyMetrics:
                         source=f"SEC XBRL ({latest_period(h)})")
 
 
-def segments_from_research(svc, cd: CompanyData, research: dict, notes: list[str]) -> list[Segment]:
-    """Segments with an EV/Sales multiple from the research desk's US-listed comparables (computed by code)."""
-    segs = research.get("segments") or []
-    if len(segs) < 2:
-        notes.append("SOTP: the annual report gave fewer than two segments")
+def provider_flags(notes: list[str]) -> list[Flag]:
+    """An amber flag when a market-data provider refused requests during the run (e.g. FMP's daily limit): the
+    report then rests on fallbacks (peers from SEC frames, history instead of consensus), so it says so up front."""
+    hit = [n for n in notes if "rate limited" in n or "HTTP 429" in n]
+    if not hit:
         return []
+    return [Flag(AMBER, "provider_unavailable", "Market data provider unavailable during this run",
+                 "A data provider refused requests while this report ran (" + hit[0].split(";")[0][:120] + "). "
+                 "Fallbacks were used where they exist: peers from SEC data, the price from Tiingo, the forecast from "
+                 "history instead of analyst consensus. Re-run the report later for the full data.", None, {})]
+
+
+def _median(xs: list[float]) -> float:
+    xs = sorted(xs)
+    k = len(xs) // 2
+    return xs[k] if len(xs) % 2 else (xs[k - 1] + xs[k]) / 2
+
+
+def xbrl_segments(svc, cd: CompanyData) -> tuple[str, dict, str] | None:
+    """(fiscal year end, {label: row}, source) for the latest annual report's XBRL segment note, or None."""
+    from data_desk.segments import instance_xml, latest_year, segment_facts
+    try:
+        filings = svc.edgar.filings(cd.profile.cik, forms={"10-K", "20-F", "40-F"})
+    except Exception:  # noqa: BLE001 - the research desk's reading is the fallback
+        return None
+    if not filings:
+        return None
+    f = filings[0]
+    xml = instance_xml(svc, cd.profile.cik, f)
+    if xml is None:
+        return None
+    try:
+        got = latest_year(segment_facts(xml))
+    except Exception:  # noqa: BLE001 - malformed instance: fall back
+        return None
+    if got is None:
+        return None
+    end, rows, _ = got
+    return end, rows, f"SEC XBRL segment note, {f.form} filed {f.filing_date}"
+
+
+def _segment_multiple(svc, rows: dict, tickers: list[str], key: str) -> tuple[float | None, list[str]]:
+    """Median EV/EBIT ('ev_ebit') or EV/Sales ('ev_sales') of up to three US-listed comparables (not-meaningful
+    values above the comps cut-off are left out)."""
+    vals, used = [], []
+    for t in tickers[:3]:
+        m, _ = peer_metrics(svc, t.upper(), rows)
+        if m is None:
+            continue
+        if key == "ev_ebit":
+            x = m.ev / m.operating_income if m.ev and m.operating_income and m.operating_income > 0 else None
+            cap = NM_ABOVE["ev_ebitda"]
+        else:
+            x, cap = m.multiples()["ev_sales"], NM_ABOVE["ev_sales"]
+        if x is not None and 0 < x <= cap:
+            vals.append(x)
+            used.append(f"{t.upper()} {x:.1f}x")
+    return (_median(vals), used) if vals else (None, used)
+
+
+def segments_from_research(svc, cd: CompanyData, research: dict, notes: list[str]) -> list[Segment]:
+    """Segments for the sum of the parts. Revenue and operating income come from the filing's XBRL segment note
+    when tagged (else from the research desk's reading of the annual report); names and US-listed comparables come
+    from the research desk. A segment with positive operating income is valued on its comparables' median EV/EBIT
+    (margins are why segments are valued apart), otherwise on EV/Sales. Costs not allocated to any segment are
+    capitalised at the segments' average EV/EBIT and deducted, so the parts do not add up to more than the whole."""
+    segs = research.get("segments") or []
     if cd.historicals.currency != "USD":
         notes.append(f"SOTP: not applied to {cd.historicals.currency} reporting (segment comparables are US-listed)")
         return []
-    if not any(s.get("revenue_millions") for s in segs):
-        notes.append("SOTP: the research desk found segment profits but not segment revenues in the filing")
+    h = cd.historicals
+    xb = xbrl_segments(svc, cd)
+    fy = h.fy_labels[-1]
+    source = "research desk reading of the annual report"
+    if xb is not None:
+        end, xrows, source = xb
+        fy = next((p.label for p in h.periods if p.kind == "FY"
+                   and abs((p.end - date.fromisoformat(end)).days) <= 20), None) or fy
+        named = match_names(xrows, segs)
+        items = [{"name": named[k]["name"] if k in named else k, "revenue": r["revenue"],
+                  "profit": r.get("operating_income"), "growth": r.get("growth"),
+                  "tickers": (named.get(k) or {}).get("comparable_us_tickers") or []} for k, r in xrows.items()]
+    else:
+        if not any(x.get("revenue_millions") for x in segs):
+            notes.append("SOTP: the research desk found segment profits but not segment revenues in the filing"
+                         if segs else "SOTP: the annual report gave fewer than two segments")
+            return []
+        items = [{"name": x["name"], "revenue": x.get("revenue_millions"), "profit": x.get("profit_millions"),
+                  "growth": None, "tickers": x.get("comparable_us_tickers") or []} for x in segs]
+    if len(items) < 2:
+        notes.append("SOTP: the annual report gave fewer than two segments")
         return []
-    total = cd.historicals.v("revenue", cd.historicals.fy_labels[-1]) or 0
-    if total <= 0 or sum(s.get("revenue_millions") or 0 for s in segs) < 0.9 * total:
+    total = h.v("revenue", fy) or 0
+    if total <= 0 or sum(x["revenue"] or 0 for x in items) < 0.9 * total:
         notes.append("SOTP: segment revenues from the filing cover less than 90% of revenue")
         return []
     rows = {r["ticker"]: r for r in svc.edgar.company_tickers().payload}
     out = []
-    for s in segs:
-        mults, used = [], []
-        for t in (s.get("comparable_us_tickers") or [])[:3]:
-            m, _ = peer_metrics(svc, t.upper(), rows)
-            ev = m.multiples()["ev_sales"] if m else None
-            if ev:
-                mults.append(ev)
-                used.append(f"{t.upper()} {ev:.1f}x")
-        if not mults or not s.get("revenue_millions"):
-            notes.append(f"SOTP: no usable comparable multiple for segment {s.get('name')}")
+    for x in items:
+        if not x["tickers"]:
+            notes.append(f"SOTP: no comparable companies for segment {x['name']}")
             return []
-        mults.sort()
-        mid = mults[len(mults) // 2] if len(mults) % 2 else (mults[len(mults) // 2 - 1] + mults[len(mults) // 2]) / 2
-        out.append(Segment(s["name"], s["revenue_millions"], s.get("profit_millions"), metric="EV/Sales",
-                           metric_value=s["revenue_millions"], multiple=mid,
-                           multiple_source="median EV/Sales of " + ", ".join(used)))
+        on_profit = x["profit"] is not None and x["profit"] > 0
+        mult, used = _segment_multiple(svc, rows, x["tickers"], "ev_ebit" if on_profit else "ev_sales")
+        if mult is None and on_profit:  # comparables without positive EBIT: fall back to sales
+            on_profit = False
+            mult, used = _segment_multiple(svc, rows, x["tickers"], "ev_sales")
+        if mult is None or not x["revenue"]:
+            notes.append(f"SOTP: no usable comparable multiple for segment {x['name']}")
+            return []
+        metric = "EV/EBIT" if on_profit else "EV/Sales"
+        out.append(Segment(x["name"], x["revenue"], x["profit"], x["growth"], metric=metric,
+                           metric_value=x["profit"] if on_profit else x["revenue"], multiple=mult,
+                           multiple_source=f"median {metric} of " + ", ".join(used) + f"; segment figures: {source}"))
+    consolidated = h.v("operating_income", fy)
+    if all(sg.metric == "EV/EBIT" for sg in out) and consolidated is not None:
+        corporate = consolidated - sum(sg.profit for sg in out)
+        if corporate < 0:
+            avg = sum(sg.metric_value * sg.multiple for sg in out) / sum(sg.metric_value for sg in out)
+            out.append(Segment("Corporate and unallocated costs", 0.0, corporate, metric="EV/EBIT",
+                               metric_value=corporate, multiple=avg,
+                               multiple_source=f"capitalised at the segments' average EV/EBIT: consolidated "
+                                               f"operating income {consolidated:,.0f} less segments' "
+                                               f"{sum(sg.profit for sg in out):,.0f} ({fy})"))
+    notes.append(f"SOTP segment figures: {source}")
     return out
 
 
@@ -222,7 +314,7 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
     for c in [c for c in ei.consensus if c.fiscal_year_end > today][:1]:  # the nearest year not yet ended
         if c.revenue and c.revenue_high and c.revenue_low:
             disp = (c.revenue_high - c.revenue_low) / c.revenue
-    all_flags = sort_flags(flags)
+    all_flags = sort_flags(flags + provider_flags(notes))
     # consensus and peers have their own signals, so they are not counted again in completeness;
     # flags are counted once per code (not once per period)
     key_inputs = [hist_v is not None, cd.historicals.ltm is not None, ei.industry.unlevered_beta is not None,
@@ -365,7 +457,7 @@ def run_financial(cd: CompanyData, svc, ei: EngineInputs, toolkit: str, today: d
     verdict = blend({k: v.value for k, v in fv.methods.items()}, ei.price.value, fv.weights)
     pt = svc.market.price_target(cd.profile.ticker)
     targets = pt.data if pt.available else None
-    all_flags = sort_flags(flags)
+    all_flags = sort_flags(flags + provider_flags(notes))
     key = {"bank": ("cet1_ratio", "rote", "tbvps"), "insurer": ("combined_ratio", "roe", "bvps"),
            "reit": ("ffo_per_share", "affo_per_share", "noi")}[toolkit]
     have = [bool(fv.metric(k) and (fv.metric(k).reported is not None or fv.metric(k).value.value is not None))

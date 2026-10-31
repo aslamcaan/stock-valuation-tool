@@ -62,8 +62,11 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
 - *WACC*: FRED 10-year yield + industry beta (Damodaran, relevered) x implied ERP + country risk weighted by the
   company's revenue geography; synthetic-rating cost of debt.
 - *DCF* on operating income (never net income), with a terminal ROIC fade and the statutory terminal tax rate.
-- *Sum of the parts* when the filing gives segment figures; *comparable companies* (peers from SEC frames, EV/Sales
-  dropped when the margin gap to peers makes it misleading); *own five-year multiples*.
+- *Sum of the parts* when segments have materially different margins or growth: segment revenue and operating
+  income read from the 10-K's XBRL segment note (the research desk's reading of the text as the fallback), each
+  segment valued on its US-listed comparables' median EV/EBIT (EV/Sales if it has no operating profit), unallocated
+  corporate costs capitalised and deducted; it replaces the DCF in the blend. *Comparable companies* (peers from SEC
+  frames, EV/Sales dropped when the margin gap to peers makes it misleading); *own five-year multiples*.
 - *Reverse DCF*: the growth or margin the price implies, the discount rate the price implies, and a DCF on
   sell-side conventions, so the gap to analysts' targets is explained rather than hidden.
 - *Scenarios and sensitivity*: bear / base / bull, and WACC x terminal growth and growth x margin grids.

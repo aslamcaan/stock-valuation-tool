@@ -390,3 +390,15 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   operating margin, >= 6 years, capped at +/-0.8); 0 gives exactly the old independent draws. Measured: CVX 0.95
   (used 0.8), TSM 0.89 (0.8), MSFT 0.43, UBER 0.13, KO -0.28, GRAB not measured (5 years). Effect on the 10th-90th
   range: CVX $81-175 vs $81-166 independent; MSFT $273-383 vs $278-374; KO $35.69-49.82 vs $35.01-50.59.
+
+### 2026-11-01: Excel stored values, segments from XBRL, provider flag
+- Excel: every formula's result stored in the file (pycel), so sheets show numbers in Protected View and previews;
+  formulas stay live. Comps and history multiples bridges leave out long-term investments, as the app does.
+- SOTP: segment revenue and operating income read from the 10-K XBRL segment note (business-segment axis, with
+  ConsolidationItemsAxis = OperatingSegmentsMember; aggregates and eliminations left out), research-desk names and
+  comparables matched by operating income then words. Segments with operating profit valued on comparables' median
+  EV/EBIT (EV/Sales otherwise); unallocated corporate costs capitalised and deducted. The SOTP sheet shows metric x
+  multiple as live formulas. MSFT: SOTP $390.52 (was $235.42 on EV/Sales), fair value $343.56 -> $421.11 on re-model.
+  KO: segments read (five, with revenue now), not applied as Latin America has no usable US comparable.
+- CVX and GRAB re-run on the current engine; the CVX run hit FMP's rate limit, so reports now carry an amber
+  "provider unavailable" flag when a data provider refused requests during the run.

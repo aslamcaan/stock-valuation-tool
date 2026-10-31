@@ -287,3 +287,10 @@ def test_talking_points_quote_the_saved_report(report):
     text = pitch(x)
     assert report.ticker in text and "$" in text
     assert test_count() > 300
+
+
+def test_a_provider_refusal_is_flagged():
+    from desks.modelling import provider_flags
+    f = provider_flags(["FMP: FMP: rate limited (HTTP 429); not retried for 463s; No free source for analyst estimates"])
+    assert len(f) == 1 and f[0].level == "amber" and f[0].code == "provider_unavailable" and "FMP" in f[0].message
+    assert provider_flags(["peers from SEC frames"]) == []

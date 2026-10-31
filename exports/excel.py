@@ -409,18 +409,32 @@ def build_workbook(rep) -> Workbook:
     # --- SOTP ----------------------------------------------------------------------------------------------------
     sotp_ref = None
     if v.sotp.applicable:
-        so = Sheet(wb, "SOTP", "US$ millions", "Segment revenue (annual report) x EV/Sales of US-listed comparables.")
-        so.head("A4", "Segment")
-        so.head("B4", "EV")
+        so = Sheet(wb, "SOTP", "US$ millions; multiples in x",
+                   "Each segment: its operating income x the median EV/EBIT of US-listed comparables (EV/Sales on revenue "
+                   "when it has no operating profit); unallocated corporate costs capitalised and deducted.")
+        for j, hd in enumerate(["Segment", "Basis", "Metric", "Multiple", "EV", "Source"]):
+            so.head(f"{col(1 + j)}4", hd)
+        segs = {sg.name: sg for sg in ei.segments}
         for i, (nm, ev, how) in enumerate(v.sotp.segment_values):
-            so.label(f"A{5 + i}", f"{nm} ({how})")
-            so.input(f"B{5 + i}", ev, NUM)
+            r_, sg = 5 + i, segs.get(nm)
+            so.label(f"A{r_}", nm)
+            if sg is not None and sg.metric_value is not None and sg.multiple is not None:
+                so.label(f"B{r_}", f"{sg.metric} on {'operating income' if sg.metric == 'EV/EBIT' else 'revenue'}")
+                so.input(f"C{r_}", sg.metric_value, NUM)
+                so.input(f"D{r_}", sg.multiple, MULT)
+                so.formula(f"E{r_}", f"C{r_}*D{r_}", NUM)
+                so.label(f"F{r_}", sg.multiple_source)
+            else:  # a segment DCF value
+                so.label(f"B{r_}", how)
+                so.input(f"E{r_}", ev, NUM)
         k = 5 + len(v.sotp.segment_values)
         so.label(f"A{k}", "Enterprise value", bold=True)
-        so.formula(f"B{k}", f"SUM(B5:B{k - 1})", NUM, bold=True)
+        so.formula(f"E{k}", f"SUM(E5:E{k - 1})", NUM, bold=True)
         so.label(f"A{k + 1}", "Value per US share", bold=True)
-        so.formula(f"B{k + 1}", f"(B{k}+{I['bridge']})/{I['shares']}*{I['adr']}", PS, bold=True)
-        sotp_ref = so.ref(f"B{k + 1}")
+        so.formula(f"E{k + 1}", f"(E{k}+{I['bridge']})/{I['shares']}*{I['adr']}", PS, bold=True)
+        so.ws.column_dimensions["A"].width = 34
+        so.ws.column_dimensions["B"].width = 26
+        sotp_ref = so.ref(f"E{k + 1}")
 
     # --- Comps -----------------------------------------------------------------------------------------------------
     co = Sheet(wb, "Comps", "US$ millions; multiples in x", "Peer data from each peer's SEC filings and market data.")

@@ -418,3 +418,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   scored (fewer than 7 scored: no score); net income attributable as the fallback. Shown with the failed tests;
   saved reports get it computed from their stored statements. FY latest: KO 7, MSFT 6, UBER 6, CVX 5, GRAB 5, TSM 9;
   JPM not meaningful (bank).
+- Peers that are successor issuers (XOM: ExxonMobil Holdings Corp, new CIK after the July 2026 reorganisation) were
+  dropped with "no XBRL financials"; peer_metrics now reads the predecessor's history as the main company does.
+  CVX's peers: XOM, OXY, MPC, PSX (was OXY, MPC, PSX). Tried adding IFRS revenue frames for 20-F majors (BP,
+  SHEL, TTE): SEC's frames API does not serve ifrs-full, so those still come only from the market-data providers.

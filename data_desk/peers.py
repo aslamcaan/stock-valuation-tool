@@ -14,6 +14,7 @@ from core.http import DataSourceError
 from datetime import date
 
 from data_desk.adr import adr_ratio
+from data_desk import lineage
 from data_desk.builder import _fx_rates
 from data_desk.fx import to_usd
 from data_desk.standardise import standardise
@@ -26,7 +27,9 @@ from engine.model import Historicals
 MAX_CANDIDATES = 15
 MAX_SEC_CANDIDATES = 8   # added from SEC frames on top of the provider peers
 SEC_SCAN = 60            # nearest-by-revenue filers whose SIC is looked up
-REVENUE_CONCEPTS = ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet")
+# US GAAP only: SEC's frames API does not serve the ifrs-full taxonomy (404), so 20-F filers come from the providers
+REVENUE_CONCEPTS = (("us-gaap", "Revenues"), ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
+                    ("us-gaap", "SalesRevenueNet"))
 
 
 def _ok(fn, *a, **k):
@@ -106,7 +109,16 @@ def peer_metrics(svc, ticker: str, sec_rows: dict) -> tuple[CompanyMetrics | Non
         facts = svc.edgar.companyfacts(int(row["cik"]))
     except (DataSourceError, CacheMiss) as exc:
         return None, f"{ticker}: SEC data unavailable ({str(exc)[:80]})"
-    h = standardise(extract(facts.payload, facts.fetched_at_iso))
+    payload = facts.payload
+    if lineage.annual_fact_count(payload) == 0:  # a successor issuer (e.g. XOM's new holding company): no 10-K yet
+        pred, _ = lineage.find_predecessor(svc, int(row["cik"]), sub)
+        if pred:
+            try:
+                merged, _ = lineage.merge_facts(payload, svc.edgar.companyfacts(pred).payload, pred)
+            except (DataSourceError, CacheMiss):
+                merged = None
+            payload = merged or payload
+    h = standardise(extract(payload, facts.fetched_at_iso))
     if not h.periods:
         return None, f"{ticker}: no XBRL financials"
     reporting_ccy = h.currency
@@ -141,8 +153,8 @@ def sec_revenues(svc, year: int) -> tuple[dict[str, float], str]:
     used = []
     for y in (year - 2, year - 1):  # later years overwrite earlier ones
         got: dict[str, float] = {}
-        for concept in REVENUE_CONCEPTS:
-            frame = _ok(svc.edgar.frame, concept, f"CY{y}")
+        for taxonomy, concept in REVENUE_CONCEPTS:
+            frame = _ok(svc.edgar.frame, concept, f"CY{y}", taxonomy)
             for cik, val in (frame.payload if frame else {}).items():
                 got[cik] = max(got.get(cik, 0.0), float(val))
             if frame:

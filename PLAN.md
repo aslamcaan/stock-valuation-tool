@@ -359,3 +359,20 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Landing hero draws the newest report's last year of daily closes (read from cache, never the network) against its
   fair value and DCF bear-to-bull band, with the source and dates; decorative line only as a fallback.
 - Phone width (390px): no horizontal page overflow; tabs scroll sideways.
+
+### 2026-10-31: explaining the valuation, reading guides
+- `engine/insights.py` (pure, `tests/test_insights.py`): `price_walk` (one assumption at a time from our DCF to the
+  price; steps under 0.5% applied but not drawn; the changes sum to the gap), `value_split` (NOPAT / WACC against
+  growth, ours and the market's), `monte_carlo` (2,000 runs, seed 7, sd = bear-bull step / 2 / 1.2816, terminal
+  growth kept 1 point under WACC and under the risk-free cap), `peer_regressions` (OLS, at least 5 peers).
+- `ui/insights.py`: waterfall, stacked no-growth/growth bars, histogram with the 10th-90th band, scatter with the
+  fitted line. Shown in the DCF, comps, reverse DCF and scenarios sections; the PDF carries the same figures.
+- KO: DCF $42.22 -> margin +1.31 -> tax +3.32 -> ROIC +2.36 -> 3% g +3.36 -> WACC 5.7% (+41.51) = $94.08; growth is
+  22% of our EV and 64% of the market's; Monte Carlo 10th-90th $35.01-50.59, 0% above the price; EV/Sales vs
+  margin R2 0.88 (extrapolated). UBER: 42% of versions above the price. GRAB: growth subtracts value in our DCF
+  (said in words). Banks, insurers and REITs: not shown (no DCF).
+- Reading guides (`ui.theme.guide`): "Start here" under the header (with the blend weights), "In this tab" on every
+  tab, and "How to read this" / "Why this number" on the stage, forecast, WACC (with its arithmetic), DCF, comps,
+  reverse DCF, scenarios, football field and flags.
+- Tiingo refusing a refresh (hourly limit) now falls back to a series cached within 3 days; KO's 20:33 run had lost
+  its own-history multiples to this.

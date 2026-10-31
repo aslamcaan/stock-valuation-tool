@@ -32,8 +32,11 @@ def _ordinary_price(m) -> float:
 
 
 def walk_args(rep) -> tuple:
-    """Today's effective tax rate and ROIC (latest fiscal year) and operating margin (latest period, LTM if any)."""
-    h, a = rep.company.historicals_usd, rep.company.analysis
+    """Today's effective tax rate and ROIC (latest fiscal year) and operating margin (latest period, LTM if any).
+    Without the company's analysis, only the discount-rate step of the walk is possible."""
+    h, a = getattr(rep.company, "historicals_usd", None), getattr(rep.company, "analysis", None)
+    if h is None or a is None or not h.fy_labels:
+        return None, None, None, rep.model.inputs.risk_free.value
     fy = h.fy_labels[-1]
     latest = h.ltm.label if h.ltm else fy
     eff, roic = a.metrics.get("effective_tax_rate", {}).get(fy), a.metrics.get("roic", {}).get(fy)
@@ -154,10 +157,10 @@ def monte_carlo_view(rep) -> None:
         _html(guide("Not shown: too many of the random draws gave an invalid DCF.", "Why it is missing"))
         return
     sp = mc["spreads"]
-    _html(guide(f"Each version draws four inputs at random and independently: revenue growth (spread "
-                f"{sp['growth'] * 100:.1f} points), operating margin ({sp['margin'] * 100:.1f}), WACC "
-                f"({sp['wacc'] * 100:.2f}) and terminal growth ({sp['terminal_growth'] * 100:.2f}). The spreads are "
-                f"set so that each input's 10th-90th percentile range equals the bear-to-bull step above. The bars "
+    _html(guide(f"Each version shifts four inputs at random and independently, by amounts with a standard deviation "
+                f"of {sp['growth'] * 100:.1f} points for revenue growth, {sp['margin'] * 100:.1f} for operating "
+                f"margin, {sp['wacc'] * 100:.2f} for WACC and {sp['terminal_growth'] * 100:.2f} for terminal growth. "
+                f"Those spreads make each input's 10th-90th percentile range equal to the bear-to-bull step above. The bars "
                 f"show how often each value came up. The inputs rarely all go wrong together, so the range is "
                 f"narrower than bear-to-bull. The random seed is fixed: the same result on every run."))
     vals = [x * f for x in mc["values"]]
@@ -167,13 +170,18 @@ def monte_carlo_view(rep) -> None:
                                                                 line=dict(color="rgba(255,122,26,.9)", width=0.5)),
                                  hovertemplate="%{x}: %{y} versions<extra></extra>"))
     fig.add_vrect(x0=p[10], x1=p[90], fillcolor="rgba(255,122,26,.07)", line_width=0)
-    for x, name, colour, dash in ((price, f"Price {money(price)}", TEXT, "solid"),
-                                  (base, f"Our DCF {money(base)}", ACCENT, "dash")):
-        fig.add_vline(x=x, line=dict(color=colour, width=1.5, dash=dash))
-        fig.add_annotation(x=x, y=1.02, yref="paper", text=name, showarrow=False,
-                           font=dict(family="IBM Plex Mono", size=11, color=colour), yanchor="bottom")
     lo, hi = min(p[5], price, base), max(p[95], price, base)
     pad = (hi - lo) * 0.08
+    # labels point away from each other when the lines are close (so they never overlap) and towards each other when
+    # far apart (so a line near the edge keeps its label inside the chart)
+    outward = abs(price - base) < 0.3 * (hi - lo + 2 * pad)
+    for x, other, name, colour, dash in ((price, base, f"Price {money(price)}", TEXT, "solid"),
+                                         (base, price, f"Our DCF {money(base)}", ACCENT, "dash")):
+        fig.add_vline(x=x, line=dict(color=colour, width=1.5, dash=dash))
+        left = (x < other) == outward
+        fig.add_annotation(x=x, y=1.02, yref="paper", text=name, showarrow=False, yanchor="bottom",
+                           xanchor="right" if left else "left", xshift=-4 if left else 4,
+                           font=dict(family="IBM Plex Mono", size=11, color=colour))
     fig.update_layout(**plotly_layout(height=330, margin=dict(l=10, r=10, t=40, b=10), bargap=0.04,
                                       xaxis=dict(title="US$ per share", range=[lo - pad, hi + pad]),
                                       yaxis=dict(title="Versions", tickfont=dict(color=FAINT))))

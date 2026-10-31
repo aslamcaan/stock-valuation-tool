@@ -67,6 +67,17 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
 - *Reverse DCF*: the growth or margin the price implies, the discount rate the price implies, and a DCF on
   sell-side conventions, so the gap to analysts' targets is explained rather than hidden.
 - *Scenarios and sensitivity*: bear / base / bull, and WACC x terminal growth and growth x margin grids.
+- *Explaining the valuation* (cross-checks, not in the fair value):
+  - **Walk from our DCF to the share price**: a waterfall that changes one assumption at a time (today's margin
+    held, the company's own tax rate, today's ROIC held, 3% terminal growth, each only where more generous than
+    ours), then solves the discount rate the price needs. The bars add up exactly to the gap.
+  - **What the price pays for**: no-growth value (year-1 NOPAT / WACC) against growth, for our DCF and for the
+    market's enterprise value.
+  - **Monte Carlo range**: 2,000 DCFs drawing growth, margin, WACC and terminal growth independently, each spread
+    so its 10th-90th percentile range equals the bear-bull step (fixed seed, repeatable); the median, the middle 80%
+    and the share of versions above the price.
+  - **Regression-based peer multiples**: EV/Sales against operating margin and EV/EBITDA against revenue growth
+    across the peers (needs five), giving the multiple the company warrants at its own margin or growth.
 
 Banks, insurers and REITs get their own toolkits (justified P/TBV or P/B, residual income, dividend discount, NAV
 on a peer-implied cap rate, P/FFO) because a DCF does not fit them.
@@ -108,8 +119,9 @@ price move since), How it works, and a Debug page with the raw responses.
 
 Sell-side targets are mostly multiples. On a 7-8% WACC built from a 5% risk-free rate, quality large caps trading at
 2-3% free-cash-flow yields come out well below their prices. The report shows why: for KO the price implies a
-discount rate of about 4.9% against the model's 7.9%, and a DCF on sell-side conventions (the company's own tax
-rate, today's ROIC held, 3% terminal growth) closes part of the gap. The model keeps its own assumptions and says so.
+discount rate well below the model's 7.9%. The walk to the price splits the gap (KO, 31 Oct 2026): our DCF is
+$42.22; four sell-side conventions add $10.36; the remaining $41.51 needs a WACC of 5.7%. The model keeps its own
+assumptions and says so.
 
 ### Code layout
 
@@ -198,7 +210,8 @@ Excel (`python scripts/excel_check.py file.xlsx`, Windows only, needs `requireme
 
 1. The landing page, then search a company and capture the progress panel while the desks run.
 2. The report header (verdict, rating, value range) and the "How the rating was scored" panel.
-3. The Valuation tab: the football field and the reverse DCF's "Why the DCF can differ from analysts' targets".
+3. The Overview's football field; on the Valuation tab, the walk from our DCF to the share price, the Monte Carlo
+   range and the regression-adjusted multiples.
 4. The What if tab after pressing "Market's discount rate", and the History tab of a company with several reports.
 5. Hover any number in the Financials tab to show its trace (filing, tag, fetch time).
 6. The Excel model's DCF and Sensitivity tabs, and the Compare page.

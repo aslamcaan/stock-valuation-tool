@@ -347,6 +347,9 @@ def benchmarking(rep) -> None:
 def stage(rep) -> None:
     v = rep.model.valuation
     c = v.classification
+    html(guide("The stage decides how the forecast behaves: how fast growth fades to the industry rate, whether "
+               "margins move towards a target, and which methods are weighted. It is set by code from the evidence "
+               "below; the cycle check asks whether today's margin is a peak that should not be carried forward."))
     st.markdown(f"**{c.stage_label}.** {c.stage_reason}." + (f" Overridden: {c.override}" if c.override else ""))
     ev = c.evidence
     html(plain_table([[k.replace("_", " "), pct(x) if isinstance(x, float) and abs(x) < 5 else str(x)]
@@ -367,6 +370,9 @@ def stage(rep) -> None:
 
 def forecast(rep) -> None:
     plan = rep.model.valuation.plan
+    html(guide("Each driver shows the company's history, the analysts' consensus and the industry figure next to the "
+               "value chosen, and says which one was used and why. The second table is the year-by-year path the "
+               "DCF below uses."))
     rows = []
     for d in plan.drivers.values():
         f = (lambda x: "–" if x is None else f"{x:.2f}x") if d.name == "sales_to_capital" else \
@@ -409,6 +415,13 @@ def wacc(rep) -> None:
             ("After-tax cost of debt", [w.after_tax_cost_of_debt]), ("Equity weight", [w.weight_equity]),
             ("Debt weight", [w.weight_debt]), ("WACC", [w.wacc])]
     betas = {"Regression beta (reference)", "Industry unlevered beta", "Beta used", "D/E (market)"}
+    if None not in (w.weight_equity, w.cost_of_equity, w.weight_debt, w.after_tax_cost_of_debt, w.wacc):
+        html(guide(f"WACC is the return investors require, used to discount future cash flows: equity weight x cost of "
+                   f"equity + debt weight x after-tax cost of debt = {pct(w.weight_equity.value)} x "
+                   f"{pct(w.cost_of_equity.value, 2)} + {pct(w.weight_debt.value)} x "
+                   f"{pct(w.after_tax_cost_of_debt.value, 2)} = {pct(w.wacc.value, 2)}. Cost of equity = risk-free "
+                   "rate + beta x equity risk premium + country risk. Hover a value for its source and date.",
+                   "Why this number"))
     html(traced_table([(n, [x if x is None else x]) for n, [x] in rows], ["Value"],
                       formatter=lambda v: f"{v.value:.2f}" if v in [r[1][0] for r in rows if r[0] in betas]
                       else pct(v.value, 2)))
@@ -424,6 +437,10 @@ def dcf(rep) -> None:
     rows = [[y.label, millions(y.revenue), pct(y.ebit / y.revenue) if y.revenue else "–", millions(y.ebit),
              millions(y.taxes), millions(y.nopat), millions(y.reinvestment), millions(y.fcf), f"{y.period:.2f}",
              f"{y.discount_factor:.3f}", millions(y.pv)] for y in d.years]
+    html(guide("Each year: revenue x operating margin = EBIT; less tax = NOPAT; less the reinvestment needed to grow "
+               "= free cash flow (FCF), discounted at WACC to today (PV). The terminal value covers every year after "
+               "the last. Enterprise value less debt, plus cash and investments, gives equity; divided by diluted "
+               "shares, the value per share.", "Why this number"))
     html(plain_table(rows, ["Year", "Revenue", "Op. margin", "EBIT", "Tax", "NOPAT", "Reinvestment", "FCF",
                             "Period", "DF", "PV"]))
     c1, c2, c3 = st.columns(3)
@@ -453,6 +470,10 @@ def sotp(rep) -> None:
 def comps(rep) -> None:
     c = rep.model.comps
     if c:
+        html(guide("Implied price = the peers' median multiple applied to the company's own figure (sales, EBITDA, "
+                   "earnings or free cash flow), then bridged from enterprise value to equity per share. The 25th "
+                   "and 75th percentiles show how far the peers spread. Below the table, the same multiples are "
+                   "adjusted for how profitable or fast-growing the company is."))
         rows = [[m.label, str(len(m.peer_values)), mult(m.q1), mult(m.median), mult(m.q3), mult(m.company_value),
                  money(m.implied_price)] for m in c.multiples.values()]
         html(plain_table(rows, ["Multiple", "Peers", "25th", "Median", "75th", "Company", "Implied price"]))
@@ -474,6 +495,9 @@ def comps(rep) -> None:
 def reverse_dcf(rep) -> None:
     r = rep.model.valuation.reverse or {}
     g, m = r.get("growth", {}), r.get("margin", {})
+    html(guide("Instead of asking what the company is worth, this asks what the share price already assumes: the "
+               "growth or margin that would make our DCF equal the price, holding everything else. Compare it with "
+               "the history and consensus in brackets."))
     a = rep.company.analysis
     hist = a.cagr.get("revenue_cagr_3y")
     cons = rep.model.valuation.plan.drivers["revenue_growth"].consensus
@@ -496,6 +520,8 @@ def reverse_dcf(rep) -> None:
 
 def scenarios(rep) -> None:
     v = rep.model.valuation
+    html(guide("Bear and bull move four inputs together; the grids move two at a time and keep the rest at the base "
+               "case (the middle cell equals our DCF). Read across a row to see how much one input matters."))
     rows = [[s.scenario.name, f"{s.scenario.probability:.0%}", s.scenario.describe(),
              money(v.per_us_share(s.value_per_share)) if s.result else (s.error or "–")] for s in v.scenarios]
     html(plain_table(rows, ["Scenario", "Probability", "Assumptions", "Value per share"]))
@@ -532,6 +558,9 @@ def football(rep) -> None:
         html_note("No valuation ranges are available for this report.")
         return
     price, fv = rep.model.verdict.price, rep.model.verdict.fair_value
+    html(guide("Each bar is the range one method gives (low to high case). The white line is the share price, the "
+               "dotted orange line the blended fair value. Where most orange bars sit left of the price, the "
+               "fundamentals do not support it; the Valuation tab shows how each bar is built."))
     fig = go.Figure()
     for b in reversed(bars):  # first method at the top
         span = b.high - b.low
@@ -611,6 +640,10 @@ def risks(rep) -> None:
 
 
 def flags(rep) -> None:
+    if rep.model.flags:
+        html(guide("Hard stop: the data failed a check and the stock is not valued. Red: a line that does not add up "
+                   "or a serious risk. Amber: worth reading before trusting the number (e.g. EDGAR and FMP disagree by "
+                   "more than 2%, both figures shown). Info: context. Open a flag for the figures behind it."))
     for f in rep.model.flags:
         tag = {"hard_stop": ":red[**Hard stop**]", "red": ":red[**Red**]", "amber": ":orange[**Amber**]"}.get(f.level, ":gray[Info]")
         with st.expander(f"{tag} · {f.title}" + (f" ({f.period})" if f.period else "")):
@@ -913,14 +946,20 @@ TAB_GUIDE = {  # what each tab holds, in the order you scroll through it
 }
 FINANCIAL_VALUATION_GUIDE = ("How the fair value is built for a bank, insurer or REIT (a DCF does not fit them): the "
                              "sector metrics, the cost of equity, then each valuation method and the blend.")
-WEIGHT_NAMES = {"dcf": "DCF", "comps": "peer multiples", "history": "own-history multiples", "sotp": "sum of the parts"}
+WEIGHT_NAMES = {"dcf": "DCF", "comps": "peer multiples", "history": "own-history multiples", "sotp": "sum of the parts",
+                "justified": "justified price-to-book", "residual_income": "residual income",
+                "ddm": "dividend discount", "comps_pb": "peer price-to-book", "comps_pe": "peer P/E",
+                "nav": "net asset value", "comps_pffo": "peer P/FFO"}
 
 
 def start_here(rep) -> None:
     """One line under the header: how the headline numbers relate, and where to find how each is built."""
     vd = rep.model.verdict
     w = getattr(vd, "weights_used", None) or {}
-    blend_txt = ", ".join(f"{WEIGHT_NAMES.get(k, k)} {x:.0%}" for k, x in w.items() if x) if w else ""
+
+    def name(k: str) -> str:
+        return WEIGHT_NAMES.get(k, k.replace("_", " "))
+    blend_txt = ", ".join(f"{name(k)} {x:.0%}" for k, x in w.items() if x) if w else ""
     html(guide((f"The fair value blends the methods ({blend_txt}); " if blend_txt else "The fair value blends the "
                 "valuation methods; ") + "the verdict compares it with the price; the rating also weighs business "
                "quality and the other criteria scored on the right, and is capped at Hold when the stock looks "

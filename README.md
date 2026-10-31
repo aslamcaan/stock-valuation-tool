@@ -73,9 +73,10 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
     ours), then solves the discount rate the price needs. The bars add up exactly to the gap.
   - **What the price pays for**: no-growth value (year-1 NOPAT / WACC) against growth, for our DCF and for the
     market's enterprise value.
-  - **Monte Carlo range**: 2,000 DCFs drawing growth, margin, WACC and terminal growth independently, each spread
-    so its 10th-90th percentile range equals the bear-bull step (fixed seed, repeatable); the median, the middle 80%
-    and the share of versions above the price.
+  - **Monte Carlo range**: 2,000 DCFs drawing growth, margin, WACC and terminal growth, each spread so its
+    10th-90th percentile range equals the bear-bull step (fixed seed, repeatable). Growth and margin move together
+    at the company's own measured correlation (revenue growth against the change in operating margin, at least six
+    years, capped at +/-0.8; CVX 0.95, MSFT 0.43, KO -0.28); the independent range is shown alongside.
   - **Regression-based peer multiples**: EV/Sales against operating margin and EV/EBITDA against revenue growth
     across the peers (needs five), giving the multiple the company warrants at its own margin or growth.
 

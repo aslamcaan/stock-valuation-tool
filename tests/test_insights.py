@@ -92,3 +92,21 @@ def test_peer_regression_needs_five_peers():
     peers = [_co(f"P{k}", m, 0.05, 1 + 20 * m) for k, m in enumerate((0.05, 0.10, 0.15))]
     r = peer_regressions(_co("ME", 0.12, 0.05, 3.0), peers, 100.0, 0.0)[0]
     assert not r["applicable"] and "needs 5 peers" in r["reason"]
+
+
+def test_growth_margin_correlation_from_history():
+    from engine.insights import growth_margin_correlation
+    line = [(g / 100, g / 400) for g in (2, 5, 8, 3, 10, 6)]  # margin change = growth / 4 every year
+    c = growth_margin_correlation(line)
+    assert c["raw"] == pytest.approx(1.0) and c["rho"] == 0.8 and c["n"] == 6  # capped: six years is not certainty
+    assert growth_margin_correlation(line[:5]) is None  # too few years
+    assert growth_margin_correlation([(0.05, m) for _, m in line]) is None  # no variation in growth
+
+
+def test_correlated_draws_widen_the_range_when_growth_and_margin_move_together():
+    inp = simple(years=5)
+    base = run_dcf(inp).value_per_share
+    ind, cor = monte_carlo(inp, base, n=1500), monte_carlo(inp, base, n=1500, growth_margin_corr=0.8)
+    assert monte_carlo(inp, base, n=1500, growth_margin_corr=0.0)["pct"] == ind["pct"]  # 0 = the independent draws
+    assert cor["pct"][90] - cor["pct"][10] > ind["pct"][90] - ind["pct"][10]
+    assert cor["growth_margin_corr"] == 0.8

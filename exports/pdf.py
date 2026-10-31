@@ -15,9 +15,8 @@ from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Space
 from engine.rubric import LABELS, WEIGHTS
 from ui.format import millions, money, mult, pct
 from ui.report import DISCLAIMER
-from engine.classify import DECLINING
 from engine.insights import peer_regressions, price_walk, value_split
-from ui.insights import mc_cached, walk_args
+from ui.insights import mc_for, walk_args
 
 INK = colors.HexColor("#14110e")      # masthead warm black, as in the app
 ACCENT = colors.HexColor("#d9600b")     # the app's orange, darkened to print and read on white (model figures)
@@ -320,13 +319,15 @@ def build_pdf(rep) -> bytes:
         s.append(table([[pct(g)] + [money(v.per_us_share(x)) for x in r] for g, r in zip(s1["terminal_growth"], s1["value_per_share"])],
                        ["g \\ WACC"] + [pct(x) for x in s1["wacc"]], [24 * mm] + [31 * mm] * 5))
     if v.dcf_inputs is not None:
-        cap = 0.0 if v.classification.stage == DECLINING else m.inputs.risk_free.value
-        mc = mc_cached(v.dcf_inputs, vd.price / v.per_us_share_factor, cap)
+        mc, corr, _ = mc_for(rep)
         if mc:
             f = v.per_us_share_factor
-            s.append(P(f"Monte Carlo ({mc['valid']:,} DCFs; growth, margin, WACC and terminal growth drawn "
-                       f"independently, each with its 10th-90th percentile range equal to the bear-bull step; fixed "
-                       f"seed): median {money(mc['pct'][50] * f)}, 10th-90th {money(mc['pct'][10] * f)} to "
+            how = (f"growth and margin drawn with their measured correlation of {corr['rho']:+.2f} ({corr['n']} years), "
+                   "WACC and terminal growth independently" if corr else
+                   "growth, margin, WACC and terminal growth drawn independently")
+            s.append(P(f"Monte Carlo ({mc['valid']:,} DCFs; {how}, each with its 10th-90th percentile range equal to "
+                       f"the bear-bull step; fixed seed): median {money(mc['pct'][50] * f)}, 10th-90th "
+                       f"{money(mc['pct'][10] * f)} to "
                        f"{money(mc['pct'][90] * f)}; {mc['prob_above_price']:.0%} of versions above the price.", SMALL))
     s.append(P("15. Football field", H2))
     s.append(football_drawing(rep))

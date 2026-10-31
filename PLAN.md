@@ -380,3 +380,13 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   any saved corporate report (headline figures, the walk, value split, Monte Carlo, regression; the sentence about
   the walk is worded from the signs and sizes of its steps), the design decisions and the questions to expect.
   Checked on KO, MSFT, TSM, UBER, GRAB and CVX; JPM shows why there is no walk. Tested offline.
+
+### 2026-11-01: hero fix, correlated Monte Carlo
+- Landing hero (MSFT on the deployed site): the line ran through the title and text, the DCF band read as a block
+  and the end dot was clipped. Chart narrowed with a longer fade, band drawn faint with hairline edges, dot inset.
+- Deploys into a running server: app.py drops the project's modules when any source file has changed (the
+  ImportError after the insights push came from a stale ui.theme kept in memory).
+- Monte Carlo: growth and margin shifts drawn with the company's measured correlation (revenue growth vs change in
+  operating margin, >= 6 years, capped at +/-0.8); 0 gives exactly the old independent draws. Measured: CVX 0.95
+  (used 0.8), TSM 0.89 (0.8), MSFT 0.43, UBER 0.13, KO -0.28, GRAB not measured (5 years). Effect on the 10th-90th
+  range: CVX $81-175 vs $81-166 independent; MSFT $273-383 vs $278-374; KO $35.69-49.82 vs $35.01-50.59.

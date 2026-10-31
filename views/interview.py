@@ -161,15 +161,17 @@ qa([
      "where the company earns its revenue. Cost of debt from a synthetic rating on interest cover. The report shows "
      "each input with its date."),
     ("\"What's the weakest part?\"",
-     "The Monte Carlo draws its inputs independently, while in reality growth and margins move together, so its range "
-     "is probably too narrow. The peer regressions run on five to eight peers, so they are a cross-check, not part of "
-     "the fair value. And it covers US-listed companies only, because it depends on SEC filings."),
+     "Small samples. The Monte Carlo links growth and margin by a correlation measured from about nine years of the "
+     "company's own history (CVX 0.95, KO -0.28), which is noisy, so it is capped at 0.8; WACC and terminal growth are "
+     "still drawn independently. The peer regressions run on five to eight peers, so they are a cross-check, not part "
+     "of the fair value. And it covers US-listed companies only, because it depends on SEC filings."),
     ("\"Where does AI actually add value?\"",
      "Reading: segments, one-off items, risks and KPIs from a 100-page annual report, with every quote checked against "
      "the filing text. Judgement: the review desk challenges the weakest assumptions and writes the bear case, and the "
      "MD scores moat, management and governance with cited evidence. A full report costs about US$0.15-0.50 of AI."),
     ("\"What would you build next?\"",
-     "Correlated inputs in the Monte Carlo; non-US filers through IFRS filings in other markets; and a longer track "
+     "Non-US filers through IFRS filings in other markets; peer-pooled correlations for the Monte Carlo when a "
+     "company's own history is short; and a longer track "
      "record, so the calls can be scored against what the price did afterwards (the Track Record page already logs "
      "each call with its date)."),
 ])

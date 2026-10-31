@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from engine.classify import DECLINING
-from engine.insights import monte_carlo, peer_regressions, price_walk, value_split
+from engine.insights import growth_margin_correlation, monte_carlo, peer_regressions, price_walk, value_split
 from ui.format import millions, money, mult, pct, plain_table
 from ui.theme import ACCENT, BORDER, FAINT, MUTED, TEXT, esc, guide, plotly_layout
 
@@ -45,8 +45,35 @@ def walk_args(rep) -> tuple:
 
 
 @lru_cache(maxsize=32)
-def mc_cached(inp, price: float, cap: float | None):
-    return monte_carlo(inp, price, max_terminal_growth=cap)
+def mc_cached(inp, price: float, cap: float | None, rho: float = 0.0):
+    return monte_carlo(inp, price, max_terminal_growth=cap, growth_margin_corr=rho)
+
+
+def history_pairs(rep) -> list[tuple[float, float]]:
+    """(revenue growth, change in operating margin) for each reported fiscal year after the first."""
+    h, a = getattr(rep.company, "historicals_usd", None), getattr(rep.company, "analysis", None)
+    if h is None or a is None:
+        return []
+    out = []
+    for prev, cur in zip(h.fy_labels, h.fy_labels[1:]):
+        g, m0, m1 = a.m("revenue_growth", cur), a.m("operating_margin", prev), a.m("operating_margin", cur)
+        if None not in (g, m0, m1):
+            out.append((g, m1 - m0))
+    return out
+
+
+def mc_for(rep) -> tuple[dict | None, dict | None, dict | None]:
+    """The report's Monte Carlo with growth and margin drawn at the company's own measured correlation, that
+    correlation (None if under six years of history: then the draws are independent), and the independent run for
+    comparison. Prices are per ordinary share."""
+    m = rep.model
+    v = m.valuation
+    cap = 0.0 if v.classification.stage == DECLINING else m.inputs.risk_free.value
+    price = m.verdict.price / v.per_us_share_factor
+    corr = growth_margin_correlation(history_pairs(rep))
+    rho = corr["rho"] if corr else 0.0
+    ind = mc_cached(v.dcf_inputs, price, cap, 0.0)
+    return (mc_cached(v.dcf_inputs, price, cap, rho) if rho else ind), corr, ind
 
 
 # --- 1. walk to the price (in the reverse DCF section) ---------------------------------------------------------------
@@ -150,19 +177,27 @@ def monte_carlo_view(rep) -> None:
     if v is None or v.dcf_inputs is None:
         return
     f, price = v.per_us_share_factor, rep.model.verdict.price
-    cap = 0.0 if v.classification.stage == DECLINING else rep.model.inputs.risk_free.value
-    mc = mc_cached(v.dcf_inputs, price / f, cap)
+    mc, corr, ind = mc_for(rep)
     st.markdown("#### How wide is the range? 2,000 versions of the DCF")
     if mc is None:
         _html(guide("Not shown: too many of the random draws gave an invalid DCF.", "Why it is missing"))
         return
     sp = mc["spreads"]
-    _html(guide(f"Each version shifts four inputs at random and independently, by amounts with a standard deviation "
-                f"of {sp['growth'] * 100:.1f} points for revenue growth, {sp['margin'] * 100:.1f} for operating "
-                f"margin, {sp['wacc'] * 100:.2f} for WACC and {sp['terminal_growth'] * 100:.2f} for terminal growth. "
-                f"Those spreads make each input's 10th-90th percentile range equal to the bear-to-bull step above. The bars "
-                f"show how often each value came up. The inputs rarely all go wrong together, so the range is "
-                f"narrower than bear-to-bull. The random seed is fixed: the same result on every run."))
+    if corr:
+        link = (f"Growth and margin are drawn together, with a correlation of {corr['rho']:+.2f}, measured from the "
+                f"company's last {corr['n']} years of revenue growth against the change in its operating margin"
+                + (f" ({corr['raw']:+.2f}, capped at 0.8 because a few years cannot make it certain)"
+                   if corr["raw"] != corr["rho"] else "")
+                + "; WACC and terminal growth are drawn independently.")
+    else:
+        link = ("All four are drawn independently (fewer than six years of history to measure how growth and margin "
+                "move together).")
+    _html(guide(f"Each version shifts four inputs at random, by amounts with a standard deviation of "
+                f"{sp['growth'] * 100:.1f} points for revenue growth, {sp['margin'] * 100:.1f} for operating margin, "
+                f"{sp['wacc'] * 100:.2f} for WACC and {sp['terminal_growth'] * 100:.2f} for terminal growth. Those "
+                f"spreads make each input's 10th-90th percentile range equal to the bear-to-bull step above. {link} "
+                "The bars show how often each value came up. The inputs rarely all go wrong together, so the range is "
+                "narrower than bear-to-bull. The random seed is fixed: the same result on every run."))
     vals = [x * f for x in mc["values"]]
     p = {k: x * f for k, x in mc["pct"].items()}
     base = v.per_us_share(v.dcf.value_per_share)
@@ -192,7 +227,9 @@ def monte_carlo_view(rep) -> None:
                ("Middle 80% (10th-90th)", f"{money(p[10])} - {money(p[90])}",
                 f"bear to bull {money(bear)} - {money(bull)}" if bear and bull else ""),
                ("Chance the value is above the price", f"{mc['prob_above_price']:.0%}",
-                f"of {mc['valid']:,} versions above {money(price)}")], accent=2))
+                f"of {mc['valid']:,} versions above {money(price)}")]
+              + ([("If drawn independently", f"{money(ind['pct'][10] * f)} - {money(ind['pct'][90] * f)}",
+                   f"middle 80%; {ind['prob_above_price']:.0%} above the price")] if corr and ind else []), accent=2))
 
 
 # --- 4. regression multiples (in the comps section) ------------------------------------------------------------------

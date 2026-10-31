@@ -6,6 +6,7 @@ Values are per ordinary share (multiply by the ADR ratio for a US share), like t
 """
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import replace
 from statistics import mean
@@ -105,15 +106,39 @@ def _percentile(xs: list[float], p: float) -> float:
     return xs[lo] + (xs[hi] - xs[lo]) * (k - lo)
 
 
+MIN_CORR_YEARS = 6   # pairs of years needed to measure the growth-margin correlation
+MAX_CORR = 0.8       # a correlation from a handful of years is noisy: never treated as near-certain
+
+
+def growth_margin_correlation(pairs: list[tuple[float, float]]) -> dict | None:
+    """Correlation between a company's revenue growth and the change in its operating margin in the same year
+    (operating leverage: margins tend to widen in fast-growth years), from its own history. `pairs`: (growth, margin
+    change) per year. Clipped to +/-0.8; None with fewer than six years or no variation."""
+    if len(pairs) < MIN_CORR_YEARS:
+        return None
+    xs, ys = [g for g, _ in pairs], [m for _, m in pairs]
+    mx, my = mean(xs), mean(ys)
+    sxx, syy = sum((x - mx) ** 2 for x in xs), sum((y - my) ** 2 for y in ys)
+    if sxx == 0 or syy == 0:
+        return None
+    r = sum((x - mx) * (y - my) for x, y in pairs) / math.sqrt(sxx * syy)
+    return {"raw": r, "rho": max(-MAX_CORR, min(MAX_CORR, r)), "n": len(pairs)}
+
+
 def monte_carlo(inp: DCFInputs, price: float, n: int = 2000, seed: int = 7,
-                max_terminal_growth: float | None = None) -> dict | None:
-    """n DCFs, each drawing revenue growth, margin, WACC and terminal growth shifts independently from normal
-    distributions whose 10th-90th percentile range equals the bear-to-bull scenario step. The seed is fixed, so the
-    result is the same on every run. Terminal growth stays at least 1 point below WACC and under the cap."""
+                max_terminal_growth: float | None = None, growth_margin_corr: float = 0.0) -> dict | None:
+    """n DCFs, each drawing revenue growth, margin, WACC and terminal growth shifts from normal distributions whose
+    10th-90th percentile range equals the bear-to-bull scenario step. Growth and margin shifts are drawn with
+    `growth_margin_corr` (0 = independent, the same draws as before); WACC and terminal growth independently. The seed
+    is fixed, so the result is the same on every run. Terminal growth stays at least 1 point below WACC and under the
+    cap."""
     rng = random.Random(seed)
+    rho = growth_margin_corr
     values, failed = [], 0
     for _ in range(n):
-        gs, ms = rng.gauss(0, SPREADS["growth"]), rng.gauss(0, SPREADS["margin"])
+        zg, zm = rng.gauss(0, 1), rng.gauss(0, 1)
+        gs = SPREADS["growth"] * zg
+        ms = SPREADS["margin"] * (rho * zg + math.sqrt(1 - rho * rho) * zm)
         w = inp.wacc + rng.gauss(0, SPREADS["wacc"])
         g = inp.terminal_growth + rng.gauss(0, SPREADS["terminal_growth"])
         if max_terminal_growth is not None:
@@ -130,7 +155,7 @@ def monte_carlo(inp: DCFInputs, price: float, n: int = 2000, seed: int = 7,
     return {"n": n, "valid": len(values), "failed": failed, "values": values, "mean": mean(values),
             "pct": {p: _percentile(values, p) for p in PCTS},
             "prob_above_price": sum(1 for v in values if v > price) / len(values), "spreads": dict(SPREADS),
-            "seed": seed}
+            "seed": seed, "growth_margin_corr": rho}
 
 
 # --- 4. regression-based peer multiples ------------------------------------------------------------------------------

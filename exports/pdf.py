@@ -14,8 +14,8 @@ from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Space
 
 from engine.rubric import LABELS, WEIGHTS
 from ui.format import millions, money, mult, pct
-from ui.report import DISCLAIMER
-from engine.insights import peer_regressions, price_walk, value_split
+from ui.report import DISCLAIMER, with_piotroski
+from engine.insights import peer_regressions, price_walk, return_on_new_capital, value_split
 from ui.insights import dividend_for, mc_for, walk_args
 
 INK = colors.HexColor("#14110e")      # masthead warm black, as in the app
@@ -239,6 +239,13 @@ def build_pdf(rep) -> bytes:
     for section, lines_ in cd.analysis.commentary.items():
         if lines_:
             s.append(Paragraph(f"<b>{section.replace('_', ' ').capitalize()}:</b> " + clean(" ".join(lines_)), BODY))
+    fs = with_piotroski(getattr(rep, "forensic", None), rep) or {}
+    latest = [x for k in ("beneish", "altman", "piotroski") for x in (fs.get(k) or [])[-1:] if x.value is not None]
+    if latest:
+        s.append(P("Forensic scores: " + "; ".join(
+            f"{x.name} {x.period} {x.value:.0f}" if x.name.startswith("Piotroski") else f"{x.name} {x.period} "
+            f"{x.value:.2f}" for x in latest) + " (" + "; ".join(f"{x.name.split()[0]}: {x.reading}" for x in latest)
+            + ").", SMALL))
     # 6-7 stage and forecast
     s.append(P("6. Company stage and forecast approach", H2))
     s.append(P(f"{v.classification.stage_label}: {v.classification.stage_reason}."))
@@ -276,6 +283,11 @@ def build_pdf(rep) -> bytes:
                        f"(NOPAT {millions(sp['nopat'])} / WACC {pct(sp['wacc'])}). Growth is "
                        f"{sp['growth_ev'] / dd.enterprise_value:.0%} of our EV and "
                        f"{sp['market_growth_ev'] / sp['market_ev']:.0%} of the market's EV.", SMALL))
+        rn = return_on_new_capital(dd)
+        if rn:
+            s.append(P(f"Return on new capital: the forecast reinvests US${rn['reinvestment']:,.0f}m and NOPAT goes "
+                       f"from US${rn['nopat0']:,.0f}m to US${rn['nopat_final']:,.0f}m, "
+                       f"{pct(rn['roic_new'])} on the new capital against a {pct(rn['wacc'])} WACC.", SMALL))
     # 11-14
     if v.sotp.applicable:
         s.append(P("11. Sum of the parts", H2))

@@ -13,7 +13,7 @@ SOURCES = {
     "Data checks": ["Code only"],
     "Research desk": ["Annual report", "AI reads, quotes verified"],
     "News desk": ["Web search", "Dated and verified"],
-    "Modelling desk": ["Damodaran industry data", "Peers from SEC frames", "Code only"],
+    "Modelling desk": ["Damodaran industry data", "Peers from SEC frames", "XBRL segment notes", "Code only"],
     "Review desk": ["AI", "Sees results, not opinions"],
     "Impact analyst": ["AI sizes, code prices", "S&P 500 and sector ETF"],
     "MD": ["AI judgement", "Number guard"],

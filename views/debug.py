@@ -41,7 +41,7 @@ tab_desk, tab_cov, tab_edgar, tab_fmp, tab_fred, tab_dam, tab_probe = st.tabs(
     ["Data desk", "Market data coverage", "SEC EDGAR", "FMP", "FRED", "Damodaran", "FMP endpoint check"])
 
 with tab_desk:
-    st.write("Standardised historicals, data checks and financial analysis (Phase 3 output).")
+    st.write("Standardised historicals, data checks and financial analysis, exactly as the data desk produces them for a report.")
     if st.button("Run data desk"):
         try:
             with st.status("Running data desk…") as status:

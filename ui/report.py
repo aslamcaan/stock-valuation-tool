@@ -633,7 +633,8 @@ def provenance(rep) -> None:
             for a in rep.model.assumptions]
     html(plain_table(rows, ["Group", "Assumption", "Value", "Source", "Editable", "Note"]))
     st.markdown("**Data sources**")
-    html(plain_table([[s["source"], s["what"], s.get("detail") or "", s.get("fetched_at") or ""] for s in rep.model.sources],
+    html(plain_table([[s["source"], s["what"], s.get("detail") or "", when(s["fetched_at"]) if s.get("fetched_at") else ""]
+                      for s in rep.model.sources],
                      ["Source", "What", "Detail", "Fetched (UTC)"]))
     with st.expander("XBRL tag used for every number"):
         h = rep.company.historicals

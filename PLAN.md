@@ -422,3 +422,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   dropped with "no XBRL financials"; peer_metrics now reads the predecessor's history as the main company does.
   CVX's peers: XOM, OXY, MPC, PSX (was OXY, MPC, PSX). Tried adding IFRS revenue frames for 20-F majors (BP,
   SHEL, TTE): SEC's frames API does not serve ifrs-full, so those still come only from the market-data providers.
+- Return on new capital (engine.insights.return_on_new_capital, flags in engine.valuation.reinvestment_flags, line in
+  the no-growth view): KO 32.8%, MSFT 44.1%, UBER 27.4%, GRAB 16.0% (all above WACC); TSM 9.2% < 12.4% WACC (amber:
+  the margin fades 58% -> 39% under mean reversion while TSM earns 47% today); CVX profit falls while reinvesting
+  (info). Source: Damodaran's consistency checks (reinvestment rate = g / ROC).

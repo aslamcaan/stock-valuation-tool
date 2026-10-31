@@ -234,3 +234,20 @@ def dividend_check(dcf: DCFResult, dps0: float, cost_of_equity: float, terminal_
             "pv_dividends": pv, "terminal_value": terminal, "pv_terminal": pv_terminal, "value": value,
             "cost_of_equity": cost_of_equity, "terminal_growth": terminal_growth,
             "implied_growth": (price * cost_of_equity - dps0) / (price + dps0), "years": n}
+
+
+# --- 6. Return on new capital in the forecast ------------------------------------------------------------------------
+def return_on_new_capital(dcf: DCFResult) -> dict | None:
+    """Damodaran's consistency check: is the forecast reinvesting enough for its growth? The rise in operating profit
+    after tax from today (base revenue at the year-1 margin and tax rate) to the final forecast year, divided by the
+    reinvestment of every forecast year. None if the forecast reinvests nothing in total."""
+    inp = dcf.inputs
+    y1 = inp.years[0]
+    nopat0 = inp.base_revenue * y1.operating_margin * (1 - y1.tax_rate)
+    reinvested = sum(y.reinvestment for y in dcf.years)
+    if reinvested <= 0:
+        return None
+    gain = dcf.years[-1].nopat - nopat0
+    return {"nopat0": nopat0, "nopat_final": dcf.years[-1].nopat, "reinvestment": reinvested, "gain": gain,
+            "roic_new": gain / reinvested, "years": len(dcf.years), "terminal_roic": inp.terminal_roic,
+            "wacc": inp.wacc}

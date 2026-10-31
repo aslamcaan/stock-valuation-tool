@@ -113,6 +113,34 @@ def _neg(v: Value, name: str) -> Value:
     return calc(lambda x: -x, f"minus {name}", v.period, MILLIONS, v.currency, **{name: v})
 
 
+
+def reinvestment_flags(dcf, roic_now) -> list[Flag]:
+    """Damodaran's check that the forecast reinvests consistently with its growth (engine.insights)."""
+    from engine.insights import return_on_new_capital
+    x = return_on_new_capital(dcf)
+    if x is None:
+        return []
+    now = roic_now.value if roic_now is not None else None
+    m0, m1 = dcf.inputs.years[0].operating_margin, dcf.inputs.years[-1].operating_margin
+    figs = {"roic_new": x["roic_new"], "reinvestment": x["reinvestment"], "nopat0": x["nopat0"],
+            "nopat_final": x["nopat_final"], "wacc": x["wacc"]}
+    if x["gain"] < 0:
+        return [Flag(INFO, "profit_falls_while_reinvesting", "Profit falls while the forecast reinvests",
+                     f"Operating profit after tax goes from {x['nopat0']:,.0f}m today to {x['nopat_final']:,.0f}m in "
+                     f"year {x['years']} while the forecast reinvests {x['reinvestment']:,.0f}m to grow revenue: "
+                     "margins fall faster than revenue grows (expected when margins revert from a cyclical high).",
+                     None, figs)]
+    if x["roic_new"] < x["wacc"] and now is not None and now > x["wacc"]:
+        return [Flag(AMBER, "new_capital_below_wacc", "Forecast growth earns less than the cost of capital",
+                     f"The forecast reinvests {x['reinvestment']:,.0f}m for {x['gain']:,.0f}m more operating profit "
+                     f"after tax: {x['roic_new']:.1%} on new capital, below the {x['wacc']:.1%} WACC, while the "
+                     f"company earns {now:.1%} on its capital today. Growth then subtracts value. " + (
+                         f"The main cause is the operating margin falling from {m0:.1%} to {m1:.1%} over the "
+                         "forecast (mean reversion); check whether the company's position justifies keeping more of "
+                         "it." if m0 - m1 >= 0.05 else "Check the sales-to-capital ratio."),
+                     None, figs | {"roic_now": now, "margin_first": m0, "margin_last": m1})]
+    return []
+
 def value_company(i: EngineInputs) -> Valuation:
     h, a = i.historicals, i.analysis
     flags: list[Flag] = []
@@ -275,6 +303,9 @@ def value_company(i: EngineInputs) -> Valuation:
         flags.append(Flag(AMBER, "tv_share_high", "Terminal value above 80% of EV",
                           f"Terminal value is {dcf.tv_share_of_ev:.0%} of enterprise value.", None,
                           {"tv_share": dcf.tv_share_of_ev}))
+
+    if dcf is not None:
+        flags += reinvestment_flags(dcf, a.metrics.get("roic", {}).get(last))
 
     sotp = run_sotp(i.segments, sum(x for _, x in bridge_t), shares.value) if i.segments else \
         SOTPResult(False, i.segments_reason or "no segment revenue and profit data (the research desk extracts it from "

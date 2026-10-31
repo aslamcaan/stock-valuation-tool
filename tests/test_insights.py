@@ -135,3 +135,30 @@ def test_dividend_check_by_hand():
     assert dps * (1 + gi) / (coe - gi) == pytest.approx(price)
     assert dividend_check(dcf, 0.05, coe, g, price) is None   # 0.5% yield: too small to say much
     assert dividend_check(dcf, dps, 0.02, g, price) is None   # CoE below growth
+
+
+def test_return_on_new_capital_and_its_flags():
+    from dataclasses import replace
+    from engine.dcf import run_dcf
+    from engine.insights import return_on_new_capital
+    from engine.valuation import reinvestment_flags
+    from engine.values import Value
+    from tests.engine_fixtures import engine_inputs
+    from engine.valuation import value_company
+    dcf = value_company(engine_inputs("GRAB")).dcf
+    x = return_on_new_capital(dcf)
+    inp = dcf.inputs
+    n0 = inp.base_revenue * inp.years[0].operating_margin * (1 - inp.years[0].tax_rate)
+    assert x["roic_new"] == pytest.approx((dcf.years[-1].nopat - n0) / sum(y.reinvestment for y in dcf.years))
+    # margins collapsing in the forecast: profit falls while reinvesting -> info flag
+    falling = run_dcf(replace(inp, years=tuple(replace(y, operating_margin=y.operating_margin * (0.5 ** (k + 1)))
+                                                for k, y in enumerate(inp.years))))
+    f = reinvestment_flags(falling, None)
+    assert [x.code for x in f] == ["profit_falls_while_reinvesting"]
+    # low return on new capital against a high return today -> amber
+    low = run_dcf(replace(inp, years=tuple(replace(y, sales_to_capital=0.05) for y in inp.years)))
+    r = return_on_new_capital(low)
+    assert r["gain"] > 0 and r["roic_new"] < low.inputs.wacc
+    f = reinvestment_flags(low, Value(0.40, None, "ratio", "FY", "test"))
+    assert f and f[0].code == "new_capital_below_wacc" and f[0].level == "amber"
+    assert reinvestment_flags(low, Value(0.02, None, "ratio", "FY", "test")) == []  # already below WACC today

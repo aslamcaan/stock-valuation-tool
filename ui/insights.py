@@ -10,7 +10,7 @@ import streamlit as st
 
 from engine.classify import DECLINING
 from engine.insights import (dividend_check, growth_margin_correlation, monte_carlo, peer_regressions, price_walk,
-                             value_split)
+                             return_on_new_capital, value_split)
 from ui.format import millions, money, mult, pct, plain_table
 from ui.theme import ACCENT, BORDER, FAINT, MUTED, TEXT, esc, guide, plotly_layout
 
@@ -170,6 +170,15 @@ def split_view(rep) -> None:
         items.append(("Beyond year " + str(sp["years"]), f"{sp['pv_terminal'] / ev:.0%}",
                       "of our EV comes from the terminal value"))
     _html(_kv(items, accent=2 if mev > 0 and ev > 0 else None))
+    rn = return_on_new_capital(v.dcf)
+    if rn is not None:
+        verdict = ("above the WACC: the forecast's growth adds value" if rn["roic_new"] > rn["wacc"] else
+                   "below the WACC: the forecast's growth subtracts value" if rn["gain"] > 0 else
+                   "operating profit after tax falls while the forecast reinvests")
+        _html(guide(f"Is the forecast reinvesting enough for its growth? It puts US${rn['reinvestment']:,.0f}m into "
+                    f"the business over {rn['years']} years and operating profit after tax goes from "
+                    f"US${rn['nopat0']:,.0f}m to US${rn['nopat_final']:,.0f}m: a return on that new capital of "
+                    f"{pct(rn['roic_new'])}, {verdict} ({pct(rn['wacc'])}).", "Return on new capital"))
 
 
 def dividend_for(rep) -> tuple[dict | None, str]:

@@ -77,6 +77,10 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
     ours), then solves the discount rate the price needs. The bars add up exactly to the gap.
   - **What the price pays for**: no-growth value (year-1 NOPAT / WACC) against growth, for our DCF and for the
     market's enterprise value.
+  - **Return on new capital** (Damodaran's "are you reinvesting enough for your growth?"): the rise in NOPAT over
+    the forecast divided by its total reinvestment. Amber flag when it is below WACC although today's ROIC is above
+    it (TSM: 9.2% against a 12.4% WACC and 47% today, as its margin fades from 58% to 39%); an information flag
+    when profit falls while the forecast reinvests (CVX's cyclical normalisation).
   - **Dividend cross-check** (dividend yield of 1% or more): a two-stage dividend model, dividends growing with the
     DCF's operating profit after tax (constant payout) then at terminal growth, at the cost of equity; and the
     dividend growth for ever the price implies, (P x CoE - D0) / (P + D0). KO: $36.10 against a $94.08 price, which

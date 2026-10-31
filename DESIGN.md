@@ -50,6 +50,8 @@ Radii: 9px buttons, 12–20px cards, pills fully rounded. Easing: ease-out expo 
   labels flip inward near the edges; `.vt-chip` flag pills, always with a text level.
 - `.vt-why` reasons + rubric panels; `.vt-thesis`, `.vt-duel` (bull vs bear, the MD's side marked), `.vt-checks`,
   `.vt-timeline` for the investment view.
+- What if tab: preset buttons, then five sliders; figures are plain (no count-up on every drag), with the
+  value strip showing the move from the base fair value against the price.
 - `.vt-run` analysis screen with `.vt-node` desk cards (waiting, running, done, failed, skipped).
 - `.vt-hero` + `.vt-tape` (latest calls, pauses on hover) on the landing page; `[class*=st-key-card_]` lifting cards.
 - `.vt-dist` rating distribution, `.vt-call` call card and `.vt-mini` price-vs-fair-value strip on the Track Record.

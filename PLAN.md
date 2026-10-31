@@ -340,3 +340,10 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   margin target 25.5% -> 29.0%; DCF $50.47 (weighted $52.59). Reverse DCF adds the implied discount rate (KO 4.9%
   vs our 7.0%) and a DCF at three common sell-side conventions, same discount rate (own tax rate in perpetuity,
   today's ROIC held, 3% terminal growth): KO $62.79, implying 5.6%. Shown in the report and the PDF.
+- 2026-10-31 tests/test_pipeline_offline.py: a whole report offline (KO EDGAR fixture, recorded engine inputs and
+  Damodaran files, stub market data, a fake AI returning schema-valid answers with research segments and one-offs);
+  every desk runs, segments reach the SOTP, the report saves and reloads. Reintroducing the MSFT bug fails it with
+  the original TypeError. What if tab (ui/report.py what_if): sliders for WACC, terminal growth, target margin,
+  terminal ROIC and a growth shift reprice the DCF via engine.news_impact.reprice (~10 ms; comps and history held);
+  presets: base case, sell-side conventions, market's discount rate (DCF = price). MSFT at the market's rate: DCF
+  $520.18 vs price $521.91; CVX $229.01 fair value vs $231.45.

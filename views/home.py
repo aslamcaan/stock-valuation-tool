@@ -133,7 +133,7 @@ with mid:
                           "placeholder": {**field, "color": FAINT},
                           "menuList": {**field, "backgroundColor": SURFACE_2},
                           "option": {"color": TEXT, "backgroundColor": SURFACE_2, "highlightColor": "rgba(255,122,26,.18)"}}}
-    picked = st_searchbox(_search, label="Stock name or ticker", placeholder="Search a company or ticker, e.g. Grab, UBER, Coca-Cola",
+    picked = st_searchbox(_search, label="Stock name or ticker", placeholder="Company or ticker, e.g. UBER, Coca-Cola",
                           key="company_search", style_overrides=look)
     if picked:
         st.session_state["selected"] = picked

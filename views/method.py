@@ -48,7 +48,9 @@ st.markdown("<div class='vt-rules'>" + "".join(f"<div>{ICON['check']}<b>{esc(a)}
 
 st.subheader("How a rating is scored")
 st.caption("Nine criteria, each scored 1 to 5. Code scores four from the model; the MD scores five with cited "
-           "evidence. The weighted score maps to a rating, and the MD may move it one notch with a written reason.")
+           "evidence. The weighted score maps to a rating, and the MD may move it one notch with a written reason. The "
+           "rating cannot point against the valuation: an Overvalued verdict caps it at Hold and an Undervalued one "
+           "floors it at Hold.")
 
 
 def rows(criteria: list[str], by: str) -> str:

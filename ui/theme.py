@@ -439,6 +439,7 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
 
 /* --- how it works ----------------------------------------------------------------------------------------------- */
 .vt-steps {display: grid; margin: 1rem 0 2rem;}
+@media (min-width: 1000px) {.vt-steps {grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(4, auto); grid-auto-flow: column; column-gap: 3rem;} .vt-step:nth-child(4)::before {display: none;}}
 .vt-step {display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 1.1rem; position: relative; padding-bottom: 1.6rem;
   animation: vt-in .7s var(--vt-ease) both;}
 .vt-step:not(:last-child)::before {content: ''; position: absolute; left: 1.6rem; top: 3.2rem; bottom: 0; width: 1px;

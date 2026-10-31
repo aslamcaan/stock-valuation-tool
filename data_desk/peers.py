@@ -28,8 +28,7 @@ MAX_CANDIDATES = 15
 MAX_SEC_CANDIDATES = 8   # added from SEC frames on top of the provider peers
 SEC_SCAN = 60            # nearest-by-revenue filers whose SIC is looked up
 # US GAAP only: SEC's frames API does not serve the ifrs-full taxonomy (404), so 20-F filers come from the providers
-REVENUE_CONCEPTS = (("us-gaap", "Revenues"), ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax"),
-                    ("us-gaap", "SalesRevenueNet"))
+REVENUE_CONCEPTS = ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet")
 
 
 def _ok(fn, *a, **k):
@@ -153,8 +152,8 @@ def sec_revenues(svc, year: int) -> tuple[dict[str, float], str]:
     used = []
     for y in (year - 2, year - 1):  # later years overwrite earlier ones
         got: dict[str, float] = {}
-        for taxonomy, concept in REVENUE_CONCEPTS:
-            frame = _ok(svc.edgar.frame, concept, f"CY{y}", taxonomy)
+        for concept in REVENUE_CONCEPTS:
+            frame = _ok(svc.edgar.frame, concept, f"CY{y}")
             for cik, val in (frame.payload if frame else {}).items():
                 got[cik] = max(got.get(cik, 0.0), float(val))
             if frame:

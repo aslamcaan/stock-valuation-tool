@@ -100,8 +100,13 @@ in Python (about 10 ms), with presets for the base case, sell-side conventions a
 changed. *Edit assumptions*: rerun the whole valuation on your inputs. *Desk log*: every desk's status and the number
 guard's log.
 
-**Exports.** An Excel model with live formulas (blue inputs, green links) whose fair value equals the app's, and a
-PDF of the full report.
+**Exports.** An Excel model with live formulas (blue inputs, green links, red check rows) whose fair value equals
+the app's, and a PDF of the full report. Every formula's result is also stored in the file, so the sheets show numbers
+in Excel's Protected View and in phone or browser previews. Tabs: Cover, Inputs, Historicals, Ratios, WACC, DCF,
+Forecast, Calc, Scenarios, Sensitivity, SOTP (when applied: segment metric x comparables' multiple), Comps, Hist
+multiples, Summary, and Analysis: the walk from our DCF to the price, the no-growth split as formulas on the DCF tab,
+the Monte Carlo percentiles, and the peer regressions rebuilt with Excel's SLOPE, INTERCEPT and RSQ. Both files are
+built only when their button is clicked.
 
 **Other pages.** Compare (two saved reports side by side), Track Record (every call with the MD's reasons, and the
 price move since), How it works, Talking points (how to explain the tool in an interview, with a worked

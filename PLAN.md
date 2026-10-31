@@ -402,3 +402,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   KO: segments read (five, with revenue now), not applied as Latin America has no usable US comparable.
 - CVX and GRAB re-run on the current engine; the CVX run hit FMP's rate limit, so reports now carry an amber
   "provider unavailable" flag when a data provider refused requests during the run.
+- Excel Analysis tab: walk to the price (steps from the app, changes as formulas), no-growth split (NOPAT / WACC
+  from the DCF tab's cells), Monte Carlo percentiles (correlated and independent), peer regressions with live SLOPE /
+  INTERCEPT / RSQ and implied price. Check rows 0.00 for KO, MSFT, UBER, CVX, GRAB, TSM; KO recalculated in Excel 16
+  (R2 0.8788 and 0.5943, implied $52.82 and $37.10, as the app). JPM (bank toolkit) has no DCF, so no tab.

@@ -105,3 +105,24 @@ def test_excel_sotp_sheet_shows_the_working_and_matches_the_engine(tmp_path):
     assert xl.evaluate("SOTP!E5") == pytest.approx(300 * 18.0)  # metric x multiple, as a formula
     assert xl.evaluate("SOTP!E8") == pytest.approx(v.sotp.enterprise_value)
     assert xl.evaluate("SOTP!E9") == pytest.approx(v.per_us_share(v.sotp.value_per_share))
+
+
+def test_excel_analysis_tab_checks_to_zero(rep):
+    """The Analysis tab (walk to the price, no-growth split, Monte Carlo) rebuilds what the app shows: its check rows
+    are zero."""
+    from io import BytesIO
+    from openpyxl import load_workbook
+    from exports.excel import export_bytes
+    wb = load_workbook(BytesIO(export_bytes(rep)), data_only=True)
+    an = wb["Analysis"]
+    checks = [an[f"B{c.row}"].value for c in an["A"] if isinstance(c.value, str) and c.value.startswith("Check")]
+    assert len(checks) >= 2 and all(x == pytest.approx(0, abs=1e-6) for x in checks)
+    labels = [c.value for c in an["A"] if c.value]
+    assert any(str(x).startswith("3. Monte Carlo") for x in labels)
+
+
+def test_rsq_matches_engine_regression():
+    from engine.insights import _ols
+    from exports.pycel_ext import rsq
+    xs, ys = (0.1, 0.2, 0.3, 0.4, 0.55), (2.0, 3.1, 3.9, 5.2, 6.0)
+    assert rsq(ys, xs) == pytest.approx(_ols(list(xs), list(ys))[2])

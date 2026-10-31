@@ -557,6 +557,9 @@ def build_workbook(rep) -> Workbook:
     su.ws.column_dimensions["A"].width = 70
     su.ws.column_dimensions["B"].width = 16
 
+    # --- Analysis: what explains the value ------------------------------------------------------------------------
+    analysis_sheet(wb, rep, I, base)
+
     # --- Cover ---------------------------------------------------------------------------------------------------------
     cover.ws["A4"] = f"{name} ({rep.ticker})"
     cover.ws["A4"].font = Font(bold=True, size=16)
@@ -585,6 +588,139 @@ def build_workbook(rep) -> Workbook:
     cover.ws["A24"].font = Font(italic=True, size=9)
     cover.ws.column_dimensions["B"].width = 30
     return wb
+
+
+def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
+    """The report's explaining analyses: the walk from our DCF to the price, what the price pays for (live formulas on
+    the DCF tab), the Monte Carlo range and the peer regressions (live SLOPE / INTERCEPT / RSQ on the peers)."""
+    from engine.insights import peer_regressions, price_walk, value_split
+    from ui.insights import mc_for, walk_args
+    m = rep.model
+    v = m.valuation
+    if v is None or getattr(v, "dcf_inputs", None) is None or v.dcf is None:
+        return
+    f = v.per_us_share_factor
+    an = Sheet(wb, "Analysis", "US$ per US share unless stated",
+               "Explains the value: the walk to the price, the no-growth split, the Monte Carlo range and peer "
+               "regressions. None of these changes the fair value.")
+    an.ws.column_dimensions["A"].width = 60
+    for c_ in "BCD":
+        an.ws.column_dimensions[c_].width = 15
+    r = 5
+    # 1. walk from our DCF to the price
+    steps = price_walk(v.dcf_inputs, m.verdict.price / f, *walk_args(rep))
+    an.label(f"A{r}", "1. From our DCF to the share price, one assumption at a time", bold=True)
+    r += 1
+    for j, hd in enumerate(["Step", "Value", "Change", "Detail"]):
+        an.head(f"{col(1 + j)}{r}", hd)
+    r += 1
+    first = r
+    for i, st_ in enumerate(steps):
+        an.label(f"A{r}", st_["label"])
+        an.input(f"B{r}", st_["value"] * f, PS)
+        if i:
+            an.formula(f"C{r}", f"B{r}-B{r - 1}", PS)
+        an.label(f"D{r}", st_["detail"])
+        r += 1
+    an.label(f"A{r}", "Share price")
+    an.formula(f"B{r}", I["price"], PS)
+    an.formula(f"C{r}", f"B{r}-B{r - 1}", PS)
+    an.label(f"D{r}", "left after the last step (0.00 when the last step solves for the price)")
+    an.label(f"A{r + 1}", "Check: first step minus the base-case DCF (should be 0.00)")
+    an.formula(f"B{r + 1}", f"B{first}-{base['vps']}", PS, check=True)
+    r += 3
+    # 2. what the price pays for
+    sp = value_split(v.dcf, m.verdict.price / f)
+    if sp is not None:
+        an.label(f"A{r}", "2. What the price pays for (US$ millions unless stated)", bold=True)
+        r += 1
+        rows = [("Year-1 NOPAT on today's revenue (base revenue x year-1 margin x (1 - tax))",
+                 f"{I['base_rev']}*{I['margin'][0]}*(1-{I['tax'][0]})", NUM),
+                ("WACC", I["wacc"], PCT2),
+                ("No-growth value (NOPAT / WACC)", f"B{r}/B{r + 1}", NUM),
+                ("Our enterprise value (DCF tab)", base["ev"], NUM),
+                ("of which growth (EV - no-growth value)", f"B{r + 3}-B{r + 2}", NUM),
+                ("Market enterprise value (price / ADR ratio x shares - bridge)",
+                 f"{I['price']}/{I['adr']}*{I['shares']}-({I['bridge']})", NUM),
+                ("of which the market pays for growth", f"B{r + 5}-B{r + 2}", NUM),
+                ("Share of the market's EV that is growth", f"B{r + 6}/B{r + 5}", PCT),
+                ("No-growth value per US share", f"(B{r + 2}+{I['bridge']})/{I['shares']}*{I['adr']}", PS),
+                ("Our EV in the forecast years (PV of FCF)", f"{base['ev']}-{base['tv']}", NUM),
+                ("Our EV in the terminal value", base["tv"], NUM),
+                ("Terminal value share of our EV", f"B{r + 10}/B{r + 3}", PCT)]
+        for i, (label, fm, fmt) in enumerate(rows):
+            an.label(f"A{r + i}", label)
+            an.formula(f"B{r + i}", fm, fmt)
+        an.label(f"A{r + len(rows)}", "Check: no-growth value minus the app (should be 0)")
+        an.formula(f"B{r + len(rows)}", f"B{r + 2}-{sp['no_growth_ev']!r}", NUM, check=True)
+        r += len(rows) + 2
+    # 3. Monte Carlo
+    mc, corr, ind = mc_for(rep)
+    if mc:
+        an.label(f"A{r}", "3. Monte Carlo range of the DCF (from the app's simulation; fixed seed)", bold=True)
+        r += 1
+        how = (f"growth and margin drawn with their measured correlation of {corr['rho']:+.2f} ({corr['n']} years)"
+               if corr else "inputs drawn independently")
+        an.label(f"A{r}", f"{mc['valid']:,} DCFs; {how}")
+        r += 1
+        both = bool(corr and ind)
+        for j, hd in enumerate(["Percentile", "Value"] + (["Independent"] if both else [])):
+            an.head(f"{col(1 + j)}{r}", hd)
+        r += 1
+        for p_ in sorted(mc["pct"]):
+            an.label(f"A{r}", f"{p_}th")
+            an.input(f"B{r}", mc["pct"][p_] * f, PS)
+            if both:
+                an.input(f"C{r}", ind["pct"][p_] * f, PS)
+            r += 1
+        an.label(f"A{r}", "Chance the value is above the price")
+        an.input(f"B{r}", mc["prob_above_price"], PCT)
+        if both:
+            an.input(f"C{r}", ind["prob_above_price"], PCT)
+        r += 2
+    # 4. peer regressions
+    cm = getattr(m, "company_metrics", None)
+    if m.comps and m.comps.peers and cm is not None:
+        br = sum(x.value for n_, x in v.bridge if n_ != "Long-term investments")
+        regs = [g for g in peer_regressions(cm, m.comps.peers, v.diluted_shares.value, br, f) if g["applicable"]]
+        if regs:
+            an.label(f"A{r}", "4. Peer regressions: the multiple the peers' line gives the company (cross-check)",
+                     bold=True)
+            r += 1
+        for g in regs:
+            metric = cm.revenue if g["key"] == "ev_sales" else cm.ebitda
+            if not metric or not g["implied_price"]:
+                continue
+            an.label(f"A{r}", f"{g['label']} against {g['driver']}", bold=True)
+            r += 1
+            an.head(f"A{r}", "Peer")
+            an.head(f"B{r}", g["driver"].capitalize())
+            an.head(f"C{r}", g["label"])
+            r += 1
+            top = r
+            for t_, x_, y_ in g["points"]:
+                an.label(f"A{r}", t_)
+                an.input(f"B{r}", x_, PCT)
+                an.input(f"C{r}", y_, MULT)
+                r += 1
+            xs, ys = f"B{top}:B{r - 1}", f"C{top}:C{r - 1}"
+            rows = [("Slope", f"SLOPE({ys},{xs})", DEC4), ("Intercept", f"INTERCEPT({ys},{xs})", DEC4),
+                    ("R squared", f"RSQ({ys},{xs})", DEC4)]
+            for i, (label, fm, fmt) in enumerate(rows):
+                an.label(f"A{r + i}", label)
+                an.formula(f"B{r + i}", fm, fmt)
+            an.label(f"A{r + 3}", f"Company's {g['driver']}")
+            an.input(f"B{r + 3}", g["company_x"], PCT)
+            an.label(f"A{r + 4}", "Warranted multiple (intercept + slope x company's driver)")
+            an.formula(f"B{r + 4}", f"B{r + 1}+B{r}*B{r + 3}", MULT)
+            an.label(f"A{r + 5}", ("Company revenue" if g["key"] == "ev_sales" else "Company EBITDA") + " (US$m)")
+            an.input(f"B{r + 5}", metric, NUM)
+            an.label(f"A{r + 6}", "Implied value per US share ((multiple x metric + bridge) / shares x ADR)", bold=True)
+            an.formula(f"B{r + 6}", f"(B{r + 4}*B{r + 5}+{I['bridge_multiples']})/{I['shares']}*{I['adr']}", PS,
+                       bold=True)
+            an.label(f"A{r + 7}", "Check: Excel minus app (should be 0.00)")
+            an.formula(f"B{r + 7}", f"B{r + 6}-{g['implied_price']!r}", PS, check=True)
+            r += 9
 
 
 def export_bytes(rep, cached: bool = True) -> bytes:

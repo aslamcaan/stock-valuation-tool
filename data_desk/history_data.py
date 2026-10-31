@@ -7,25 +7,32 @@ pre-split count would be paired with a split-adjusted price (e.g. NVDA FY2022 P/
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from core.cache import CacheMiss
 from core.http import DataSourceError
 from engine.history_multiples import YearPoint, price_on_or_before, split_adjusted_closes
 from engine.model import Historicals
 
+STALE_PRICES_OK = timedelta(days=3)
+
 
 def price_series(svc, ticker: str, start: date) -> tuple[dict[str, float], str, list[tuple[str, float]]]:
     """(split-adjusted closes, description, [(split date, factor)]). Tiingo carries split factors; FMP fallback."""
+    def tiingo(c, how: str):
+        splits = [(r["date"][:10], float(r["splitFactor"])) for r in c.payload
+                  if r.get("splitFactor") not in (None, 1, 1.0)]
+        return split_adjusted_closes(c.payload), f"Tiingo daily closes, split-adjusted ({how} {c.fetched_at_iso})", splits
+
     try:
         c = svc.tiingo.prices(ticker, start.isoformat())
         if c.payload:
-            splits = [(r["date"][:10], float(r["splitFactor"])) for r in c.payload
-                      if r.get("splitFactor") not in (None, 1, 1.0)]
-            return (split_adjusted_closes(c.payload),
-                    f"Tiingo daily closes, split-adjusted (fetched {c.fetched_at_iso})", splits)
+            return tiingo(c, "fetched")
     except (DataSourceError, CacheMiss):
-        pass
+        # e.g. the hourly limit: a series stored in the last few days is still right for multiples and ranges
+        c = svc.tiingo.prices_cached(ticker, start.isoformat())
+        if c is not None and c.payload and datetime.now(timezone.utc) - c.fetched_at <= STALE_PRICES_OK:
+            return tiingo(c, "refresh refused, so the copy fetched")
     r = svc.market.price_history(ticker, start.isoformat())
     if r.available:
         return {x["date"]: x["close"] for x in r.data}, f"{r.source} daily closes (split adjustment as provided)", []

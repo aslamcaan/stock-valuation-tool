@@ -15,6 +15,9 @@ from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Space
 from engine.rubric import LABELS, WEIGHTS
 from ui.format import millions, money, mult, pct
 from ui.report import DISCLAIMER
+from engine.classify import DECLINING
+from engine.insights import peer_regressions, price_walk, value_split
+from ui.insights import mc_cached, walk_args
 
 INK = colors.HexColor("#14110e")      # masthead warm black, as in the app
 ACCENT = colors.HexColor("#d9600b")     # the app's orange, darkened to print and read on white (model figures)
@@ -268,6 +271,12 @@ def build_pdf(rep) -> bytes:
         s.append(P(f"EV {millions(dd.enterprise_value)} (terminal value {dd.tv_share_of_ev:.0%} of EV); equity "
                    f"{millions(dd.equity_value)}; {v.diluted_shares.value:,.1f}m diluted shares; value per share "
                    f"{money(v.per_us_share(dd.value_per_share))}."))
+        sp = value_split(dd, vd.price / v.per_us_share_factor)
+        if sp and sp["growth_ev"] >= 0 and sp["market_ev"] > 0:
+            s.append(P(f"What the price pays for: today's profits with no growth are worth {millions(sp['no_growth_ev'])} "
+                       f"(NOPAT {millions(sp['nopat'])} / WACC {pct(sp['wacc'])}). Growth is "
+                       f"{sp['growth_ev'] / dd.enterprise_value:.0%} of our EV and "
+                       f"{sp['market_growth_ev'] / sp['market_ev']:.0%} of the market's EV.", SMALL))
     # 11-14
     if v.sotp.applicable:
         s.append(P("11. Sum of the parts", H2))
@@ -279,6 +288,15 @@ def build_pdf(rep) -> bytes:
                         for x in m.comps.multiples.values()], ["Multiple", "Peers", "Peer median", "Company", "Implied"],
                        [40 * mm, 20 * mm, 30 * mm, 30 * mm, 30 * mm]))
         s.append(P("Peers: " + ", ".join(p.ticker for p in m.comps.peers), SMALL))
+        if m.company_metrics is not None:
+            br = sum(x.value for n, x in v.bridge if n != "Long-term investments")
+            for r in peer_regressions(m.company_metrics, m.comps.peers, v.diluted_shares.value, br, v.per_us_share_factor):
+                if r["applicable"]:
+                    s.append(P(f"Warranted {r['label']} at {r['driver']} {pct(r['company_x'])}: {mult(r['warranted'])} "
+                               f"(line through {len(r['points'])} peers, R2 {r['r2']:.2f}"
+                               + (", extrapolated" if r["extrapolated"] else "") + f") implies "
+                               f"{money(r['implied_price'])}, against {money(m.comps.multiples[r['key']].implied_price)} "
+                               "at the peer median. A cross-check, not in the fair value.", SMALL))
     s.append(table([[x.label, mult(x.low), mult(x.median), mult(x.high), mult(x.current), money(x.implied_price)]
                     for x in m.history.values()], ["Own history", "Low", "Median", "High", "Now", "Implied"],
                    [40 * mm, 22 * mm, 22 * mm, 22 * mm, 22 * mm, 30 * mm]))
@@ -286,12 +304,13 @@ def build_pdf(rep) -> bytes:
     if rv.get("growth", {}).get("solved"):
         s.append(P(f"13. Reverse DCF: the price implies {pct(rv['growth']['implied_cagr'])} revenue CAGR over "
                    f"{rv['years']} years (base case {pct(rv['base_cagr'])})."))
-    if rv.get("wacc", {}).get("solved"):
-        s.append(P(f"The price implies a discount rate of {pct(rv['wacc']['implied_wacc'])} against our WACC of "
-                   f"{pct(rv['wacc']['base_wacc'])}.", SMALL))
-    if rv.get("street"):
-        s.append(P(f"At common sell-side conventions ({'; '.join(rv['street']['changes'])}), same discount rate: "
-                   f"DCF {money(v.per_us_share(rv['street']['value_per_share']))}.", SMALL))
+    if v.dcf_inputs is not None:
+        steps = price_walk(v.dcf_inputs, vd.price / v.per_us_share_factor, *walk_args(rep))
+        f = v.per_us_share_factor
+        s.append(P("From our DCF to the share price, one assumption at a time (the changes add up to the gap):", SMALL))
+        s.append(table([[x["label"], f"{x['change'] * f:+,.2f}" if k else "-", money(x["value"] * f), x["detail"]]
+                        for k, x in enumerate(steps)], ["Step", "Change", "Value", "What changed"],
+                       [45 * mm, 20 * mm, 22 * mm, 95 * mm]))
     s.append(P("14. Scenarios and sensitivity", H2))
     s.append(table([[x.scenario.name, f"{x.scenario.probability:.0%}", x.scenario.describe(),
                      money(v.per_us_share(x.value_per_share)) if x.result else "-"] for x in v.scenarios],
@@ -300,6 +319,15 @@ def build_pdf(rep) -> bytes:
     if s1:
         s.append(table([[pct(g)] + [money(v.per_us_share(x)) for x in r] for g, r in zip(s1["terminal_growth"], s1["value_per_share"])],
                        ["g \\ WACC"] + [pct(x) for x in s1["wacc"]], [24 * mm] + [31 * mm] * 5))
+    if v.dcf_inputs is not None:
+        cap = 0.0 if v.classification.stage == DECLINING else m.inputs.risk_free.value
+        mc = mc_cached(v.dcf_inputs, vd.price / v.per_us_share_factor, cap)
+        if mc:
+            f = v.per_us_share_factor
+            s.append(P(f"Monte Carlo ({mc['valid']:,} DCFs; growth, margin, WACC and terminal growth drawn "
+                       f"independently, each with its 10th-90th percentile range equal to the bear-bull step; fixed "
+                       f"seed): median {money(mc['pct'][50] * f)}, 10th-90th {money(mc['pct'][10] * f)} to "
+                       f"{money(mc['pct'][90] * f)}; {mc['prob_above_price']:.0%} of versions above the price.", SMALL))
     s.append(P("15. Football field", H2))
     s.append(football_drawing(rep))
     return _finish(doc, s, rep, buf)

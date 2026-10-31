@@ -36,6 +36,12 @@ class TiingoClient:
         """IEX real-time-ish quote: list with one dict (tngoLast, prevClose, timestamp)."""
         return self._call("price", f"iex/{symbol.upper()}", force=force)
 
+    def prices_cached(self, symbol: str, start: str) -> Cached | None:
+        """The last stored price series for this request, however old (None if never fetched): a fallback when the
+        hourly limit refuses a refresh."""
+        return self.cache.read("price", cache_key(BASE + f"tiingo/daily/{symbol.upper()}/prices", {"startDate": start}),
+                               allow_stale=True)
+
     def prices(self, symbol: str, start: str, force: bool = False) -> Cached:
         """End-of-day prices from `start` (YYYY-MM-DD): date, close, adjClose, volume..."""
         return self._call("price", f"tiingo/daily/{symbol.upper()}/prices", {"startDate": start}, force=force)

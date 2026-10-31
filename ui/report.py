@@ -11,9 +11,10 @@ from data_desk.tags import LINES
 from engine.analysis import METRIC_SECTION
 from engine.rubric import LABELS, WEIGHTS
 from engine.values import MULTIPLE, PER_SHARE, RATIO
+from ui.insights import monte_carlo_view, regression_view, split_view, walk_view
 from ui.format import (calc_value, fmt_value, millions, money, mult, pct, plain_table, trace_text, traced_table,
                        when)
-from ui.theme import (ACCENT, CSS, GREEN, ICON, MONO, RATING_COLOUR, RED, TEXT, VERDICT_COLOUR, chip, count, esc,
+from ui.theme import (ACCENT, CSS, guide, GREEN, ICON, MONO, RATING_COLOUR, RED, TEXT, VERDICT_COLOUR, chip, count, esc,
                       note, plotly_layout)
 
 NAMES = {**{k: v.label for k, v in LINES.items()}, **DERIVED_LABELS}
@@ -435,6 +436,7 @@ def dcf(rep) -> None:
                 + (f"  \nImplied exit EV/EBIT {mult(d.implied_exit_ebit_multiple)}" if d.implied_exit_ebit_multiple else ""))
     st.caption("SBC is a cash cost (GAAP operating income already expenses it); mid-year discounting; cash generated "
                "after the latest balance sheet is counted; terminal reinvestment = growth / terminal ROIC.")
+    split_view(rep)
 
 
 def sotp(rep) -> None:
@@ -462,6 +464,7 @@ def comps(rep) -> None:
                          [mult(p.multiples()[k]) for k in ("pe_forward", "pe_trailing", "ev_sales", "ev_ebitda", "ev_fcf")]
                          for p in c.peers]
             html(plain_table(peer_rows, ["Ticker", "Name", "Mkt cap", "Fwd P/E", "P/E", "EV/Sales", "EV/EBITDA", "EV/FCF"]))
+        regression_view(rep)
     st.markdown("**Own 5-year range**")
     rows = [[h.label, mult(h.low), mult(h.median), mult(h.high), mult(h.current),
              "–" if h.percentile is None else f"{h.percentile:.0%}", money(h.implied_price)] for h in rep.model.history.values()]
@@ -485,23 +488,10 @@ def reverse_dcf(rep) -> None:
                     f"(base case {pct(m['base_terminal_margin'])}).")
     else:
         st.markdown(f"Margins alone: {m.get('reason', 'not solved')}.")
-    w, street = r.get("wacc", {}), r.get("street")
-    if w.get("solved") or street:
-        st.markdown("#### Why the DCF can differ from analysts' targets")
-    if w.get("solved"):
-        st.markdown(f"Holding everything else, the price implies a discount rate of **{pct(w['implied_wacc'])}** "
-                    f"against our WACC of {pct(w['base_wacc'])} (risk-free rate "
-                    f"{pct(rep.model.inputs.risk_free.value)}).")
-    if street:
-        v = rep.model.valuation
-        st.markdown(f"With three common sell-side conventions in place of our more cautious ones, at the same discount "
-                    f"rate, the DCF is **{money(v.per_us_share(street['value_per_share']))}** (base "
-                    f"{money(v.per_us_share(v.dcf.value_per_share))}): " + "; ".join(street["changes"]) + "."
-                    + (f" On those conventions the price implies a discount rate of "
-                       f"**{pct(street['implied_wacc'])}**." if street.get("implied_wacc") else ""))
-        st.caption("Analysts' price targets usually rest on an earnings multiple the stock has traded on, which "
-                   "assumes the market's pricing is right; the DCF tests it at a required return built from the "
-                   "risk-free rate, beta and the equity risk premium.")
+    walk_view(rep)
+    st.caption("Analysts' price targets usually rest on an earnings multiple the stock has traded on, which assumes "
+               "the market's pricing is right; the DCF tests it at a required return built from the risk-free rate "
+               f"({pct(rep.model.inputs.risk_free.value)}), beta and the equity risk premium.")
 
 
 def scenarios(rep) -> None:
@@ -521,6 +511,7 @@ def scenarios(rep) -> None:
         html(plain_table([[f"{gs * 100:+.0f}"] + [money(v.per_us_share(x)) for x in row] for gs, row in
                           zip(s2["growth_shift"], s2["value_per_share"])],
                          ["growth \\ margin"] + [f"{m * 100:+.0f}" for m in s2["margin_shift"]]))
+    monte_carlo_view(rep)
 
 
 def _family(method: str) -> str:
@@ -900,6 +891,41 @@ TABS = {  # section name (without its number) -> tab
     "Assumptions table and data provenance": "Sources",
 }
 TAB_ORDER = ["Overview", "Valuation", "Financials", "News & ownership", "Review & flags", "Sources"]
+TAB_GUIDE = {  # what each tab holds, in the order you scroll through it
+    "Overview": "The MD's investment view and the bull and bear cases, what the company does, the football field (every "
+                "valuation method on one chart) and the main risks. Scroll down for each.",
+    "Valuation": "How the fair value is built, in order: the company's stage, the forecast and where each driver comes "
+                 "from, WACC, the DCF and what the price is paying for, sum of the parts, peer and own-history "
+                 "multiples, the reverse DCF with the walk from our value to the share price, then scenarios and the "
+                 "Monte Carlo range.",
+    "Financials": "Ten years of reported statements (hover any number for its filing, XBRL tag and fetch date), the "
+                  "ratios computed from them, and how the company ranks against its industry and its peers.",
+    "News & ownership": "Recent dated news, each item's sized effect on fair value and whether the market has already "
+                        "priced it in; then insider trades, major holders and short interest.",
+    "Review & flags": "An independent reviewer's challenges to the assumptions and the strongest bear and bull cases, "
+                      "then every data and valuation flag with what it means for this company.",
+    "Sources": "Every assumption with its value and where it comes from, and every data source with the date it was "
+               "fetched.",
+    "What if": "Move a slider and the DCF reprices instantly, in Python. The presets jump to our base case, to common "
+               "sell-side conventions, or to the discount rate the share price implies.",
+    "History": "Every dated report on this company: how the fair value and the rating moved against the price, and "
+               "what changed between runs.",
+}
+FINANCIAL_VALUATION_GUIDE = ("How the fair value is built for a bank, insurer or REIT (a DCF does not fit them): the "
+                             "sector metrics, the cost of equity, then each valuation method and the blend.")
+WEIGHT_NAMES = {"dcf": "DCF", "comps": "peer multiples", "history": "own-history multiples", "sotp": "sum of the parts"}
+
+
+def start_here(rep) -> None:
+    """One line under the header: how the headline numbers relate, and where to find how each is built."""
+    vd = rep.model.verdict
+    w = getattr(vd, "weights_used", None) or {}
+    blend_txt = ", ".join(f"{WEIGHT_NAMES.get(k, k)} {x:.0%}" for k, x in w.items() if x) if w else ""
+    html(guide((f"The fair value blends the methods ({blend_txt}); " if blend_txt else "The fair value blends the "
+                "valuation methods; ") + "the verdict compares it with the price; the rating also weighs business "
+               "quality and the other criteria scored on the right, and is capped at Hold when the stock looks "
+               "overvalued. Hover a figure for its source, or use the tabs below for how each number is built.",
+               "Start here"))
 
 
 def render_report(rep, extra_tabs: list | None = None) -> None:
@@ -916,8 +942,12 @@ def render_report(rep, extra_tabs: list | None = None) -> None:
     for title, fn in (financial_sections() if fin is not None else SECTIONS):
         groups[TABS.get(title.split(". ", 1)[1], "Valuation")].append((title, fn))
     names = [t for t in TAB_ORDER if groups[t]] + [n for n, _ in (extra_tabs or [])]
+    start_here(rep)
     for name, tab in zip(names, st.tabs(names)):
         with tab:
+            text = FINANCIAL_VALUATION_GUIDE if (name == "Valuation" and fin is not None) else TAB_GUIDE.get(name)
+            if text:
+                html(guide(text, "In this tab"))
             for title, fn in groups.get(name, []):
                 n, name_ = title.split(". ", 1)
                 html(f"<h4><span class='vt-sec-n'>{esc(n)}</span> {esc(name_)}</h4>")

@@ -247,3 +247,28 @@ def test_a_new_10q_refetches_the_cached_xbrl(tmp_path, monkeypatch):
     assert fetched == [("companyfacts", True)]  # the filings list was not cached, so only the facts are refetched
     monkeypatch.setattr(ed, "recent_filings_fresh", lambda cik, forms: ([{"form": "10-Q", "filing_date": "2000-01-01"}], ""))
     assert ed.refresh_if_newer_filing(21344) is None  # nothing filed since the cache was filled
+
+
+def test_a_refused_price_refresh_uses_the_recent_cached_series():
+    """KO, 2026-10-31 20:33: Tiingo's hourly limit refused the refresh of a series fetched at 19:46, FMP had no
+    fallback, and the report lost its own-history multiples."""
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from core.cache import Cached
+    from core.http import DataSourceError
+    from data_desk.history_data import price_series
+
+    rows = [{"date": "2026-10-29T00:00:00.000Z", "close": 94.0, "splitFactor": 1.0},
+            {"date": "2026-10-30T00:00:00.000Z", "close": 94.08, "splitFactor": 1.0}]
+
+    def refused(*_, **__):
+        raise DataSourceError("Tiingo", "429 hourly limit")
+
+    def svc_with(age):
+        cached = Cached(rows, datetime.now(timezone.utc) - age, True, "k", "price")
+        return SimpleNamespace(tiingo=SimpleNamespace(prices=refused, prices_cached=lambda *a: cached),
+                               market=SimpleNamespace(price_history=lambda *a: MarketResult(None, None, None, False, [])))
+    closes, how, _ = price_series(svc_with(timedelta(minutes=47)), "KO", date(2020, 9, 1))
+    assert closes["2026-10-30"] == 94.08 and "refresh refused" in how
+    closes, how, _ = price_series(svc_with(timedelta(days=5)), "KO", date(2020, 9, 1))
+    assert closes == {} and how == "price history unavailable"  # too old to stand in

@@ -237,6 +237,17 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
 .vt-note.warn b {color: var(--vt-amber);}
 [data-testid='stAlertContentWarning'], [data-testid='stAlertContentInfo'], [data-testid='stAlertContentError'] {color: var(--vt-text);}
 [data-testid='stAlert'] > div {border: 1px solid var(--vt-border-2); background: var(--vt-surface) !important;}
+.vt-guide {display: flex; flex-direction: column; gap: .2rem; font-size: .86rem; line-height: 1.58; color: var(--vt-muted);
+  border-left: 2px solid rgba(255,122,26,.55); background: rgba(255,122,26,.04); border-radius: 0 10px 10px 0;
+  padding: .6rem .95rem; margin: .35rem 0 1.1rem; max-width: 96ch;}
+.vt-guide b {font-family: var(--vt-mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--vt-accent); font-weight: 600;}
+.vt-kv {display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .8rem 1.4rem; margin: .6rem 0 1rem;}
+.vt-kv div {border-top: 1px solid var(--vt-border); padding-top: .55rem;}
+.vt-kv .l {font-size: .74rem; color: var(--vt-faint);}
+.vt-kv .v {font-family: var(--vt-mono); font-size: 1.08rem; color: var(--vt-text); font-weight: 600; margin: .1rem 0;}
+.vt-kv .v.acc {color: var(--vt-accent);}
+.vt-kv .s {font-size: .76rem; color: var(--vt-muted); line-height: 1.45;}
 .vt-note {font-size: .84rem; color: var(--vt-muted); border: 1px solid var(--vt-border); border-radius: 10px;
   padding: .75rem 1rem; background: var(--vt-surface); margin: .6rem 0;}
 
@@ -481,6 +492,12 @@ def esc(x) -> str:
 def chip(level: str, text: str, title: str = "") -> str:
     return (f"<span class='vt-chip {level}' title='{esc(title)}'>{esc(FLAG_LABEL.get(level, level))} · "
             f"{esc(text)}</span>")
+
+
+def guide(text: str, label: str = "How to read this") -> str:
+    """A reading aid next to the thing it explains: what it shows, why the number is what it is, where it comes
+    from. Plain text (escaped)."""
+    return f"<div class='vt-guide'><b>{esc(label)}</b><span>{esc(text)}</span></div>"
 
 
 def note(text: str) -> str:

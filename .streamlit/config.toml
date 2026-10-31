@@ -1,10 +1,10 @@
-# Dark, clean theme. Secrets go in .streamlit/secrets.toml (gitignored) or the Streamlit Cloud secrets box.
+# Black and orange research terminal. Secrets go in .streamlit/secrets.toml (gitignored) or the Streamlit Cloud secrets box.
 [theme]
 base = "dark"
-primaryColor = "#4c8dff"
-backgroundColor = "#0b0f14"
-secondaryBackgroundColor = "#151b23"
-textColor = "#e6edf3"
+primaryColor = "#ff7a1a"
+backgroundColor = "#0a0908"
+secondaryBackgroundColor = "#17140f"
+textColor = "#ede4d3"
 font = "sans serif"
 
 [client]

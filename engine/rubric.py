@@ -82,20 +82,14 @@ def score_revisions(revisions: dict) -> Score:
     return Score("estimate_revisions", 3, "no revision history yet: neutral score", "code")
 
 
+RATING_CUTS = [(4.2, "Strong Buy"), (3.4, "Buy"), (2.6, "Hold"), (1.8, "Sell")]  # weighted score at or above
+
+
 def rating_from(scores: list[Score]) -> tuple[float, str]:
     total = sum(WEIGHTS[s.criterion] * s.score for s in scores)
     weight = sum(WEIGHTS[s.criterion] for s in scores)
     avg = total / weight if weight else 3.0
-    if avg >= 4.2:
-        r = "Strong Buy"
-    elif avg >= 3.4:
-        r = "Buy"
-    elif avg >= 2.6:
-        r = "Hold"
-    elif avg >= 1.8:
-        r = "Sell"
-    else:
-        r = "Strong Sell"
+    r = next((name for cut, name in RATING_CUTS if avg >= cut), "Strong Sell")
     return avg, r
 
 

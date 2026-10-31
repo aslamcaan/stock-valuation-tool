@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="232" height="32" viewBox="0 0 232 32" fill="none">
-  <rect x="1" y="1" width="30" height="30" rx="8" fill="#132033" stroke="#2b4a78"/>
-  <path d="M9 22V17M16 22V12M23 22V8" stroke="#4c8dff" stroke-width="3" stroke-linecap="round"/>
-  <text x="42" y="21.5" fill="#e6edf3" font-family="IBM Plex Sans, Segoe UI, system-ui, sans-serif" font-size="15" font-weight="650" letter-spacing="-0.2">Stock Valuation Tool</text>
+  <rect x="1" y="1" width="30" height="30" rx="8" fill="#1c130b" stroke="#5a3415"/>
+  <path d="M9 22V17M16 22V12M23 22V8" stroke="#ff7a1a" stroke-width="3" stroke-linecap="round"/>
+  <text x="42" y="21.5" fill="#ede4d3" font-family="Archivo, IBM Plex Sans, Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" letter-spacing="-0.2">Stock Valuation Tool</text>
 </svg>

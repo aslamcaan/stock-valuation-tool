@@ -10,36 +10,17 @@ import time
 import streamlit as st
 
 from desks.modelling import run_modelling
-from desks.pipeline import DESKS, DONE, FAILED, RUNNING, SKIPPED, load, refresh_news, run_report
+from desks.pipeline import DESKS, load, refresh_news, run_report
 from engine.valuation import ValuationError
 from exports.excel import export_bytes
 from exports.pdf import build_pdf
-from ui.format import CSS, STATE_COLOUR, STATE_ICON, money
-from ui.theme import MUTED, esc
+from ui.format import CSS, money
 from ui.report import render_report, verdict_card
+from ui.run_panel import desk_nodes, panel as run_panel
 from ui.state import get_services
 
 svc = get_services()
 st.markdown(CSS, unsafe_allow_html=True)
-
-
-def progress_panel(status: dict, started: float, cost: float) -> str:
-    finished = sum(1 for s, _ in status.values() if s in (DONE, FAILED, SKIPPED))
-    running = sum(1 for s, _ in status.values() if s == RUNNING)
-    pct = (finished + 0.5 * running) / len(DESKS)
-    rows = []
-    for d in DESKS:
-        state, msg = status.get(d, ("waiting", "Waiting"))
-        icon = STATE_ICON[state]
-        rows.append(f"<div><span style='color:{STATE_COLOUR[state]};display:inline-block;width:1.2em'>"
-                    f"{'<span class=\"vt-spin\">◌</span>' if state == RUNNING else icon}</span>"
-                    f"<b style='display:inline-block;width:9.5em'>{d}</b> {msg}</div>")
-    return (f"<style>@keyframes vtspin{{to{{transform:rotate(360deg)}}}}.vt-spin{{display:inline-block;"
-            f"animation:vtspin 1s linear infinite}}</style>"
-            f"<div class='vt-card vt-desk'><div style='background:#1f262e;border-radius:4px;height:8px;margin-bottom:8px'>"
-            f"<div style='background:#4c8dff;width:{pct * 100:.0f}%;height:8px;border-radius:4px'></div></div>"
-            f"<div class='vt-muted'>{pct:.0%} complete · {time.time() - started:,.0f}s elapsed · AI cost ${cost:.3f}</div>"
-            + "".join(rows) + "</div>")
 
 
 def start_run(ticker: str, overrides: dict | None = None) -> None:
@@ -69,18 +50,14 @@ def watch_run() -> None:
             run["status"][e.desk] = (e.state, e.message)
         rep = run["holder"].get("report")
         cost = svc.ai.report_cost(rep.report_id) if rep else 0.0
-        panel.markdown(progress_panel(run["status"], run["started"], cost), unsafe_allow_html=True)
+        panel.markdown(run_panel(run, rep, cost), unsafe_allow_html=True)
         stage = "model" if rep is not None and rep.model is not None else ("data" if rep is not None and rep.company else None)
         if stage != shown_stage and stage is not None:
             shown_stage = stage
             with early.container():
                 if stage == "model":
+                    st.markdown("#### First look: the model's numbers (the AI desks are still writing)")
                     verdict_card(rep)
-                    st.caption("AI desks are still writing the investment view…")
-                else:
-                    cd = rep.company
-                    st.markdown(f"**{cd.profile.name}** · {cd.profile.sic_description} · reports in "
-                                f"{cd.profile.reporting_currency}. Historicals loaded; valuation in progress…")
         if not run["thread"].is_alive() and run["q"].empty():
             break
         time.sleep(0.4)
@@ -253,12 +230,7 @@ def _edit_tab() -> None:
 
 def _log_tab() -> None:
     st.markdown("#### Desk log")
-    html_rows = []
-    for d, (state, msg) in rep.desk_status.items():
-        html_rows.append(f"<div><span style='color:{STATE_COLOUR.get(state, MUTED)};display:inline-block;width:1.4em'>"
-                         f"{STATE_ICON.get(state, '·')}</span><b style='display:inline-block;width:8.5em'>{esc(d)}</b>"
-                         f"{esc(msg)}</div>")
-    st.markdown(f"<div class='vt-card vt-desk'>{''.join(html_rows)}</div>", unsafe_allow_html=True)
+    st.markdown(desk_nodes(rep.desk_status), unsafe_allow_html=True)
     if rep.model:
         for n in rep.model.notes:
             st.caption(n)

@@ -8,7 +8,7 @@ from desks.pipeline import load
 from ui.financial import _fmt
 from ui.format import money, plain_table, when
 from ui.report import football
-from ui.theme import BLUE, RATING_COLOUR, VERDICT_COLOUR, esc, note
+from ui.theme import ACCENT, RATING_COLOUR, VERDICT_COLOUR, esc, note
 from ui.state import get_services
 
 MULTIPLES = [("pe_trailing", "P/E (trailing)"), ("pe_forward", "P/E (forward)"), ("ev_sales", "EV/Sales"),
@@ -91,7 +91,7 @@ for col, rep in zip(cols, reps):
     adj = (f" · news-adjusted fair value {money(imp.adjusted_fair_value)} ({when(imp.as_of[:10])})"
            if imp is not None and not imp.error and imp.adjusted is not None else "")
     kpis = [_kpi("Price", money(vd.price)),
-            _kpi("Fair value", money(vd.fair_value), "–" if vd.gap is None else f"{vd.gap:+.1%} vs price", BLUE),
+            _kpi("Fair value", money(vd.fair_value), "–" if vd.gap is None else f"{vd.gap:+.1%} vs price", ACCENT),
             _kpi("Verdict", vd.verdict or "–", f"Confidence: {vd.confidence or '–'}", VERDICT_COLOUR.get(vd.verdict), True),
             _kpi("MD rating", rep.md.rating if rep.md else "–",
                  f"Conviction: {rep.md.conviction}" if rep.md else "AI desks did not run",

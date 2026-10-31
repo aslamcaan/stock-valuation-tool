@@ -8,10 +8,10 @@ from __future__ import annotations
 import html
 
 from engine.values import DAYS, MILLIONS, MULTIPLE, PER_SHARE, RATIO, SHARES_M, Value
-from ui.theme import AMBER, BLUE, CSS, GREEN, MUTED, RED  # noqa: F401  (re-exported for the views)
+from ui.theme import ACCENT, AMBER, CSS, GREEN, MUTED, RED  # noqa: F401  (re-exported for the views)
 
 STATE_ICON = {"done": "✓", "running": "◌", "failed": "✗", "waiting": "·", "skipped": "–"}
-STATE_COLOUR = {"done": GREEN, "running": BLUE, "failed": RED, "waiting": MUTED, "skipped": MUTED}
+STATE_COLOUR = {"done": GREEN, "running": ACCENT, "failed": RED, "waiting": MUTED, "skipped": MUTED}
 FLAG_ICON = {"hard_stop": "⛔", "red": "🔴", "amber": "🟠", "info": "ℹ️"}  # plain-text logs only; the UI uses chips
 
 

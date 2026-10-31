@@ -13,7 +13,7 @@ from engine.rubric import LABELS, WEIGHTS
 from engine.values import MULTIPLE, PER_SHARE, RATIO
 from ui.format import (calc_value, fmt_value, millions, money, mult, pct, plain_table, trace_text, traced_table,
                        when)
-from ui.theme import (BLUE, CSS, GREEN, MONO, RATING_COLOUR, RED, TEXT, VERDICT_COLOUR, chip, esc,
+from ui.theme import (ACCENT, CSS, GREEN, ICON, MONO, RATING_COLOUR, RED, TEXT, VERDICT_COLOUR, chip, count, esc,
                       note, plotly_layout)
 
 NAMES = {**{k: v.label for k, v in LINES.items()}, **DERIVED_LABELS}
@@ -48,10 +48,16 @@ def statement_table(h, lines: list[str], main_only: bool = True) -> str:
 
 
 # --- 0. header --------------------------------------------------------------------------------------------------
+def t(x) -> str:
+    """AI or fetched text inside an HTML block: escaped, and no raw newlines (a blank line would end the block)."""
+    return esc(x or "").replace("\n", "<br>")
+
+
 def _kpi(label: str, value: str, sub: str = "", title: str = "", colour: str | None = None, word: bool = False) -> str:
     style = f" style='color:{colour}'" if colour else ""
+    shown = esc(value) if word else count(value)
     return (f"<div class='vt-kpi'><div class='l'>{esc(label)}</div>"
-            f"<div class='v{' word' if word else ''}'{style} title='{esc(title)}'>{esc(value)}</div>"
+            f"<div class='v{' word' if word else ''}'{style} title='{esc(title)}'>{shown}</div>"
             f"<div class='s' title='{esc(sub)}'>{esc(sub) or '&nbsp;'}</div></div>")
 
 
@@ -67,18 +73,60 @@ def _range_strip(lo: float, hi: float, label: str, price: float, fv: float | Non
         return f"{(v - a) / (b - a) * 100:.2f}%"
     marks = [f"<div class='band' style='left:{x(lo)};width:calc({x(hi)} - {x(lo)})'></div>",
              f"<div class='mark' style='left:{x(price)};background:{TEXT}'></div>"]
-    side_price = "l" if (fv is None or price <= fv) else "r"
+    def side(v, outward):  # outward from the other mark, unless that would run off the strip's edge
+        pos = (v - a) / (b - a)
+        return "l" if outward == "r" and pos > 0.8 else ("r" if outward == "l" and pos < 0.2 else outward)
+    side_price = side(price, "l" if (fv is None or price <= fv) else "r")
     marks.append(f"<div class='lab {side_price}' style='left:{x(price)};color:{TEXT}'>Price {esc(money(price))}</div>")
     if fv:
-        side_fv = "r" if side_price == "l" else "l"
-        marks += [f"<div class='mark' style='left:{x(fv)};background:{BLUE}'></div>",
-                  f"<div class='lab {side_fv}' style='left:{x(fv)};color:{BLUE}'>Fair value {esc(money(fv))}</div>"]
-    legend = (f"<span><i style='background:rgba(76,141,255,.28);border:1px solid rgba(76,141,255,.55)'></i>{esc(label)} "
+        side_fv = side(fv, "r" if price <= fv else "l")
+        marks += [f"<div class='mark fv' style='left:{x(fv)};background:{ACCENT}'></div>",
+                  f"<div class='lab {side_fv}' style='left:{x(fv)};color:{ACCENT}'>Fair value {esc(money(fv))}</div>"]
+    legend = (f"<span><i style='background:rgba(255,122,26,.22);border:1px solid rgba(255,122,26,.6)'></i>{esc(label)} "
               f"<span class='n'>{esc(money(lo))} – {esc(money(hi))}</span>"
               + (f" (base <span class='n'>{esc(money(base))}</span>)" if base is not None else "") + "</span>")
     return (f"<div class='vt-range' role='img' aria-label='{esc(label)}: {esc(money(lo))} to {esc(money(hi))}; "
             f"price {esc(money(price))}'><div class='track'></div>{''.join(marks)}</div>"
             f"<div class='vt-legend'>{legend}</div>")
+
+
+def _ring(md) -> str:
+    """The MD's rating with the weighted rubric score (1 to 5) as a ring that fills on arrival."""
+    if not md:
+        return ("<div class='vt-rating'><div><div class='c' style='margin:0 0 .2rem'>MD rating</div>"
+                "<div class='w' style='color:var(--vt-faint)'>Not rated</div>"
+                "<div class='c'>The AI desks did not run for this report</div></div></div>")
+    r, score = 36, md.weighted_score or 0
+    length = 2 * 3.14159 * r * max(0.0, min(score / 5, 1))
+    colour = RATING_COLOUR.get(md.rating, ACCENT)
+    moved = f" · rubric said {md.code_rating}" if md.rating != md.code_rating else ""
+    return (f"<div class='vt-rating' title='Weighted rubric score {score:.2f} of 5'><div class='ring'>"
+            f"<svg width='84' height='84' viewBox='0 0 84 84'><circle cx='42' cy='42' r='{r}' fill='none' "
+            f"stroke='#2a231d' stroke-width='6'/><circle class='arc' cx='42' cy='42' r='{r}' fill='none' "
+            f"stroke='{ACCENT}' stroke-width='6' stroke-linecap='round' style='--len:{length:.1f}'/></svg>"
+            f"<div class='sc'>{score:.2f}<small>of 5</small></div></div>"
+            f"<div><div class='c' style='margin:0 0 .2rem'>MD rating</div><div class='w' style='color:{colour}'>"
+            f"{esc(md.rating)}</div><div class='c'>Conviction: {esc(md.conviction)}{esc(moved)}</div></div></div>")
+
+
+def why_rating(rep) -> None:
+    """The reasons behind the rating next to the rubric that produced it."""
+    md = rep.md
+    if not md:
+        return
+    lines = md.view.get("reasoning_lines") or []
+    reasons = "".join(f"<li>{t(x)}</li>" for x in lines[:4]) or "<li>The MD gave no summary lines.</li>"
+    rows = []
+    for i, s_ in enumerate(md.scores):
+        rows.append(f"<div class='row' title='{esc(s_.evidence)}'><span class='k'>{esc(LABELS[s_.criterion])}"
+                    f"<small>{WEIGHTS[s_.criterion]:.0%}</small></span><span class='bar'><i style='width:"
+                    f"{s_.score / 5 * 100:.0f}%;animation-delay:{.3 + i * .07:.2f}s'></i></span>"
+                    f"<span class='s'>{s_.score}</span></div>")
+    total = (f"<div class='total'><span>Weighted score → rubric rating</span><span><b>{md.weighted_score:.2f}</b> → "
+             f"<b>{esc(md.code_rating)}</b></span></div>")
+    html(f"<div class='vt-why'><div class='vt-panel'><h6>Why {esc(md.rating)}</h6><ol class='vt-reasons'>{reasons}"
+         f"</ol></div><div class='vt-panel'><h6>How the rating was scored</h6><div class='vt-rubric'>"
+         f"{''.join(rows)}{total}</div></div></div>")
 
 
 def verdict_card(rep) -> None:
@@ -88,23 +136,22 @@ def verdict_card(rep) -> None:
     fin = getattr(m, "financial", None)
     price = m.inputs.price
     stage = fin.toolkit.capitalize() if fin is not None else v.classification.stage_label
-    tags = [p.exchange, cd.historicals.currency + " reporting" if cd.historicals.currency != "USD" else "USD", stage]
-    ident = (f"<div class='vt-id'><span class='vt-ticker'>{esc(p.ticker)}</span><span class='vt-name'>{esc(p.name)}</span>"
-             + "".join(f"<span class='vt-tag'>{esc(t)}</span>" for t in tags if t) + "</div>")
+    tags = [p.exchange, cd.historicals.currency + " reporting" if cd.historicals.currency != "USD" else "USD", stage,
+            p.sic_description]
+    ident = (f"<div><div class='vt-ticker'>{esc(p.ticker)}</div><div class='vt-name'>{esc(p.name)}</div>"
+             f"<div class='vt-tags'>" + "".join(f"<span class='vt-tag'>{esc(x)}</span>" for x in tags if x)
+             + "</div></div>")
 
     imp = getattr(rep, "impact", None)
     fv_sub = (f"News-adjusted {money(imp.adjusted_fair_value)}" if imp is not None and not imp.error
-              and imp.adjusted is not None else "Blend of the methods below")
+              and imp.adjusted is not None else "Blend of the valuation methods")
     gap_col = None if vd.gap is None else (GREEN if vd.gap > 0 else RED)
-    md = rep.md
     kpis = [
         _kpi("Share price", money(price.value), f"{price.source} · {when(price.period)[:11].strip(', ')}", trace_text(price)),
-        _kpi("Fair value", money(vd.fair_value), fv_sub, trace_text(m.trace.get("fair_value")), BLUE),
+        _kpi("Fair value", money(vd.fair_value), fv_sub, trace_text(m.trace.get("fair_value")), ACCENT),
         _kpi("Upside", "–" if vd.gap is None else f"{vd.gap:+.1%}", "fair value vs price", colour=gap_col),
         _kpi("Verdict", vd.verdict or "–", f"Confidence: {vd.confidence or '–'}",
              "; ".join(vd.confidence_reasons), VERDICT_COLOUR.get(vd.verdict), word=True),
-        _kpi("MD rating", md.rating if md else "–", f"Conviction: {md.conviction}" if md else "AI desks did not run",
-             colour=RATING_COLOUR.get(md.rating) if md else None, word=True),
     ]
     strip = ""
     if fin is not None:
@@ -116,11 +163,11 @@ def verdict_card(rep) -> None:
         if None not in (b, bu):
             strip = _range_strip(min(b, bu), max(b, bu), "DCF bear to bull", vd.price, vd.fair_value, base)
 
-    t = m.analyst_targets
+    tg = m.analyst_targets
     stats = []
-    if t:
-        stats.append(f"Analyst target <span class='n'>{esc(money(t.get('median') or t.get('consensus')))}</span> "
-                     f"<span class='n' style='color:var(--vt-muted)'>({esc(money(t.get('low')))}–{esc(money(t.get('high')))})</span>")
+    if tg:
+        stats.append(f"Analyst target <span class='n'>{esc(money(tg.get('median') or tg.get('consensus')))}</span> "
+                     f"<span class='n' style='color:var(--vt-muted)'>({esc(money(tg.get('low')))}–{esc(money(tg.get('high')))})</span>")
     else:
         stats.append("Analyst target: not available (FMP free plan)")
     if fin is not None:
@@ -136,43 +183,57 @@ def verdict_card(rep) -> None:
     chips = "".join(chip(f.level, f.title, f.message) for f in key[:6])
     if len(key) > 6:
         chips += f"<span class='vt-chip info'>+{len(key) - 6} more in Review &amp; flags</span>"
-    html(f"<div class='vt-head'>{ident}<div class='vt-kpis'>{''.join(kpis)}</div>{strip}"
-         f"<div class='vt-stats'>{''.join(f'<span>{x}</span>' for x in stats)}</div>"
+    html(f"<div class='vt-head'><div class='top'>{ident}{_ring(rep.md)}</div><div class='vt-kpis'>{''.join(kpis)}</div>"
+         f"{strip}<div class='vt-stats'>{''.join(f'<span>{x}</span>' for x in stats)}</div>"
          + (f"<div class='vt-chips'>{chips}</div>" if chips else "") + "</div>")
     if vd.confidence == "Low":
-        st.warning("Low confidence: " + "; ".join(vd.confidence_reasons) + ".")
-    if rep.md and rep.md.view.get("reasoning_lines"):
-        st.markdown("\n".join(f"- {line}" for line in rep.md.view["reasoning_lines"][:4]))
+        html(f"<div class='vt-note warn'><b>Low confidence.</b> {esc('; '.join(vd.confidence_reasons))}.</div>")
+    why_rating(rep)
 
 
 # --- 1. investment view ---------------------------------------------------------------------------------------
+def _checks(items: list, icon: str = "check") -> str:
+    return "<ul class='vt-checks'>" + "".join(f"<li>{ICON[icon]}{t(x)}</li>" for x in items) + "</ul>"
+
+
 def investment_view(rep) -> None:
     md = rep.md
     if not md:
         html_note("The MD did not run for this report (AI desks off, or the AI cost cap was reached).")
         return
     view = md.view
-    st.markdown(f"**Thesis.** {view.get('thesis', '')}")
-    rows = [[LABELS[s.criterion], f"{WEIGHTS[s.criterion]:.0%}", str(s.score), s.by, s.evidence] for s in md.scores]
-    html(plain_table(rows, ["Criterion", "Weight", "Score (1-5)", "Scored by", "Evidence"]))
-    st.markdown(f"Weighted score **{md.weighted_score:.2f}** → code rating **{md.code_rating}**"
-                + (f"; MD moved it to **{md.rating}**: {view.get('notch_reason')}" if md.rating != md.code_rating else ""))
+    html(f"<div class='vt-thesis'>{t(view.get('thesis', ''))}</div>")
     if md.conflict:
         st.warning(f"Rating and valuation verdict point in different directions. MD's explanation: "
                    f"{view.get('rating_vs_verdict_explanation', '')}")
+    if md.rating != md.code_rating:
+        html(f"<div class='vt-note'>The rubric gives <b>{esc(md.code_rating)}</b>; the MD moved it to "
+             f"<b>{esc(md.rating)}</b>: {t(view.get('notch_reason'))}</div>")
+
     bvb = view.get("bull_vs_bear", {})
-    st.markdown(f"**Bull vs bear.** The MD sides with the **{bvb.get('side', '–')}** case: {bvb.get('why', '')}")
+    side = (bvb.get("side") or "").lower()
+    rv = rep.review or {}
+    cases = {"bull": rv.get("bull_case", {}).get("thesis"), "bear": rv.get("bear_case", {}).get("thesis")}
+    html("<div class='vt-sub'>Bull vs bear</div><div class='vt-duel'>" + "".join(
+        f"<div class='side{' won' if side == k else ''}'><h6>{k.capitalize()} case"
+        + ("<span class='badge'>MD sides here</span>" if side == k else "") + "</h6><p>"
+        + (t(cases[k]) if cases[k] else "The review desk did not write this case.") + "</p></div>"
+        for k in ("bull", "bear")) + "</div>")
+    st.markdown(f"**Why the MD sides with the {bvb.get('side', '–')} case.** {bvb.get('why', '')}")
     st.markdown(f"**Response to the bear case.** {view.get('bear_case_response', '')}")
     if rep.md.rating in ("Sell", "Strong Sell"):
         st.markdown(f"**Response to the bull case.** {view.get('bull_case_response', '')}")
-    st.markdown("**What has to be true**")
-    for x in view.get("what_has_to_be_true", []):
-        st.markdown(f"- {x}")
+    if view.get("what_has_to_be_true"):
+        html("<div class='vt-sub'>What has to be true</div>" + _checks(view["what_has_to_be_true"]))
     if view.get("catalysts"):
-        html(plain_table([[c["event"], c["date"], c["why"]] for c in view["catalysts"]], ["Catalyst", "Date", "Why"]))
-    st.markdown("**What would change our view**")
-    for x in view.get("what_would_change_view", []):
-        st.markdown(f"- {x}")
+        html("<div class='vt-sub'>Catalysts</div><div class='vt-timeline'>" + "".join(
+            f"<div class='ev'><b>{t(c.get('event'))}</b><span class='d'>{t(c.get('date'))}</span>"
+            f"<p>{t(c.get('why'))}</p></div>" for c in view["catalysts"]) + "</div>")
+    if view.get("what_would_change_view"):
+        html("<div class='vt-sub'>What would change our view</div>" + _checks(view["what_would_change_view"], "arrow"))
+    with st.expander("Rubric evidence: every criterion, its score and who scored it"):
+        rows = [[LABELS[s.criterion], f"{WEIGHTS[s.criterion]:.0%}", str(s.score), s.by, s.evidence] for s in md.scores]
+        html(plain_table(rows, ["Criterion", "Weight", "Score (1-5)", "Scored by", "Evidence"]))
 
 
 # --- 2. business overview ---------------------------------------------------------------------------------------
@@ -438,7 +499,7 @@ def _family(method: str) -> str:
     return "intrinsic"
 
 
-FAMILY_COLOUR = {"intrinsic": "rgba(76,141,255,.75)", "multiples": "rgba(154,164,175,.55)", "market": "rgba(107,118,130,.35)"}
+FAMILY_COLOUR = {"intrinsic": "rgba(255,122,26,.85)", "multiples": "rgba(196,180,156,.5)", "market": "rgba(133,123,110,.32)"}
 
 
 def football(rep) -> None:
@@ -463,9 +524,9 @@ def football(rep) -> None:
                        font=dict(family=MONO, size=11, color=TEXT), xanchor="right" if (fv or 0) > price else "left",
                        xshift=-6 if (fv or 0) > price else 6)
     if fv:
-        fig.add_vline(x=fv, line_color=BLUE, line_width=1.5, line_dash="dot")
+        fig.add_vline(x=fv, line_color=ACCENT, line_width=1.5, line_dash="dot")
         fig.add_annotation(x=fv, y=1, yref="paper", yanchor="bottom", text=f"Fair value {money(fv)}", showarrow=False,
-                           font=dict(family=MONO, size=11, color=BLUE), xanchor="left" if fv > price else "right",
+                           font=dict(family=MONO, size=11, color=ACCENT), xanchor="left" if fv > price else "right",
                            xshift=6 if fv > price else -6)
     ref = max(x for x in (price, fv or 0) if x)
     cap = 3 * ref
@@ -479,7 +540,7 @@ def football(rep) -> None:
                                                  range=[max(0.0, lo_x * 0.85), min(cap, max(b.high for b in bars) * 1.05)]),
                                       yaxis=dict(automargin=True)))
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-    st.caption("Blue: intrinsic methods (DCF, residual income, dividend model, NAV). Grey: peer and historical "
+    st.caption("Orange: intrinsic methods (DCF, residual income, dividend model, NAV). Grey: peer and historical "
                "multiples. Faint: analyst targets and the 52-week range, for reference. Hover a bar for its source.")
 
 
@@ -824,13 +885,14 @@ def render_report(rep, extra_tabs: list | None = None) -> None:
     for name, tab in zip(names, st.tabs(names)):
         with tab:
             for title, fn in groups.get(name, []):
-                st.markdown(f"#### {title}")
+                n, name_ = title.split(". ", 1)
+                html(f"<h4><span class='vt-sec-n'>{esc(n)}</span> {esc(name_)}</h4>")
                 try:
                     fn(rep)
                 except Exception as exc:  # one broken section must not hide the rest of the report
                     st.error(f"This section could not be displayed: {type(exc).__name__}: {exc}")
             if name == "Sources":
-                st.markdown(f"#### {17 if fin is not None else 22}. Disclaimer")
+                html(f"<h4><span class='vt-sec-n'>{17 if fin is not None else 22}</span> Disclaimer</h4>")
                 st.caption(DISCLAIMER)
             for n, fn in extra_tabs or []:
                 if n == name:

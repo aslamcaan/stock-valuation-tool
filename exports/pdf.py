@@ -16,11 +16,11 @@ from engine.rubric import LABELS, WEIGHTS
 from ui.format import millions, money, mult, pct
 from ui.report import DISCLAIMER
 
-INK = colors.HexColor("#0b1a2e")      # masthead navy
-BLUE = colors.HexColor("#1f5fbf")
-GREY = colors.HexColor("#5b6573")
-RULE = colors.HexColor("#c9d1db")
-LIGHT = colors.HexColor("#eef2f6")
+INK = colors.HexColor("#14110e")      # masthead warm black, as in the app
+ACCENT = colors.HexColor("#d9600b")     # the app's orange, darkened to print and read on white (model figures)
+GREY = colors.HexColor("#6b6258")
+RULE = colors.HexColor("#d9d0c4")
+LIGHT = colors.HexColor("#f6f0e8")
 GREEN, RED, AMBER = colors.HexColor("#1a7f37"), colors.HexColor("#c4302b"), colors.HexColor("#9a6700")
 VERDICT = {"Undervalued": GREEN, "Overvalued": RED, "Fairly valued": AMBER}
 RATING = {"Strong Buy": GREEN, "Buy": GREEN, "Hold": AMBER, "Sell": RED, "Strong Sell": RED}
@@ -62,14 +62,14 @@ def _pages(rep):
         c.saveState()
         c.setFillColor(INK)
         c.rect(0, h - MASTHEAD, w, MASTHEAD, stroke=0, fill=1)
-        c.setFillColor(colors.HexColor("#4c8dff"))
+        c.setFillColor(colors.HexColor("#ff7a1a"))
         for i, bh in enumerate((2.5, 4.5, 6.5)):  # the app's mark: three rising bars
             c.roundRect(14 * mm + i * 3 * mm, h - 19.5 * mm, 1.8 * mm, bh * mm, 0.8 * mm, stroke=0, fill=1)
         c.setFillColor(colors.white)
         c.setFont("Helvetica-Bold", 9.5)
         c.drawString(25 * mm, h - 14.5 * mm, "STOCK VALUATION TOOL")
         c.setFont("Helvetica", 7.5)
-        c.setFillColor(colors.HexColor("#a9b8cc"))
+        c.setFillColor(colors.HexColor("#c9bba6"))
         c.drawString(25 * mm, h - 19 * mm, "Equity research note")
         c.drawRightString(w - 14 * mm, h - 14.5 * mm, _date(rep.created_at))
         c.drawRightString(w - 14 * mm, h - 19 * mm, f"Report {rep.report_id}")
@@ -143,8 +143,8 @@ def football_drawing(rep, width=170 * mm) -> Drawing:
         y = height - 20 - (i + 1) * row_h
         d.add(String(0, y + 2, clean(b.method)[:44], fontSize=6.5, fillColor=GREY))
         d.add(Rect(x(b.low), y, max(x(b.high) - x(b.low), 1), row_h - 4,
-                   fillColor=BLUE if _intrinsic(b.method) else colors.HexColor("#a3acb7"), strokeColor=None))
-    for val, colour, text in ((price, INK, f"Price {money(price)}"), (fv, BLUE, f"Fair value {money(fv)}")):
+                   fillColor=ACCENT if _intrinsic(b.method) else colors.HexColor("#b8ac9c"), strokeColor=None))
+    for val, colour, text in ((price, INK, f"Price {money(price)}"), (fv, ACCENT, f"Fair value {money(fv)}")):
         if val:
             d.add(Line(x(val), 8, x(val), height - 10, strokeColor=colour, strokeWidth=1))
             d.add(String(x(val) + 2, height - 10, text, fontSize=6.5, fillColor=colour))
@@ -169,7 +169,7 @@ def build_pdf(rep) -> bytes:
                 Paragraph(f"<font color='#{colour.hexval()[2:]}'>{clean(value)}</font>", KPI_V)]
     box = Table([[kpi("Rating", rating or "Not rated", RATING.get(rating, GREY)),
                   kpi("Verdict", vd.verdict or "-", VERDICT.get(vd.verdict, INK)),
-                  kpi("Share price", money(vd.price)), kpi("Fair value", money(vd.fair_value), BLUE),
+                  kpi("Share price", money(vd.price)), kpi("Fair value", money(vd.fair_value), ACCENT),
                   kpi("Upside", "-" if vd.gap is None else f"{vd.gap:+.1%}", GREEN if (vd.gap or 0) > 0 else RED)]],
                 colWidths=[40 * mm, 40 * mm, 34 * mm, 34 * mm, 34 * mm])
     box.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), LIGHT), ("LINEAFTER", (0, 0), (-2, -1), 0.5, RULE),

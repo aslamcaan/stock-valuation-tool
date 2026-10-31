@@ -18,7 +18,7 @@ LOCKOUT_SECONDS = 60
 
 
 def _login_screen(password: str) -> None:
-    st.markdown(f"<div class='vt-login'>{LOGO.format(s=44)}<h1>Stock Valuation Tool</h1>"
+    st.markdown(f"<div class='vt-login'>{LOGO.format(s=52)}<h1>Stock Valuation Tool</h1>"
                 "<p class='vt-muted'>Equity research and valuation. Private site: enter the password to continue.</p>"
                 "</div>", unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 1.2, 1])
@@ -75,7 +75,7 @@ def require_password(stop: bool = True) -> bool:
     return False
 
 
-def logout_button() -> None:
-    if load_settings().app_password and st.sidebar.button("Log out", width="stretch"):
-        st.session_state.clear()
-        st.rerun()
+def log_out() -> None:
+    """The "Log out" page: ends the session and returns to the login screen."""
+    st.session_state.clear()
+    st.rerun()

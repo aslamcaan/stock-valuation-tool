@@ -1,86 +1,152 @@
-"""Track Record: every completed report, its return since the call vs the S&P 500 and its sector ETF, hit rates."""
+"""Track Record: every call the tool has made, centred on the rating and the reasons for it. Each card also carries a
+small since-the-call line (price change vs the S&P 500), computed by engine.track."""
 from __future__ import annotations
 
 from datetime import date, timedelta
 
-import pandas as pd
 import streamlit as st
 
+from desks.pipeline import load
 from engine.history_multiples import price_on_or_before
-from engine.track import HORIZONS, evaluate, hit_rates
-from ui.format import money, plain_table
-from ui.theme import esc, note
+from engine.track import evaluate
+from ui.format import money, when
 from ui.state import get_services
+from ui.theme import ACCENT, FAINT, GREEN, MUTED, RATING_COLOUR, RATINGS, RED, TEXT, VERDICT_COLOUR, esc, note
 
 svc = get_services()
 st.title("Track Record")
-st.caption("Every report that reaches a verdict is logged with its date, price and fair value. Returns are measured "
-           "from the call against the S&P 500 and the company's sector ETF.")
+st.caption("Every report that reached a verdict, with the MD's rating and the reasons behind it. Hover a reason for "
+           "the full text; open a call to see the whole report.")
 calls = svc.store.calls()
 if not calls:
     st.markdown(note("No completed reports yet. Every report that reaches a verdict is logged here automatically."),
                 unsafe_allow_html=True)
     st.stop()
 
-c1, c2, c3 = st.columns(3)
-tickers = c1.multiselect("Ticker", sorted({c["ticker"] for c in calls}))
-ratings = c2.multiselect("Rating", ["Strong Buy", "Buy", "Hold", "Sell", "Strong Sell"])
-since = c3.date_input("Calls since", value=min(date.fromisoformat(c["call_date"]) for c in calls))
-calls = [c for c in calls if (not tickers or c["ticker"] in tickers) and (not ratings or c["rating"] in ratings)
-         and date.fromisoformat(c["call_date"]) >= since]
 
-_series: dict[str, dict] = {}
-
-
-def price_at(ticker: str, when: date) -> float | None:
-    if ticker not in _series:
-        start = (min(date.fromisoformat(c["call_date"]) for c in calls) - timedelta(days=10)).isoformat()
-        r = svc.market.price_history(ticker, start)
-        _series[ticker] = {x["date"]: x["close"] for x in r.data} if r.available else {}
-    return price_on_or_before(_series[ticker], when, max_gap_days=7)
+@st.cache_data(show_spinner=False, max_entries=200)
+def reasons(report_id: str) -> dict:
+    """The MD's summary lines and rubric score for one saved report (empty if it has none or cannot be read)."""
+    try:
+        rep = load(report_id, get_services().store)
+    except Exception:  # an unreadable or deleted report still shows its logged call
+        return {}
+    md = getattr(rep, "md", None)
+    if not md:
+        return {"name": rep.company.profile.name if rep.company else ""}
+    return {"name": rep.company.profile.name if rep.company else "", "lines": list(md.view.get("reasoning_lines") or []),
+            "score": md.weighted_score, "code_rating": md.code_rating, "thesis": md.view.get("thesis", "")}
 
 
-today = date.today()
-with st.spinner("Fetching prices…"):
-    results = [evaluate(c, price_at, today) for c in calls]
+def rating_of(c: dict) -> str:
+    return c.get("rating") or "Not rated"
 
 
-def p(x):
-    return "–" if x is None else f"{x:+.1%}"
+# --- rating distribution, over every call ---------------------------------------------------------------------------
+latest_only = st.toggle("Latest call per company only", value=True,
+                        help="Off: every dated version, so you can see how a company's rating changed between runs.")
+pool = calls
+if latest_only:
+    seen: set[str] = set()
+    pool = [c for c in calls if not (c["ticker"] in seen or seen.add(c["ticker"]))]
+groups = RATINGS + ["Not rated"]
+counts = {g: sum(1 for c in pool if rating_of(c) == g) for g in groups}
+total = sum(counts.values())
+segs = "".join(
+    f"<div style='flex:{n};background:{RATING_COLOUR.get(g, '#3d342c')};"
+    f"{'color:' + TEXT + ';' if g == 'Not rated' else ''}animation-delay:{i * .08:.2f}s' title='{esc(g)}: {n}'>"
+    f"{esc(g)} · {n}</div>" for i, (g, n) in enumerate(counts.items()) if n)
+st.markdown(f"<div class='vt-dist' role='img' aria-label='Ratings: "
+            + esc(", ".join(f"{g} {n}" for g, n in counts.items() if n)) + f"'>{segs}</div>"
+            f"<div class='vt-muted'>{total} call{'s' if total != 1 else ''} across "
+            f"{len({c['ticker'] for c in pool})} companies</div>", unsafe_allow_html=True)
+
+c1, c2 = st.columns([3, 2], vertical_alignment="bottom")
+chosen = c1.pills("Rating", [g for g in groups if counts[g]], selection_mode="multi", key="tr_ratings")
+tickers = c2.multiselect("Company", sorted({c["ticker"] for c in pool}), placeholder="All companies")
+shown = [c for c in pool if (not chosen or rating_of(c) in chosen) and (not tickers or c["ticker"] in tickers)]
+if not shown:
+    st.markdown(note("No calls match these filters."), unsafe_allow_html=True)
+    st.stop()
+
+# --- since the call (optional, small): one cached price series per ticker, plus the S&P 500 --------------------
+show_since = st.toggle("Show the price move since each call", value=False,
+                       help="Fetches daily closes for each company and the S&P 500 (cached for six hours).")
+start = (min(date.fromisoformat(c["call_date"]) for c in shown) - timedelta(days=10)).isoformat()
 
 
-rows = [{"Ticker": r.call["ticker"], "Date": r.call["call_date"], "Time": r.call["call_time"],
-         "Price at call": money(r.call["price"]), "Fair value": money(r.call["fair_value"]), "Verdict": r.call["verdict"],
-         "Rating": r.call["rating"] or "–", "Conviction": r.call["conviction"] or "–",
-         "Confidence": r.call["confidence"], "Toolkit": r.call["toolkit"], "Stage": (r.call["stage"] or "").replace("_", " "),
-         "Price now": money(r.price_now), "Return": p(r.ret), "S&P 500": p(r.spy_ret),
-         f"Sector ETF": f"{p(r.sector_ret)} ({r.call['sector_etf']})",
-         "Moved toward fair value": {True: "yes", False: "no", None: "–"}[r.toward_fair_value]} for r in results]
-rets = [r.ret for r in results if r.ret is not None]
-excess = [r.ret - r.spy_ret for r in results if r.ret is not None and r.spy_ret is not None]
-toward = [r.toward_fair_value for r in results if r.toward_fair_value is not None]
-tiles = [("Calls", f"{len(results)}", f"{len({r.call['ticker'] for r in results})} companies"),
-         ("Average return", p(sum(rets) / len(rets)) if rets else "–", "since each call"),
-         ("Average vs S&P 500", p(sum(excess) / len(excess)) if excess else "–", "excess return"),
-         ("Moved toward fair value", f"{sum(toward)} of {len(toward)}" if toward else "–", "price vs the call's fair value")]
-st.markdown("<div class='vt-head' style='padding-top:.2rem'><div class='vt-kpis' style='grid-template-columns:"
-            "repeat(4,minmax(0,1fr));border-top:none;margin-top:0'>"
-            + "".join(f"<div class='vt-kpi'><div class='l'>{esc(a)}</div><div class='v'>{esc(b)}</div>"
-                      f"<div class='s'>{esc(c)}</div></div>" for a, b, c in tiles) + "</div></div>",
-            unsafe_allow_html=True)
-st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def closes(ticker: str, start_: str) -> dict:
+    try:
+        r = get_services().market.price_history(ticker, start_)
+        return {x["date"]: x["close"] for x in r.data} if r.available else {}
+    except Exception:  # prices are a footnote here: a failed fetch leaves the line out
+        return {}
 
-st.subheader("Hit rate by rating")
-hr = hit_rates(results)
-table = []
-for group, by_h in hr.items():
-    row = {"Rating": group}
-    for h in HORIZONS:
-        x = by_h[h]
-        row[h] = "–" if not x["calls"] else (f"{x['hit_rate']:.0%} of {x['calls']}" if x["hit_rate"] is not None
-                                             else f"{x['calls']} calls, avg {x['average_excess']:+.1%}")
-    table.append(row)
-if table:
-    st.markdown(plain_table([list(r.values()) for r in table], list(table[0].keys())), unsafe_allow_html=True)
-st.caption("A Buy is a hit if it beat the S&P 500 over the horizon; a Sell is a hit if it lagged. Horizons appear as "
-           "calls age.")
+
+def price_at(ticker: str, when_: date) -> float | None:
+    return price_on_or_before(closes(ticker, start), when_, max_gap_days=7) if show_since else None
+
+
+with st.spinner("Fetching prices…" if show_since else "Loading the calls…"):
+    results = [evaluate(c, price_at, date.today()) for c in shown]
+
+
+def mini(price: float, fv: float) -> str:
+    """Price at the call against the call's fair value, on one small axis."""
+    lo, hi = min(price, fv), max(price, fv)
+    pad = (hi - lo) * 0.35 or hi * 0.1
+    a, b = lo - pad, hi + pad
+
+    def x(v):
+        return (v - a) / (b - a) * 100
+    colour = GREEN if fv > price else RED
+    pl, fl = ("r", "l") if price < fv else ("l", "r")  # labels point inward, so they stay inside the card
+    return (f"<div class='vt-mini' role='img' aria-label='Price {esc(money(price))}, fair value {esc(money(fv))}'>"
+            f"<div class='tr'></div><div class='gap' style='left:{x(lo):.1f}%;width:{x(hi) - x(lo):.1f}%;"
+            f"background:{colour};opacity:.35'></div>"
+            f"<div class='m' style='left:{x(price):.1f}%;background:{TEXT}'></div>"
+            f"<div class='m' style='left:{x(fv):.1f}%;background:{ACCENT}'></div>"
+            f"<div class='lb {pl}' style='left:{x(price):.1f}%;color:{MUTED}'>price {esc(money(price))}</div>"
+            f"<div class='lb {fl}' style='left:{x(fv):.1f}%;color:{ACCENT}'>fair value {esc(money(fv))}</div></div>")
+
+
+def card(r) -> None:
+    c = r.call
+    info = reasons(c["report_id"])
+    rating = rating_of(c)
+    rc = RATING_COLOUR.get(rating, FAINT)
+    vc = VERDICT_COLOUR.get(c["verdict"], MUTED)
+    gap = c["fair_value"] / c["price"] - 1 if c.get("price") and c.get("fair_value") else None
+    lines = info.get("lines") or []
+    why = ("<ul class='why'>" + "".join(f"<li title='{esc(x)}'>{esc(x)}</li>" for x in lines[:3]) + "</ul>") if lines \
+        else f"<div class='vt-muted'>{'The AI desks did not run for this report, so there are no MD reasons.' if rating == 'Not rated' else 'No summary lines saved with this report.'}</div>"
+    since = []
+    if r.ret is not None:
+        since.append(f"since call <b style='color:{GREEN if r.ret >= 0 else RED}'>{r.ret:+.1%}</b>")
+        if r.spy_ret is not None:
+            since.append(f"S&amp;P 500 <b>{r.spy_ret:+.1%}</b>")
+    foot = [f"conviction <b>{esc(c.get('conviction') or '–')}</b>", f"confidence <b>{esc(c.get('confidence') or '–')}</b>",
+            f"<b>{esc((c.get('stage') or c.get('toolkit') or '').replace('_', ' '))}</b>"] + since
+    score = f" · rubric {info['score']:.2f}/5" if info.get("score") is not None else ""
+    with st.container(border=True, key=f"card_{c['report_id']}"):
+        st.markdown(
+            f"<div class='vt-call'><div class='hd'><div><div class='tk'>{esc(c['ticker'])}</div>"
+            f"<div class='nm'>{esc(info.get('name') or '')} · {esc(when(c['call_date'] + 'T' + c['call_time'] + ':00+00:00'))}</div></div>"
+            f"<span class='vt-pill' style='color:{rc};border-color:{rc}66;background:{rc}14'>{esc(rating)}</span></div>"
+            f"<div class='vd'><b style='color:{vc}'>{esc(c['verdict'] or '–')}</b>"
+            + (f" · fair value {gap:+.1%} vs the price at the call" if gap is not None else "") + f"{esc(score)}</div>"
+            + (mini(c["price"], c["fair_value"]) if gap is not None else "") + why
+            + f"<div class='ft'>{''.join(f'<span>{x}</span>' for x in foot if x)}</div></div>", unsafe_allow_html=True)
+        if st.button("Open report", key=f"tr_open_{c['report_id']}", icon=":material/arrow_forward:"):
+            st.session_state.open_id = c["report_id"]
+            st.switch_page("views/report.py")
+
+
+for i in range(0, len(results), 2):
+    cols = st.columns(2)
+    for col, r in zip(cols, results[i:i + 2]):
+        with col:
+            card(r)
+st.caption("Since-call figures compare the latest close with the price at the call (FMP or Tiingo daily closes) and "
+           "are shown for context only; the tool is judged on its reasoning, not on short-term price moves.")

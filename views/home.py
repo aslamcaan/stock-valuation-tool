@@ -1,4 +1,4 @@
-"""Landing page: centred company search and recent reports."""
+"""Landing page: hero, company search, a tape of recent calls and the recent reports."""
 from __future__ import annotations
 
 import html
@@ -11,18 +11,60 @@ from core.http import DataSourceError
 from datasources.search import label, search
 from ui.format import when
 from ui.state import get_services
-from ui.theme import LOGO, MUTED, VERDICT_COLOUR, dot
+from ui.theme import MUTED, VERDICT_COLOUR, dot
 
-st.markdown(f"<div class='vt-hero'>{LOGO.format(s=46)}<h1>Stock Valuation Tool</h1>"
-            "<p>Sell-side style research and valuation for US-listed companies. Every figure traces to a dated "
-            "filing or market source.</p></div>", unsafe_allow_html=True)
+svc = get_services()
+try:
+    reports = svc.store.recent_reports(40)
+except Exception as exc:  # a database problem should not hide the search
+    reports = []
+    st.warning(f"Could not load saved reports: {exc}")
+latest: dict[str, dict] = {}
+versions: dict[str, int] = {}
+for r in reports:  # newest first: keep each company's latest report, count the earlier versions
+    latest.setdefault(r["ticker"], r)
+    versions[r["ticker"]] = versions.get(r["ticker"], 0) + 1
 
-_, mid, _ = st.columns([1, 2, 1])
+# Decorative line (an illustration, not data): it draws itself, an orange band marks a value range, a dot pulses.
+CHART = """<svg class='chart' viewBox='0 0 800 300' preserveAspectRatio='none' aria-hidden='true'>
+<defs><linearGradient id='vtg' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#ff7a1a' stop-opacity='.28'/>
+<stop offset='1' stop-color='#ff7a1a' stop-opacity='0'/></linearGradient></defs>
+<rect class='fvl' x='0' y='92' width='800' height='46' fill='rgba(255,122,26,.07)'/>
+<line class='fvl' x1='0' y1='115' x2='800' y2='115' stroke='#ff7a1a' stroke-opacity='.55' stroke-dasharray='4 6'/>
+<path class='area' d='M0 250 L60 238 L110 244 L170 214 L220 222 L280 190 L330 200 L390 168 L440 176 L500 140 L550 152
+L610 120 L660 132 L720 96 L770 104 L800 88 L800 300 L0 300 Z' fill='url(#vtg)'/>
+<path class='line' d='M0 250 L60 238 L110 244 L170 214 L220 222 L280 190 L330 200 L390 168 L440 176 L500 140 L550 152
+L610 120 L660 132 L720 96 L770 104 L800 88' fill='none' stroke='#ff7a1a' stroke-width='2.5' stroke-linejoin='round'/>
+<circle class='halo' cx='770' cy='104' r='6' fill='#ff7a1a'/><circle class='dot' cx='770' cy='104' r='5' fill='#ffd2ad'/>
+</svg>"""
+
+try:
+    rows = svc.edgar.company_tickers().payload
+except (DataSourceError, CacheMiss) as exc:
+    rows = None
+    st.error(f"Could not load the SEC company list: {exc}")
+facts = [(f"{len(rows):,}" if rows else "–", "SEC-listed companies to search"), ("8", "desks per report"),
+         (str(len(latest)), "companies valued here")]
+st.markdown(
+    f"<div class='vt-hero'>{CHART}<div class='copy'><h1>Stock Valuation Tool</h1>"
+    "<p>Sell-side style research and valuation for US-listed companies, built from the filings up. Every figure "
+    "traces to a dated filing or market source; AI reads and writes, Python does the maths.</p><div class='facts'>"
+    + "".join(f"<div><b>{html.escape(a)}</b>{html.escape(b)}</div>" for a, b in facts) + "</div></div></div>",
+    unsafe_allow_html=True)
+
+if latest:  # a tape of the latest calls; pauses on hover
+    items = []
+    for r in list(latest.values())[:14]:
+        head = r["headline"] or ""
+        verdict = next((v for v in VERDICT_COLOUR if head.startswith(v)), None)
+        items.append(f"<span><b>{html.escape(r['ticker'])}</b>{dot(VERDICT_COLOUR.get(verdict, MUTED))}"
+                     f"{html.escape(head)}</span>")
+    st.markdown(f"<div class='vt-tape' aria-label='Latest calls'><div class='run'>{''.join(items * 2)}</div></div>",
+                unsafe_allow_html=True)
+
+_, mid, _ = st.columns([1, 2.2, 1])
 with mid:
-    try:
-        rows = get_services().edgar.company_tickers().payload
-    except (DataSourceError, CacheMiss) as exc:
-        st.error(f"Could not load the SEC company list: {exc}")
+    if rows is None:
         st.stop()
 
     def _search(term: str) -> list[tuple[str, dict]]:
@@ -35,25 +77,15 @@ with mid:
     picked = st.session_state.get("selected")
     if picked:
         st.markdown(f"**{label(picked)}**")
-        if st.button("Run the report", type="primary", width="stretch",
-                     help="Runs all six desks: data, research, modelling, news, review and MD (a few minutes)."):
+        if st.button("Run the report", type="primary", width="stretch", icon=":material/play_arrow:",
+                     help="Runs all eight desks: data, checks, research, news, modelling, review, impact and MD "
+                          "(a few minutes)."):
             st.session_state.start_ticker = picked["ticker"]
             st.switch_page("views/report.py")
 
 st.subheader("Recent reports")
-try:
-    reports = get_services().store.recent_reports(40)
-except Exception as exc:  # a database problem should not hide the search
-    reports = []
-    st.warning(f"Could not load saved reports: {exc}")
 if not reports:
     st.caption("No reports yet. Completed reports appear here and open instantly, at no API cost.")
-
-latest: dict[str, dict] = {}
-versions: dict[str, int] = {}
-for r in reports:  # newest first: keep each company's latest report, count the earlier versions
-    latest.setdefault(r["ticker"], r)
-    versions[r["ticker"]] = versions.get(r["ticker"], 0) + 1
 
 
 def _card(r: dict) -> None:
@@ -61,7 +93,7 @@ def _card(r: dict) -> None:
     verdict = next((v for v in VERDICT_COLOUR if head.startswith(v)), None)
     rest = head[len(verdict):].strip() if verdict else head
     n = versions[r["ticker"]] - 1
-    with st.container(border=True):
+    with st.container(border=True, key=f"card_{r['report_id']}"):
         st.markdown(
             f"<div class='vt-rc'><div class='top'><span class='t'>{html.escape(r['ticker'])}</span>"
             f"<span class='d'>{html.escape(when(r['created_at']))}</span></div>"
@@ -70,7 +102,7 @@ def _card(r: dict) -> None:
             + (f"<div class='d' style='margin-top:.3rem'>{n} earlier version{'s' if n != 1 else ''}</div>" if n else
                "<div class='d' style='margin-top:.3rem'>&nbsp;</div>")
             + "</div>", unsafe_allow_html=True)
-        if st.button("Open", key=f"open_{r['report_id']}", width="stretch",
+        if st.button("Open", key=f"open_{r['report_id']}", width="stretch", icon=":material/arrow_forward:",
                      help=f"Report {r['report_id']}: {r['ticker']} {head}"):
             st.session_state.open_id = r["report_id"]
             st.switch_page("views/report.py")

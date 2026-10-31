@@ -211,7 +211,10 @@ def investment_view(rep) -> None:
     if md.conflict:
         st.warning(f"Rating and valuation verdict point in different directions. MD's explanation: "
                    f"{view.get('rating_vs_verdict_explanation', '')}")
-    if md.rating != md.code_rating:
+    if getattr(md, "gate_note", ""):
+        html(f"<div class='vt-note'>{esc(md.gate_note)}. The rating follows the valuation: a strong business at "
+             "too high a price is a Hold, not a Buy.</div>")
+    elif md.rating != md.code_rating:
         html(f"<div class='vt-note'>The rubric gives <b>{esc(md.code_rating)}</b>; the MD moved it to "
              f"<b>{esc(md.rating)}</b>: {t(view.get('notch_reason'))}</div>")
 

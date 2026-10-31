@@ -100,6 +100,16 @@ def apply_notch(rating: str, notch: int) -> str:
     return RATINGS[max(0, min(len(RATINGS) - 1, i))]
 
 
+def gate_by_verdict(rating: str, verdict: str | None) -> tuple[str, str]:
+    """The rating may not point against the valuation: an Overvalued verdict caps it at Hold and an Undervalued one
+    floors it at Hold (quality and the MD's notch move it only within that). Returns (rating, note or "")."""
+    if verdict == "Overvalued" and RATINGS.index(rating) > RATINGS.index("Hold"):
+        return "Hold", f"{rating} capped at Hold: the valuation verdict is Overvalued"
+    if verdict == "Undervalued" and RATINGS.index(rating) < RATINGS.index("Hold"):
+        return "Hold", f"{rating} raised to Hold: the valuation verdict is Undervalued"
+    return rating, ""
+
+
 def conflicts_with_verdict(rating: str, verdict: str | None) -> bool:
     return (rating in ("Buy", "Strong Buy") and verdict == "Overvalued") or \
            (rating in ("Sell", "Strong Sell") and verdict == "Undervalued")

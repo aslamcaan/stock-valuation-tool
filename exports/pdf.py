@@ -200,7 +200,9 @@ def build_pdf(rep) -> bytes:
                         for x in rep.md.scores], ["Criterion", "Weight", "Score", "By", "Evidence"],
                        [38 * mm, 13 * mm, 11 * mm, 11 * mm, 109 * mm]))
         s.append(P(f"Weighted score {rep.md.weighted_score:.2f} -> {rep.md.code_rating}"
-                   + (f"; MD moved to {rep.md.rating}: {view.get('notch_reason')}" if rep.md.rating != rep.md.code_rating else "")))
+                   + (f"; {rep.md.gate_note}" if getattr(rep.md, "gate_note", "") else
+                      f"; MD moved to {rep.md.rating}: {view.get('notch_reason')}" if rep.md.rating != rep.md.code_rating
+                      else "")))
         bvb = view.get("bull_vs_bear", {})
         s.append(P(f"Bull vs bear: sides with the {bvb.get('side', '-')} case. {bvb.get('why', '')}"))
         s.append(P("What has to be true: " + " | ".join(view.get("what_has_to_be_true", []))))

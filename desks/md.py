@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from desks.ai import SONNET, AIClient
 from desks.guarded import DATE_OK, guarded_call
 from desks.research import _arr, _obj
-from engine.rubric import (AI_CRITERIA, LABELS, Score, apply_notch, conflicts_with_verdict, rating_from,
+from engine.rubric import (AI_CRITERIA, LABELS, Score, apply_notch, conflicts_with_verdict, gate_by_verdict,
+                           rating_from,
                            score_business_quality, score_financial_quality, score_financial_strength,
                            score_financial_strength_sector, score_revisions, score_valuation_gap)
 
@@ -45,8 +46,10 @@ code-scored half of the rating rubric. Your job:
    debate you take and why, a direct response to the review desk's bear case (and to its bull case), 2-3 things that
    have to be true, catalysts with dates (from the filing or results; say "date not disclosed" if unknown), and what
    would change your view. Give the 3-5 key risks, each with a verbatim quote from the filing extracts.
-4. If your rating and the valuation verdict point in opposite directions (e.g. Buy on an overvalued stock), explain
-   why explicitly in rating_vs_verdict_explanation; otherwise leave it empty.
+4. The rating cannot point against the valuation: an Overvalued verdict caps it at Hold and an Undervalued verdict
+   floors it at Hold, whatever the quality scores. Write the view to be consistent with that (a great business at
+   too high a price is a Hold, not a Buy). If the weighted score alone would point the other way, say so in
+   rating_vs_verdict_explanation; otherwise leave it empty.
 Rules: never calculate. Only use numbers from the computed results (rounded as shown) or verbatim filing quotes.
 UK English. Be decisive and specific.
 Write ratios such as margins, ROIC, WACC and growth as percentages to one decimal (30.9%), never as decimals (0.309); money with its unit ($10.1bn, $116m)."""
@@ -62,6 +65,7 @@ class MDResult:
     view: dict
     conflict: bool
     guard_log: list[str] = field(default_factory=list)
+    gate_note: str = ""  # set when the verdict gate moved the rating
 
 
 MAX_TOKENS = 6000  # the sign-off is about 2,200 tokens; the cap sets the worst-case cost reservation
@@ -125,4 +129,7 @@ def run_md(ai: AIClient, report_id: str, report, summary: dict, review: dict, so
         log.append("MD: rating conflicts with the valuation verdict but no explanation was given; notch removed")
         rating = code_rating
         conflict = conflicts_with_verdict(rating, report.verdict.verdict)
-    return MDResult(scores, avg, code_rating, rating, data["conviction"], data, conflict, log)
+    rating, gate = gate_by_verdict(rating, report.verdict.verdict)
+    if gate:
+        conflict = False
+    return MDResult(scores, avg, code_rating, rating, data["conviction"], data, conflict, log, gate)

@@ -171,3 +171,14 @@ def test_research_numbers_must_be_whole_tokens_in_the_filing():
                                {"region": "Asia", "revenue_millions": 18, "quote": ""}]}
     out, dropped = verify(data, src)
     assert [g["region"] for g in out["geographic_mix"]] == ["Europe"] and "Asia" in dropped[0]
+
+
+def test_rating_cannot_point_against_the_verdict():
+    """2026-10-31: TSM was rated Buy at a fair value 50% below the price; MSFT and JPM Buy while Overvalued."""
+    from engine.rubric import gate_by_verdict
+    assert gate_by_verdict("Buy", "Overvalued") == ("Hold", "Buy capped at Hold: the valuation verdict is Overvalued")
+    assert gate_by_verdict("Strong Buy", "Overvalued")[0] == "Hold"
+    assert gate_by_verdict("Sell", "Overvalued") == ("Sell", "")
+    assert gate_by_verdict("Strong Sell", "Undervalued")[0] == "Hold"
+    assert gate_by_verdict("Buy", "Undervalued") == ("Buy", "")
+    assert gate_by_verdict("Buy", "Fairly valued") == ("Buy", "")

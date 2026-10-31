@@ -266,7 +266,7 @@ def value_company(i: EngineInputs) -> Valuation:
                           f"Terminal value is {dcf.tv_share_of_ev:.0%} of enterprise value.", None,
                           {"tv_share": dcf.tv_share_of_ev}))
 
-    sotp = run_sotp(i.segments, sum(bridge_t), shares.value) if i.segments else \
+    sotp = run_sotp(i.segments, sum(x for _, x in bridge_t), shares.value) if i.segments else \
         SOTPResult(False, "no segment revenue and profit data yet (the research desk extracts it from the annual report)")
 
     asset_value = None

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import queue
 import threading
 import time
@@ -49,6 +50,7 @@ def start_run(ticker: str, overrides: dict | None = None) -> None:
         try:
             holder["final"] = run_report(ticker, svc, q, overrides=overrides, holder=holder)
         except Exception as exc:  # shown on the page instead of silently returning to "Pick a stock"
+            logging.getLogger(__name__).exception("Report run failed for %s", ticker)  # traceback in the server log
             holder["error"] = f"{type(exc).__name__}: {exc}"
     t = threading.Thread(target=work, daemon=True)
     t.start()

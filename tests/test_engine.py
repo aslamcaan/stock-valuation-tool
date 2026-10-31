@@ -337,3 +337,19 @@ def test_ebit_proxy_is_detected_through_fx_conversion():
     usd = Value(110.0, "USD", MILLIONS, "FY2025", "calculated", formula="operating_income (EUR) x period-average US$/EUR",
                 inputs=(local,))
     assert _uses(usd, "EBIT proxy") and not _uses(local.__class__(1.0, "USD", MILLIONS, "x", "EDGAR"), "EBIT proxy")
+
+
+def test_segments_valued_through_the_engine_use_the_bridge_amounts():
+    """The research desk's segments reach run_sotp with the bridge's summed amounts, not its (name, amount) pairs."""
+    import copy
+    from tests.engine_fixtures import engine_inputs
+    i = copy.deepcopy(engine_inputs("KO"))
+    rev = i.historicals.v("revenue", i.historicals.fy_labels[-1])
+    i.segments = [Segment("Concentrates", rev * 0.6, rev * 0.18, multiple=6.0, metric_value=rev * 0.6,
+                          multiple_source="peers"),
+                  Segment("Bottling", rev * 0.4, rev * 0.04, multiple=1.5, metric_value=rev * 0.4,
+                          multiple_source="peers")]
+    v = value_company(i)
+    bridge = sum(x.value for _, x in v.bridge)
+    assert v.sotp.applicable
+    assert v.sotp.value_per_share == pytest.approx((v.sotp.enterprise_value + bridge) / v.diluted_shares.value)

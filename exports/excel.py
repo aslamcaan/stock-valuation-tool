@@ -145,7 +145,7 @@ def dcf_block(sh: Sheet, top: int, n: int, I: dict, title: str, g_shift: str = "
     sh.formula(f"B{b + 11}", f"B{b + 10}/{I['shares']}", PS)
     sh.formula(f"B{b + 12}", f"B{b + 11}*{I['adr']}", PS, bold=True)
     return {"vps": sh.ref(f"B{b + 12}"), "ev": sh.ref(f"B{b + 8}"), "tv": sh.ref(f"B{b + 6}"),
-            "end_row": b + 13, "fcf_row": r["fcf"], "rev_row": r["rev"]}
+            "end_row": b + 13, "fcf_row": r["fcf"], "rev_row": r["rev"], "nopat_row": r["nopat"]}
 
 
 # --- workbook -------------------------------------------------------------------------------------------------------
@@ -329,6 +329,7 @@ def build_workbook(rep) -> Workbook:
         ws_.label(f"A{5 + i}", label, bold=label == "WACC")
         ws_.formula(f"B{5 + i}", f, fmt, bold=label == "WACC")
     I["wacc"] = ws_.ref("B10")
+    I["coe"] = ws_.ref("B6")
     ws_.ws.column_dimensions["B"].width = 14
 
     # --- Forecast + DCF -----------------------------------------------------------------------------------------
@@ -594,7 +595,7 @@ def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
     """The report's explaining analyses: the walk from our DCF to the price, what the price pays for (live formulas on
     the DCF tab), the Monte Carlo range and the peer regressions (live SLOPE / INTERCEPT / RSQ on the peers)."""
     from engine.insights import peer_regressions, price_walk, value_split
-    from ui.insights import mc_for, walk_args
+    from ui.insights import dividend_for, mc_for, walk_args
     m = rep.model
     v = m.valuation
     if v is None or getattr(v, "dcf_inputs", None) is None or v.dcf is None:
@@ -721,6 +722,46 @@ def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
             an.label(f"A{r + 7}", "Check: Excel minus app (should be 0.00)")
             an.formula(f"B{r + 7}", f"B{r + 6}-{g['implied_price']!r}", PS, check=True)
             r += 9
+    # 5. dividend cross-check: dividends grow with the DCF tab's NOPAT, discounted at the cost of equity
+    dv, dsrc = dividend_for(rep)
+    if dv:
+        an.label(f"A{r}", "5. Dividend cross-check (per ordinary share; ignores buybacks; not in the fair value)",
+                 bold=True)
+        r += 1
+        an.label(f"A{r}", f"Dividend per share ({dsrc})")
+        an.input(f"B{r}", dv["dps0"], PS)
+        an.label(f"A{r + 1}", "Cost of equity (WACC tab)")
+        an.formula(f"B{r + 1}", I["coe"], PCT2)
+        an.label(f"A{r + 2}", "Terminal growth")
+        an.formula(f"B{r + 2}", I["tg"], PCT2)
+        an.label(f"A{r + 3}", "Today's NOPAT (as in section 2)")
+        an.formula(f"B{r + 3}", f"{I['base_rev']}*{I['margin'][0]}*(1-{I['tax'][0]})", NUM)
+        d0, cc, gg, n0 = f"B{r}", f"B{r + 1}", f"B{r + 2}", f"B{r + 3}"
+        r += 5
+        for j, hd in enumerate(["Year", "NOPAT (DCF tab)", "Dividend", "PV"]):
+            an.head(f"{col(1 + j)}{r}", hd)
+        r += 1
+        top = r
+        for t, row in enumerate(dv["rows"], start=1):
+            c_ = col(1 + t)  # DCF tab column of forecast year t
+            an.label(f"A{r}", row["year"])
+            an.formula(f"B{r}", f"MAX(DCF!{c_}{base['nopat_row']},0)", NUM)
+            an.formula(f"C{r}", f"{d0}*B{r}/{n0}", PS)
+            an.formula(f"D{r}", f"C{r}*(1+{cc})^(-{t})", PS)
+            r += 1
+        last = r - 1
+        n = len(dv["rows"])
+        rows = [("Terminal value (last dividend x (1 + g) / (CoE - g))", f"C{last}*(1+{gg})/({cc}-{gg})"),
+                ("PV of terminal value", f"B{r}*(1+{cc})^(-{n})"),
+                ("Dividend model value per ordinary share", f"SUM(D{top}:D{last})+B{r + 1}"),
+                ("Dividend model value per US share", f"B{r + 2}*{I['adr']}"),
+                ("Dividend growth for ever the price implies ((P x CoE - D0) / (P + D0))",
+                 f"({I['price']}/{I['adr']}*{cc}-{d0})/({I['price']}/{I['adr']}+{d0})")]
+        for i, (label, fm) in enumerate(rows):
+            an.label(f"A{r + i}", label, bold=i == 3)
+            an.formula(f"B{r + i}", fm, PCT if i == 4 else PS, bold=i == 3)
+        an.label(f"A{r + 5}", "Check: Excel minus app (should be 0.00)")
+        an.formula(f"B{r + 5}", f"B{r + 3}-{dv['value'] * v.per_us_share_factor!r}", PS, check=True)
 
 
 def export_bytes(rep, cached: bool = True) -> bytes:

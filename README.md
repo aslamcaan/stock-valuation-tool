@@ -76,6 +76,10 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
     ours), then solves the discount rate the price needs. The bars add up exactly to the gap.
   - **What the price pays for**: no-growth value (year-1 NOPAT / WACC) against growth, for our DCF and for the
     market's enterprise value.
+  - **Dividend cross-check** (dividend yield of 1% or more): a two-stage dividend model, dividends growing with the
+    DCF's operating profit after tax (constant payout) then at terminal growth, at the cost of equity; and the
+    dividend growth for ever the price implies, (P x CoE - D0) / (P + D0). KO: $36.10 against a $94.08 price, which
+    needs 5.9% a year; CVX: $133.92 against $235.52 (3.1%).
   - **Monte Carlo range**: 2,000 DCFs drawing growth, margin, WACC and terminal growth, each spread so its
     10th-90th percentile range equals the bear-bull step (fixed seed, repeatable). Growth and margin move together
     at the company's own measured correlation (revenue growth against the change in operating margin, at least six

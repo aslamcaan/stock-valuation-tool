@@ -110,3 +110,28 @@ def test_correlated_draws_widen_the_range_when_growth_and_margin_move_together()
     assert monte_carlo(inp, base, n=1500, growth_margin_corr=0.0)["pct"] == ind["pct"]  # 0 = the independent draws
     assert cor["pct"][90] - cor["pct"][10] > ind["pct"][90] - ind["pct"][10]
     assert cor["growth_margin_corr"] == 0.8
+
+
+def test_dividend_check_by_hand():
+    from engine.insights import dividend_check
+    from tests.engine_fixtures import engine_inputs
+    from engine.valuation import value_company
+    v = value_company(engine_inputs("GRAB"))
+    dcf = v.dcf
+    inp = dcf.inputs
+    y1 = inp.years[0]
+    n0 = inp.base_revenue * y1.operating_margin * (1 - y1.tax_rate)
+    if n0 <= 0:
+        pytest.skip("fixture has no positive NOPAT")
+    price, dps, coe, g = 10.0, 0.30, 0.09, 0.025
+    d = dividend_check(dcf, dps, coe, g, price)
+    divs = [dps * max(y.nopat, 0) / n0 for y in dcf.years]
+    pv = sum(x * (1 + coe) ** -(t + 1) for t, x in enumerate(divs))
+    tv = divs[-1] * (1 + g) / (coe - g) * (1 + coe) ** -len(divs)
+    assert d["value"] == pytest.approx(pv + tv)
+    assert d["implied_growth"] == pytest.approx((price * coe - dps) / (price + dps))
+    # Gordon check: at the implied growth, a flat model gives back the price
+    gi = d["implied_growth"]
+    assert dps * (1 + gi) / (coe - gi) == pytest.approx(price)
+    assert dividend_check(dcf, 0.05, coe, g, price) is None   # 0.5% yield: too small to say much
+    assert dividend_check(dcf, dps, 0.02, g, price) is None   # CoE below growth

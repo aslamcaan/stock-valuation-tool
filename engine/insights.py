@@ -201,3 +201,36 @@ def peer_regressions(company: CompanyMetrics, peers: list[CompanyMetrics], share
                     "warranted": warranted, "implied_price": implied,
                     "extrapolated": not min(xs) <= mine_x <= max(xs)})
     return out
+
+
+# --- 5. Dividend cross-check -----------------------------------------------------------------------------------------
+MIN_YIELD = 0.01  # below a 1% yield the dividend is too small a part of the return for a dividend model to say much
+
+
+def dividend_check(dcf: DCFResult, dps0: float, cost_of_equity: float, terminal_growth: float,
+                   price: float) -> dict | None:
+    """A two-stage dividend discount model in which dividends grow in line with the DCF's forecast operating profit
+    after tax (a constant payout), then at terminal growth; discounted at the cost of equity. Also the perpetual
+    dividend growth the price implies (Gordon: g = (P x CoE - D0) / (P + D0)). Per ordinary share. None when there
+    is no dividend, the yield is below MIN_YIELD, today's NOPAT is not positive or CoE <= terminal growth."""
+    if not dps0 or dps0 <= 0 or price <= 0 or dps0 / price < MIN_YIELD or cost_of_equity <= terminal_growth:
+        return None
+    inp = dcf.inputs
+    y1 = inp.years[0]
+    nopat0 = inp.base_revenue * y1.operating_margin * (1 - y1.tax_rate)
+    if nopat0 <= 0:
+        return None
+    rows, pv, d = [], 0.0, dps0
+    for t, y in enumerate(dcf.years, start=1):
+        d = dps0 * max(y.nopat, 0.0) / nopat0
+        df = (1 + cost_of_equity) ** -t
+        pv += d * df
+        rows.append({"year": y.label, "dividend": d, "pv": d * df})
+    n = len(rows)
+    terminal = d * (1 + terminal_growth) / (cost_of_equity - terminal_growth)
+    pv_terminal = terminal * (1 + cost_of_equity) ** -n
+    value = pv + pv_terminal
+    return {"dps0": dps0, "yield": dps0 / price, "rows": rows, "stage1_cagr": (d / dps0) ** (1 / n) - 1 if d > 0 else None,
+            "pv_dividends": pv, "terminal_value": terminal, "pv_terminal": pv_terminal, "value": value,
+            "cost_of_equity": cost_of_equity, "terminal_growth": terminal_growth,
+            "implied_growth": (price * cost_of_equity - dps0) / (price + dps0), "years": n}

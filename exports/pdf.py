@@ -16,7 +16,7 @@ from engine.rubric import LABELS, WEIGHTS
 from ui.format import millions, money, mult, pct
 from ui.report import DISCLAIMER
 from engine.insights import peer_regressions, price_walk, value_split
-from ui.insights import mc_for, walk_args
+from ui.insights import dividend_for, mc_for, walk_args
 
 INK = colors.HexColor("#14110e")      # masthead warm black, as in the app
 ACCENT = colors.HexColor("#d9600b")     # the app's orange, darkened to print and read on white (model figures)
@@ -310,6 +310,13 @@ def build_pdf(rep) -> bytes:
         s.append(table([[x["label"], f"{x['change'] * f:+,.2f}" if k else "-", money(x["value"] * f), x["detail"]]
                         for k, x in enumerate(steps)], ["Step", "Change", "Value", "What changed"],
                        [45 * mm, 20 * mm, 22 * mm, 95 * mm]))
+        dv, dsrc = dividend_for(rep)
+        if dv:
+            s.append(P(f"Dividend cross-check: dividends ({money(dv['dps0'] * f)} a share, {dsrc}) growing with the "
+                       f"DCF's operating profit after tax for {dv['years']} years, then at "
+                       f"{pct(dv['terminal_growth'])}, at a {pct(dv['cost_of_equity'])} cost of equity, are worth "
+                       f"{money(dv['value'] * f)}; the price needs {pct(dv['implied_growth'])} dividend growth for "
+                       "ever. Ignores buybacks; not in the fair value.", SMALL))
     s.append(P("14. Scenarios and sensitivity", H2))
     s.append(table([[x.scenario.name, f"{x.scenario.probability:.0%}", x.scenario.describe(),
                      money(v.per_us_share(x.value_per_share)) if x.result else "-"] for x in v.scenarios],

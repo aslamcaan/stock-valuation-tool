@@ -406,3 +406,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   from the DCF tab's cells), Monte Carlo percentiles (correlated and independent), peer regressions with live SLOPE /
   INTERCEPT / RSQ and implied price. Check rows 0.00 for KO, MSFT, UBER, CVX, GRAB, TSM; KO recalculated in Excel 16
   (R2 0.8788 and 0.5943, implied $52.82 and $37.10, as the app). JPM (bank toolkit) has no DCF, so no tab.
+- Dividend cross-check (engine.insights.dividend_check; Valuation tab after the no-growth split, PDF, Excel
+  Analysis section 5 with live formulas on the DCF tab's NOPAT row): KO $36.10 (price $94.08 implies 5.9% dividend
+  growth for ever), CVX $133.92 (3.1%); MSFT, TSM below the 1% yield cut-off; UBER, GRAB pay none. Excel check rows
+  0.00.

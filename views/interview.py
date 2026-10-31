@@ -46,7 +46,7 @@ st.markdown(
     "XBRL tag and a fetch date.")
 html(kv([("Desks", "8", "data, checks, research, news, modelling, review, impact, MD"),
          ("Data sources", "6", "SEC EDGAR, FMP, FRED, Damodaran, Tiingo, Finnhub"),
-         ("Valuation methods", "DCF + 4", "comps, own history, sum of the parts, reverse DCF; sector toolkits"),
+         ("Valuation methods", "DCF + 4", "comps, own history, sum of the parts, reverse DCF; dividend cross-check; sector toolkits"),
          ("Offline tests", f"{n_tests:,}" if n_tests else "–", "test functions on recorded API responses, no network")]))
 
 # --- 2. worked example -----------------------------------------------------------------------------------------------

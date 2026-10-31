@@ -9,7 +9,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from engine.classify import DECLINING
-from engine.insights import growth_margin_correlation, monte_carlo, peer_regressions, price_walk, value_split
+from engine.insights import (dividend_check, growth_margin_correlation, monte_carlo, peer_regressions, price_walk,
+                             value_split)
 from ui.format import millions, money, mult, pct, plain_table
 from ui.theme import ACCENT, BORDER, FAINT, MUTED, TEXT, esc, guide, plotly_layout
 
@@ -169,6 +170,45 @@ def split_view(rep) -> None:
         items.append(("Beyond year " + str(sp["years"]), f"{sp['pv_terminal'] / ev:.0%}",
                       "of our EV comes from the terminal value"))
     _html(_kv(items, accent=2 if mev > 0 and ev > 0 else None))
+
+
+def dividend_for(rep) -> tuple[dict | None, str]:
+    """The dividend cross-check (per ordinary share) and where the dividend per share came from. Dividends declared
+    per share in the latest fiscal year; else dividends paid / diluted shares."""
+    m = rep.model
+    v = m.valuation
+    h = getattr(rep.company, "historicals_usd", None)
+    if v is None or v.dcf is None or h is None or not h.fy_labels:
+        return None, ""
+    fy = h.fy_labels[-1]
+    dps, src = h.v("dps_declared", fy), f"dividends declared per share, {fy}"
+    if not dps:
+        paid = h.v("dividends_paid", fy)
+        dps = paid / v.diluted_shares.value if paid and v.diluted_shares.value else None
+        src = f"dividends paid / diluted shares, {fy}"
+    if not dps:
+        return None, ""
+    return dividend_check(v.dcf, dps, v.wacc.cost_of_equity.value, v.plan.terminal_growth.value,
+                          _ordinary_price(m)), src
+
+
+def dividend_view(rep) -> None:
+    d, src = dividend_for(rep)
+    if d is None:
+        return
+    f = rep.model.valuation.per_us_share_factor
+    dcf_v = rep.model.valuation.per_us_share(rep.model.valuation.dcf.value_per_share)
+    st.markdown("#### Dividend cross-check")
+    _html(guide(f"A second way to value the shares, from the dividend alone ({money(d['dps0'] * f)} a share, "
+                f"{src}). Dividends grow in line with the DCF's operating profit after tax for {d['years']} years "
+                f"(the payout held constant: {pct(d['stage1_cagr'])} a year), then at {pct(d['terminal_growth'])}, "
+                f"discounted at the {pct(d['cost_of_equity'])} cost of equity. It ignores buybacks, so for a "
+                "company that also buys back shares it reads low. The last figure turns it round: the dividend "
+                "growth for ever that today's price needs. A cross-check, not part of the fair value."))
+    _html(_kv([("Dividend model value", money(d["value"] * f), f"against our base-case DCF {money(dcf_v)}"),
+               ("Dividend yield", pct(d["yield"]), "latest fiscal year's dividend / price"),
+               ("Growth the price implies", pct(d["implied_growth"]),
+                f"dividend growth for ever at a {pct(d['cost_of_equity'])} cost of equity")], accent=2))
 
 
 # --- 3. Monte Carlo (in the scenarios section) -----------------------------------------------------------------------

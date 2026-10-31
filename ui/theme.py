@@ -374,8 +374,9 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
 /* --- landing ---------------------------------------------------------------------------------------------------- */
 .vt-hero {position: relative; margin: 0 0 1.4rem; padding: 2.6rem 2.4rem 2.2rem; border: 1px solid var(--vt-border);
   border-radius: 22px; overflow: hidden; background: #0e0c0a; min-height: 300px;}
-.vt-hero svg.chart {position: absolute; right: 0; bottom: 0; width: 62%; height: 78%;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 40%); mask-image: linear-gradient(90deg, transparent, #000 40%);}
+.vt-hero svg.chart {position: absolute; right: 0; bottom: 0; width: 56%; height: 74%;
+  -webkit-mask-image: linear-gradient(90deg, transparent, rgba(0,0,0,.25) 22%, #000 48%);
+  mask-image: linear-gradient(90deg, transparent, rgba(0,0,0,.25) 22%, #000 48%);}
 .vt-hero .chart .line {stroke-dasharray: 1600; stroke-dashoffset: 1600; animation: vt-trace 2.8s var(--vt-ease) .3s forwards;}
 .vt-hero .chart .area {opacity: 0; animation: vt-fade-in 1.4s var(--vt-ease) 1.6s forwards;}
 .vt-hero .chart .dot {opacity: 0; animation: vt-fade-in .4s ease 2.9s forwards;}
@@ -473,7 +474,7 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
   .vt-kpi + .vt-kpi {border-left: none; padding-left: 0;} .vt-kpi:nth-child(even) {padding-left: 1rem;}
   .vt-why, .vt-duel, .vt-rules {grid-template-columns: 1fr;}
   .vt-flow {grid-template-columns: repeat(2, minmax(0, 1fr));}
-  .vt-hero {padding: 1.8rem 1.3rem;} .vt-hero h1 {font-size: 2.2rem !important;} .vt-hero svg.chart {width: 100%; opacity: .3;} .vt-hero .src {display: none;}
+  .vt-hero {padding: 1.8rem 1.3rem;} .vt-hero h1 {font-size: 2.2rem !important;} .vt-hero svg.chart {width: 100%; height: 60%; opacity: .16;} .vt-hero .src {display: none;}
   .vt-ticker {font-size: 2rem;}
   .vt-run .scope .pct {font-size: 2.6rem;}
 }

@@ -376,3 +376,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   reverse DCF, scenarios, football field and flags.
 - Tiingo refusing a refresh (hourly limit) now falls back to a series cached within 3 days; KO's 20:33 run had lost
   its own-history multiples to this.
+- **Talking points** page (`views/interview.py`, `ui/talking.py`): the 30-second version, a worked example built from
+  any saved corporate report (headline figures, the walk, value split, Monte Carlo, regression; the sentence about
+  the walk is worded from the signs and sizes of its steps), the design decisions and the questions to expect.
+  Checked on KO, MSFT, TSM, UBER, GRAB and CVX; JPM shows why there is no walk. Tested offline.

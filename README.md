@@ -100,7 +100,8 @@ guard's log.
 PDF of the full report.
 
 **Other pages.** Compare (two saved reports side by side), Track Record (every call with the MD's reasons, and the
-price move since), How it works, and a Debug page with the raw responses.
+price move since), How it works, Talking points (how to explain the tool in an interview, with a worked
+example read live from a saved report) and a Debug page with the raw responses.
 
 ## Accuracy safeguards
 

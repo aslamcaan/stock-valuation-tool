@@ -272,3 +272,18 @@ def test_a_refused_price_refresh_uses_the_recent_cached_series():
     assert closes["2026-10-30"] == 94.08 and "refresh refused" in how
     closes, how, _ = price_series(svc_with(timedelta(days=5)), "KO", date(2020, 9, 1))
     assert closes == {} and how == "price history unavailable"  # too old to stand in
+
+
+def test_talking_points_quote_the_saved_report(report):
+    """The interview page's worked example reads the report's own figures, and its walk adds up to the price."""
+    from ui.talking import example, pitch, test_count
+    report, _ = report
+    x = example(report)
+    assert x is not None and x["ticker"] == report.ticker
+    assert x["walk"][0]["value"] == pytest.approx(x["dcf"])
+    assert x["walk"][-1]["value"] == pytest.approx(x["price"], rel=0.005)
+    assert x["dcf"] + sum(s["change"] for s in x["walk"]) == pytest.approx(x["price"], rel=0.005)
+    assert x["fair_value"] == report.model.verdict.fair_value
+    text = pitch(x)
+    assert report.ticker in text and "$" in text
+    assert test_count() > 300

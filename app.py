@@ -23,6 +23,7 @@ pages = [
     st.Page("views/compare.py", title="Compare", icon=":material/compare_arrows:"),
     st.Page("views/track_record.py", title="Track Record", icon=":material/insights:"),
     st.Page("views/method.py", title="How it works", icon=":material/account_tree:"),
+    st.Page("views/interview.py", title="Talking points", icon=":material/record_voice_over:"),
 ]
 if (PROJECT_ROOT / ".env").exists():  # local only: the raw-data page is a developer tool, hidden when deployed
     pages.append(st.Page("views/debug.py", title="Debug", icon=":material/bug_report:"))

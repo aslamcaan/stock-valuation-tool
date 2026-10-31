@@ -917,3 +917,99 @@ def render_report(rep, extra_tabs: list | None = None) -> None:
 
 
 __all__ = ["render_report", "calc_value", "PER_SHARE"]
+
+
+# --- what if --------------------------------------------------------------------------------------------------------
+def what_if(rep) -> None:
+    """Drag the DCF's main drivers and watch the fair value move. Each change reprices the model in Python (the
+    comps and own-history legs are held); nothing is saved and the AI commentary is not rewritten."""
+    from engine.news_impact import reprice
+    from engine.scenarios import implied_wacc
+    m = rep.model
+    v = m.valuation
+    if v is None or v.dcf_inputs is None or getattr(m, "financial", None) is not None:
+        st.caption("What if is available for DCF valuations (not the bank, insurer and REIT toolkits).")
+        return
+    plan, i = v.plan, m.inputs
+    rf, price = i.risk_free.value, i.price.value
+    base_path = plan.path("revenue_growth")
+    key = f"wi_{rep.report_id}"
+    base = {"wacc": v.wacc.wacc.value, "g": plan.terminal_growth.value,
+            "m": plan.drivers["operating_margin"].chosen.value, "roic": plan.terminal_roic.value, "shift": 0.0}
+    base = {k: round(x * 100, 1) for k, x in base.items()}
+    for k, x in base.items():
+        st.session_state.setdefault(f"{key}_{k}", x)
+
+    roic_now = rep.company.analysis.metrics.get("roic", {}).get(rep.company.historicals.fy_labels[-1])
+    w_mkt = implied_wacc(v.dcf_inputs, price / (i.adr_ratio or 1))
+    presets = {"Base case": base,
+               "Sell-side conventions": {**base, "g": round(min(3.0, rf * 100), 1),
+                                         "roic": round(max(base["roic"], min((roic_now.value if roic_now else 0) * 100,
+                                                                             40.0)), 1)}}
+    if w_mkt is not None:
+        presets["Market's discount rate"] = {**base, "wacc": round(w_mkt * 100, 1)}
+
+    def bounds(k, lo, hi):  # a slider's range always holds every preset's value
+        vals = [x[k] for x in presets.values()]
+        return round(min([lo] + vals), 1), round(max([hi] + vals), 1)
+
+    def apply(vals):
+        for k, x in vals.items():
+            st.session_state[f"{key}_{k}"] = x
+
+    @st.fragment
+    def panel():
+        cols = st.columns(len(presets))
+        for c, (name, vals) in zip(cols, presets.items()):
+            c.button(name, key=f"{key}_p_{name}", on_click=apply, args=(vals,), width="stretch")
+        c1, c2 = st.columns(2)
+        wacc = c1.slider("Discount rate (WACC, %)", *bounds("wacc", max(base["g"] + 0.5, base["wacc"] - 3),
+                                                            base["wacc"] + 3), step=0.1, key=f"{key}_wacc")
+        g = c1.slider("Terminal growth (%)", *bounds("g", 0.0, min(4.0, rf * 100)), step=0.1, key=f"{key}_g")
+        shift = c1.slider("Revenue growth, every forecast year (points vs base)", -5.0, 5.0, step=0.5,
+                          key=f"{key}_shift")
+        mg = c2.slider("Target operating margin (%)", *bounds("m", max(0.0, base["m"] - 10), base["m"] + 10),
+                       step=0.1, key=f"{key}_m")
+        roic = c2.slider("Terminal return on capital (%)", *bounds("roic", 4.0, 60.0), step=0.1, key=f"{key}_roic")
+        ov = {}
+        if wacc != base["wacc"]:
+            ov["wacc"] = wacc / 100
+        if g != base["g"]:
+            ov["terminal_growth"] = g / 100
+        if mg != base["m"]:
+            ov["target_margin"] = mg / 100
+        if roic != base["roic"]:
+            ov["terminal_roic"] = roic / 100
+        if shift:
+            ov["revenue_growth"] = [x + shift / 100 for x in base_path]
+        try:
+            now, ref = reprice(m, ov), reprice(m, {})
+        except Exception as exc:  # RepriceError, or an engine error such as terminal growth at or above WACC
+            st.warning(f"These assumptions cannot be valued: {exc}")
+            return
+        if now.fair_value is None or ref.fair_value is None:
+            st.caption("No fair value with these assumptions.")
+            return
+        move = now.fair_value / ref.fair_value - 1
+        gap = now.fair_value / price - 1
+        def kpi(label, value, sub, colour=None):  # plain figures: no count-up on every drag
+            style = f" style='color:{colour}'" if colour else ""
+            return (f"<div class='vt-kpi'><div class='l'>{esc(label)}</div><div class='v'{style}>{esc(value)}</div>"
+                    f"<div class='s'>{esc(sub)}</div></div>")
+        html("<div class='vt-kpis'>"
+             + kpi("Fair value", money(now.fair_value), f"{move:+.1%} vs base {money(ref.fair_value)}", ACCENT)
+             + kpi("DCF", money(now.dcf_value), "probability-weighted scenarios")
+             + kpi("Upside", f"{gap:+.1%}", f"vs price {money(price)}", GREEN if gap > 0 else RED)
+             + kpi("Verdict", now.verdict or "–", "same rules as the report", VERDICT_COLOUR.get(now.verdict))
+             + "</div>")
+        html(_range_strip(min(ref.fair_value, now.fair_value), max(ref.fair_value, now.fair_value),
+                          "Move from the base", price, now.fair_value, ref.fair_value))
+        comps = m.verdict.components
+        held = [f"comps {money(comps['comps'])}" if comps.get("comps") else "",
+                f"own-history multiples {money(comps['history'])}" if comps.get("history") else ""]
+        st.caption("Held while you drag: " + (", ".join(x for x in held if x) or "nothing else")
+                   + ". Only the DCF moves; the blend weights are the report's.")
+        if abs(ref.fair_value / m.verdict.fair_value - 1) > 0.005:
+            st.caption(f"The base here ({money(ref.fair_value)}) is this report's inputs on today's engine; the saved "
+                       f"fair value was {money(m.verdict.fair_value)}. Re-run the report to update it.")
+    panel()

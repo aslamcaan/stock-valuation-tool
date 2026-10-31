@@ -15,7 +15,7 @@ from engine.valuation import ValuationError
 from exports.excel import export_bytes
 from exports.pdf import build_pdf
 from ui.format import CSS, money
-from ui.report import render_report, verdict_card
+from ui.report import render_report, verdict_card, what_if
 from ui.run_panel import desk_nodes, panel as run_panel
 from ui.state import get_services
 
@@ -237,4 +237,12 @@ def _log_tab() -> None:
     st.caption(f"AI cost for this report: {money(rep.ai_cost, 3)}")
 
 
-render_report(rep, extra_tabs=[("Edit assumptions", _edit_tab), ("Desk log", _log_tab)])
+def _what_if_tab() -> None:
+    st.markdown("#### What if")
+    if rep.model is None:
+        st.caption("This report has no model to reprice.")
+        return
+    what_if(rep)
+
+
+render_report(rep, extra_tabs=[("What if", _what_if_tab), ("Edit assumptions", _edit_tab), ("Desk log", _log_tab)])

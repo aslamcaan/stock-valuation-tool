@@ -117,7 +117,7 @@ multiples, Summary, and Analysis: the walk from our DCF to the price, the no-gro
 the Monte Carlo percentiles, and the peer regressions rebuilt with Excel's SLOPE, INTERCEPT and RSQ. Both files are
 built only when their button is clicked.
 
-**Other pages.** Compare (two saved reports side by side), Track Record (every call with the MD's reasons, and the
+**Other pages.** Compare (two saved reports side by side, with key metrics, cross-checks and multiples), Track Record (every call with the MD's reasons, and the
 price move since), How it works, Talking points (how to explain the tool in an interview, with a worked
 example read live from a saved report) and a Debug page with the raw responses.
 

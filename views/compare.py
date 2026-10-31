@@ -143,6 +143,41 @@ for rep in reps:
         st.markdown(plain_table([[m.label, _fmt(m.value)] for m in fin.metrics], ["Metric", "Value"]),
                     unsafe_allow_html=True)
 
+st.markdown("### Cross-checks")
+
+
+def cross_checks(rep) -> dict[str, str]:
+    """Not in the fair value: the dividend model, the return the forecast earns on new capital and the F-score."""
+    from engine.forensic import _consecutive, piotroski
+    from engine.insights import return_on_new_capital
+    from ui.insights import dividend_for
+    out = {"Dividend model value": "n/a", "Dividend growth the price implies": "n/a",
+           "Return on new capital (vs WACC)": "n/a", "Piotroski F-score": "n/a"}
+    v = rep.model.valuation
+    if v is not None and v.dcf is not None:
+        d, _ = dividend_for(rep)
+        if d:
+            out["Dividend model value"] = money(d["value"] * v.per_us_share_factor)
+            out["Dividend growth the price implies"] = fmt(d["implied_growth"], "pct")
+        rn = return_on_new_capital(v.dcf)
+        if rn:
+            out["Return on new capital (vs WACC)"] = f"{fmt(rn['roic_new'], 'pct')} ({fmt(rn['wacc'], 'pct')})"
+    h = rep.company.historicals
+    labels = list(h.fy_labels)
+    if len(labels) >= 2 and _consecutive(labels[-2], labels[-1]):
+        f = piotroski(h, rep.company.profile.sic, labels[-1], labels[-2])
+        if f.value is not None:
+            out["Piotroski F-score"] = f"{f.value:.0f} of {len(f.components)} ({labels[-1]})"
+    return out
+
+
+checks = {rep.ticker: cross_checks(rep) for rep in reps}
+names = list(next(iter(checks.values())))
+st.markdown(plain_table([[n] + [checks[r.ticker][n] for r in reps] for n in names],
+                        ["Cross-check"] + [r.ticker for r in reps]), unsafe_allow_html=True)
+st.caption("Not part of the fair value. The dividend model needs a yield of at least 1%; return on new capital is "
+           "the forecast's rise in operating profit after tax over the capital it reinvests, against WACC.")
+
 st.markdown("### Valuation multiples")
 table = []
 for key, name in MULTIPLES:

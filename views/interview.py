@@ -160,7 +160,8 @@ qa([
      "industry's, because returns mostly revert: in Mauboussin's study of about 1,000 companies, 41% of the top fifth "
      "by ROIC were still in the top fifth nine years later. That's twice chance, but most fall back, and he found no "
      "reliable way to tell in advance which will stay. So the model keeps the fade, and a consistency check flags its "
-     "cost: TSMC's forecast earns 9.2% on new capital against a 12.4% WACC while it earns 47% today. The What if tab "
+     "cost: TSMC's forecast earns 15.3% on new capital against a 12.0% WACC while it earns 47% today, so growth still "
+     "creates value, but far less than today's returns suggest. The What if tab "
      "lets you raise the target margin and see what it is worth."),
     ("\"How did you build the WACC?\"",
      "Risk-free rate from FRED's 10-year Treasury; an industry unlevered beta from Damodaran, relevered at the "
@@ -173,7 +174,7 @@ qa([
      "is noisy, so it is capped at 0.8; WACC and terminal growth are "
      "still drawn independently. The peer regressions run on five to eight peers, so they are a cross-check, not part "
      "of the fair value. The margin fade towards the industry is the biggest single assumption for an exceptional "
-     "business, so the return-on-new-capital check flags when it makes growth earn less than WACC (TSMC). And it "
+     "business, so the return-on-new-capital check flags when it makes growth earn less than WACC. And it "
      "covers US-listed companies only, because it depends on SEC filings."),
     ("\"Where does AI actually add value?\"",
      "Reading: segment names and comparable companies (the segment figures themselves come from the 10-K's XBRL), "

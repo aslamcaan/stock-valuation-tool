@@ -81,14 +81,16 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
     market's enterprise value.
   - **Return on new capital** (Damodaran's "are you reinvesting enough for your growth?"): the rise in NOPAT over
     the forecast divided by its total reinvestment. Amber flag when it is below WACC although today's ROIC is above
-    it (TSM: 9.2% against a 12.4% WACC and 47% today, as its margin fades from 58% to 39%); an information flag
+    it, with the margin fall named when it is 5 points or more (TSM, 1 Nov run: 15.3% against a 12.0% WACC and 47%
+    today, as its margin fades from 58% to 42.5%, so no flag; MSFT 50.1%, KO 32.8%); an information flag
     when profit falls while the forecast reinvests (CVX's cyclical normalisation).
   - **Dividend cross-check** (dividend yield of 1% or more): a two-stage dividend model, dividends growing with the
     DCF's operating profit after tax (constant payout) then at terminal growth, at the cost of equity; and the
     dividend growth for ever the price implies, (P x CoE - D0) / (P + D0). KO: $36.10 against a $94.08 price, which
-    needs 5.9% a year; CVX: $133.92 against $235.52 (3.1%).
+    needs 5.9% a year; CVX: $138.64 against $235.52 (3.1%).
   - **Tornado**: each input moved alone to its bear and bull setting (sales-to-capital +/-20%), sorted by swing.
-    KO: revenue growth $37.25-$47.75, WACC $38.74-$46.40, margin $37.64-$45.27, sales-to-capital barely matters.
+    KO: revenue growth $37.25-$47.76, WACC $38.75-$46.41, margin $37.65-$45.28, sales-to-capital barely matters.
+    CVX: the margin swings it most ($75.86-$157.53).
   - **Monte Carlo range**: 2,000 DCFs drawing growth, margin, WACC and terminal growth, each spread so its
     10th-90th percentile range equals the bear-bull step (fixed seed, repeatable). Growth and margin move together
     at the company's own measured correlation (revenue growth against the change in operating margin, at least six
@@ -145,8 +147,8 @@ example read live from a saved report) and a Debug page with the raw responses.
 
 Sell-side targets are mostly multiples. On a 7-8% WACC built from a 5% risk-free rate, quality large caps trading at
 2-3% free-cash-flow yields come out well below their prices. The report shows why: for KO the price implies a
-discount rate well below the model's 7.9%. The walk to the price splits the gap (KO, 31 Oct 2026): our DCF is
-$42.22; four sell-side conventions add $10.36; the remaining $41.51 needs a WACC of 5.7%. The model keeps its own
+discount rate well below the model's 7.9%. The walk to the price splits the gap (KO, 1 Nov 2026): our DCF is
+$42.23; four sell-side conventions add $10.36; the remaining $41.49 needs a WACC of 5.7%. The model keeps its own
 assumptions and says so.
 
 ### Code layout

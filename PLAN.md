@@ -447,3 +447,4 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   across the company and its peer pool (each firm demeaned, at least 3 firms x 4 years and 15 firm-years). Peers
   now carry growth_margin_pairs. GRAB: -0.18 over 43 company-years (GRAB, LYFT, MMYT, PDD, RYDE, UBER). Saved
   reports pick it up on their next run.
+- 1 Nov re-runs (KO, MSFT, TSM, CVX, GRAB; AI $2.14): docs refreshed. TSM now earns 15.3% on new capital vs 12.0% WACC (margin fade 58% -> 42.5%), so the amber flag no longer fires; README and Talking points no longer cite it as flagged.

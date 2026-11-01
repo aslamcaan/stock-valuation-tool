@@ -195,3 +195,11 @@ def test_segment_with_unverified_quote_keeps_only_its_name_and_comparables():
     assert [s["name"] for s in out["segments"]] == ["Delivery"]
     assert out["segments_unverified"] == [{"name": "Mobility", "comparable_us_tickers": ["LYFT"]}]  # no numbers
     assert any("Mobility" in d for d in dropped)
+
+
+def test_quoted_table_row_matches_the_extracted_table():
+    src = " | Mobility | | | $ | 25,087 | | | $ | 29,670 | | | | 18 | %\n\n | Delivery | | | 13,750 |"
+    data = {"segments": [{"name": "Mobility", "revenue_millions": 29670, "quote": "Mobility $ 25,087 $ 29,670 18 %",
+                          "comparable_us_tickers": ["LYFT"]}]}
+    out, dropped = verify(data, src)
+    assert [s["name"] for s in out["segments"]] == ["Mobility"] and not dropped

@@ -90,7 +90,10 @@ class ResearchResult:
 
 
 def _norm(s: str) -> str:
-    return re.sub(r"\s+", " ", s.replace("’", "'").replace("“", '"').replace("”", '"')).strip().lower()
+    """Whitespace, curly quotes and the "|" the text extractor puts between table cells do not count, so a quoted
+    table row ("Mobility $ 25,087 $ 29,670 18 %") matches the row as extracted."""
+    s = s.replace("’", "'").replace("“", '"').replace("”", '"').replace("|", " ")
+    return re.sub(r"\s+", " ", s).strip().lower()
 
 
 def _numbers(s: str) -> list[str]:

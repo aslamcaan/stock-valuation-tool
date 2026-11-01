@@ -17,7 +17,7 @@ from ui.format import millions, money, mult, pct
 from ui.report import DISCLAIMER, with_piotroski
 from engine.classify import DECLINING
 from engine.insights import peer_regressions, price_walk, return_on_new_capital, tornado, value_split
-from ui.insights import dividend_for, mc_for, walk_args
+from ui.insights import dividend_for, ep_for, mc_for, walk_args
 
 INK = colors.HexColor("#14110e")      # masthead warm black, as in the app
 ACCENT = colors.HexColor("#d9600b")     # the app's orange, darkened to print and read on white (model figures)
@@ -284,6 +284,11 @@ def build_pdf(rep) -> bytes:
                        f"(NOPAT {millions(sp['nopat'])} / WACC {pct(sp['wacc'])}). Growth is "
                        f"{sp['growth_ev'] / dd.enterprise_value:.0%} of our EV and "
                        f"{sp['market_growth_ev'] / sp['market_ev']:.0%} of the market's EV.", SMALL))
+        ep, ep_src = ep_for(rep)
+        if ep:
+            s.append(P(f"Economic profit view: our EV is capital in the business of US${ep['capital']:,.0f}m "
+                       f"({ep_src}), plus US${ep['pv_ep']:,.0f}m of economic profit (NOPAT less WACC on capital) over "
+                       f"the forecast and US${ep['beyond']:,.0f}m after it, in present value.", SMALL))
         rn = return_on_new_capital(dd)
         if rn:
             s.append(P(f"Return on new capital: the forecast reinvests US${rn['reinvestment']:,.0f}m and NOPAT goes "

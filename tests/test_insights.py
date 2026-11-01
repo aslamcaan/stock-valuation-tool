@@ -194,3 +194,26 @@ def test_pooled_correlation_demeans_each_firm_and_needs_enough_firms():
     assert r["rho"] == pytest.approx(0.8) and r["raw"] > 0.9  # positive within firms, then capped
     assert r["firms"] == ["A", "B", "C"] and r["n"] == 15  # D has too few years
     assert pooled({"A": a, "B": b}) is None  # two firms are not enough
+
+
+def test_economic_profit_split_adds_up_to_the_dcf_exactly():
+    from dataclasses import replace
+    from engine.dcf import run_dcf
+    from engine.insights import economic_profit
+    from engine.valuation import value_company
+    from tests.engine_fixtures import engine_inputs
+    inp = value_company(engine_inputs("GRAB")).dcf_inputs
+    for conv in ("mid_year", "end_year"):
+        d = run_dcf(replace(inp, conventions=replace(inp.conventions, discounting=conv), timing=None,
+                            stub_fraction=0.4))
+        for ic in (500.0, 5000.0):
+            ep = economic_profit(d, ic)
+            assert ep["capital"] + ep["pv_ep"] + ep["beyond"] == pytest.approx(d.enterprise_value, abs=1e-6)
+            r1, r2 = ep["rows"][0], ep["rows"][1]
+            assert all(r["nopat"] - r["charge"] == pytest.approx(r["ep"]) for r in ep["rows"])
+            new = ep["rows"][2]["capital"] - r2["capital"]
+            half = 0.5 if conv == "mid_year" else 0.0  # new capital counted mid-year, or at the year end
+            expected = inp.wacc * (r2["capital"] + half * new)  # a full year on the opening capital
+            assert expected / (1 + inp.wacc) < r2["charge"] < expected * 1.05
+            assert r1["charge"] / ic < 0.6 * inp.wacc  # the part year (0.4) is charged for the part
+    assert economic_profit(d, 0.0) is None

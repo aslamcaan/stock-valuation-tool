@@ -11,7 +11,7 @@ from data_desk.tags import LINES
 from engine.analysis import METRIC_SECTION
 from engine.rubric import LABELS, WEIGHTS
 from engine.values import MULTIPLE, PER_SHARE, RATIO
-from ui.insights import dividend_view, monte_carlo_view, regression_view, split_view, tornado_view, walk_view
+from ui.insights import dividend_view, ep_view, monte_carlo_view, regression_view, split_view, tornado_view, walk_view
 from ui.format import (calc_value, fmt_value, millions, money, mult, pct, plain_table, trace_text, traced_table,
                        when)
 from ui.theme import (ACCENT, CSS, guide, GREEN, ICON, MONO, RATING_COLOUR, RED, TEXT, VERDICT_COLOUR, chip, count, esc,
@@ -454,6 +454,7 @@ def dcf(rep) -> None:
     st.caption("SBC is a cash cost (GAAP operating income already expenses it); mid-year discounting; cash generated "
                "after the latest balance sheet is counted; terminal reinvestment = growth / terminal ROIC.")
     split_view(rep)
+    ep_view(rep)
     dividend_view(rep)
 
 

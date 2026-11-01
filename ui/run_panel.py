@@ -22,9 +22,9 @@ DESK_INFO = {
     "Research desk": "Reading the latest annual report for segments, geographic mix, one-off items, convertible debt "
                      "and operating KPIs. Every quote is verified against the filing text.",
     "News desk": "Searching company, industry and macro news, then dropping anything stale, undated or unverifiable.",
-    "Modelling desk": "Stage, forecast, WACC, DCF, scenarios and the tornado, sum of the parts, peer and historical multiples and the "
-                      "blended fair value, then cross-checks (dividend model, return on new capital, forensic "
-                      "scores). All of the arithmetic is Python, not AI.",
+    "Modelling desk": "Stage, forecast, WACC, DCF, scenarios and the tornado, sum of the parts, peer and historical "
+                      "multiples and the blended fair value, then cross-checks (dividend model, return on new capital, "
+                      "economic profit, forensic scores). All of the arithmetic is Python, not AI.",
     "Review desk": "An independent reviewer challenges each assumption and writes the strongest bull and bear cases.",
     "Impact analyst": "Sizing each material news item's effect on fair value and checking whether the market has "
                       "already priced it in.",

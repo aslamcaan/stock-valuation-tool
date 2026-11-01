@@ -84,6 +84,10 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
     it, with the margin fall named when it is 5 points or more (TSM, 1 Nov run: 15.3% against a 12.0% WACC and 47%
     today, as its margin fades from 58% to 42.5%, so no flag; MSFT 50.1%, KO 32.8%); an information flag
     when profit falls while the forecast reinvests (CVX's cyclical normalisation).
+  - **Economic profit view**: the DCF's EV split exactly into capital in the business (equity + debt - cash -
+    investments in the bridge, US$ balance sheet of the base year), the present value of each year's economic profit
+    (NOPAT less WACC on capital, charged for the calendar time it is in use) and the terminal value above the
+    capital the forecast ends with. KO: US$49.3bn capital, US$34.7bn economic profit over five years, US$107.7bn after.
   - **Dividend cross-check** (dividend yield of 1% or more): a two-stage dividend model, dividends growing with the
     DCF's operating profit after tax (constant payout) then at terminal growth, at the cost of equity; and the
     dividend growth for ever the price implies, (P x CoE - D0) / (P + D0). KO: $36.10 against a $94.08 price, which

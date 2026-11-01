@@ -8,10 +8,11 @@ from functools import lru_cache
 import plotly.graph_objects as go
 import streamlit as st
 
+from engine.analysis import invested_capital_at
 from engine.classify import DECLINING
 from engine.insights import (MIN_CORR_YEARS, dividend_check, growth_margin_correlation, monte_carlo, peer_regressions,
                              pooled_growth_margin_correlation, price_walk,
-                             return_on_new_capital, tornado, value_split)
+                             economic_profit, return_on_new_capital, tornado, value_split)
 from ui.format import millions, money, mult, pct, plain_table
 from ui.theme import ACCENT, BORDER, FAINT, MUTED, TEXT, esc, guide, plotly_layout
 
@@ -191,6 +192,47 @@ def split_view(rep) -> None:
                     f"the business over {rn['years']} years and operating profit after tax goes from "
                     f"US${rn['nopat0']:,.0f}m to US${rn['nopat_final']:,.0f}m: a return on that new capital of "
                     f"{pct(rn['roic_new'])}, {verdict} ({pct(rn['wacc'])}).", "Return on new capital"))
+
+
+def ep_for(rep) -> tuple[dict | None, str]:
+    """The economic-profit split of the base-case DCF, with capital from the US$ balance sheet of the DCF's base
+    period (equity + debt - cash - investments valued in the bridge), and where that capital came from."""
+    v = rep.model.valuation
+    h = getattr(rep.company, "historicals_usd", None) or rep.company.historicals
+    if v is None or v.dcf is None or h is None:
+        return None, ""
+    p = v.dcf.inputs.base_label
+    ic = invested_capital_at(h, p)
+    return economic_profit(v.dcf, ic), f"equity + debt - cash - investments in the bridge, {p} balance sheet"
+
+
+def ep_view(rep) -> None:
+    ep, src = ep_for(rep)
+    if ep is None:
+        return
+    st.markdown("#### The same DCF as capital plus value created")
+    _html(guide(f"Economic profit is operating profit after tax less a charge for the capital it needs: WACC on the "
+                f"capital at the start of the year, and on the year's new capital from mid-year. Our DCF's enterprise value is exactly the capital in the business "
+                f"today ({src}), plus the present value of each year's economic profit, plus the terminal value above "
+                f"the capital the forecast ends with. A business only adds value above its capital when it earns more "
+                f"than its WACC (US$ millions)."))
+    ev = ep["ev"]
+    _html(_kv([("Capital in the business", millions(ep["capital"]), f"{ep['capital'] / ev:.0%} of our EV" if ev > 0
+                else ""),
+               (f"Economic profit, years 1-{len(ep['rows'])}", millions(ep["pv_ep"]),
+                f"{ep['pv_ep'] / ev:.0%} of our EV (present value)" if ev > 0 else "present value"),
+               ("After the forecast, above capital", millions(ep["beyond"]),
+                f"{ep['beyond'] / ev:.0%} of our EV" if ev > 0 else "")], accent=1))
+    rows = ep["rows"]
+    _html(plain_table([["Capital at start"] + [millions(r["capital"]) for r in rows],
+                       ["Return on capital"] + [pct(r["return"]) for r in rows],
+                       ["Operating profit after tax"] + [millions(r["nopat"]) for r in rows],
+                       ["Capital charge"] + [millions(r["charge"]) for r in rows],
+                       ["Economic profit"] + [millions(r["ep"]) for r in rows]],
+                      [""] + [r["label"] for r in rows]))
+    st.caption("Year 1 covers the part of the year the DCF counts, so its profit and charge are for that part only "
+               "(its return on capital is for the full year). Figures are at mid-year, where the DCF counts profit. "
+               "Capital grows by the DCF's reinvestment.")
 
 
 def dividend_for(rep) -> tuple[dict | None, str]:

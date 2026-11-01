@@ -314,3 +314,13 @@ def commentary(h: Historicals, a: Analysis) -> dict[str, list[str]]:
     if tr.get("quarters"):
         out["track_record"].append(f"Beat EPS consensus in {tr['eps_beats']} of the last {tr['quarters']} quarters.")
     return out
+
+
+def invested_capital_at(h, p: str) -> float | None:
+    """Invested capital at one balance-sheet date, as the invested_capital metric defines it: equity + debt - cash,
+    less long-term investments valued in the equity bridge. None if a line is missing."""
+    eq, debt, cash = h.v("total_equity", p), h.v("debt_for_valuation", p), h.v("cash_and_investments", p)
+    if None in (eq, debt, cash):
+        return None
+    inv = h.non_operating_investments(p)
+    return eq + debt - cash - (inv.value if inv is not None and inv.value is not None else 0.0)

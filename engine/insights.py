@@ -12,7 +12,7 @@ from dataclasses import replace
 from statistics import mean
 
 from engine.comps import NM_ABOVE, CompanyMetrics, implied_from_multiple
-from engine.dcf import DCFError, DCFInputs, DCFResult, run_dcf, with_changes
+from engine.dcf import DCFError, DCFInputs, DCFResult, _timing, run_dcf, with_changes
 from engine.scenarios import DEFAULT_SCENARIOS, STREET_TERMINAL_GROWTH, _solve
 
 ROIC_CAP = 0.40  # today's ROIC is held at most at this level (as in street_conventions)
@@ -318,3 +318,35 @@ def tornado(inp: DCFInputs, max_terminal_growth: float | None = None) -> list[di
             continue
         rows.append({"label": label, "base": base, "low": lo, "high": hi, "low_detail": lo_d, "high_detail": hi_d})
     return sorted(rows, key=lambda r: abs(r["high"] - r["low"]), reverse=True)
+
+
+# --- 8. Economic profit: the same DCF as capital plus value created above its cost ----------------------------------
+def economic_profit(dcf: DCFResult, invested_capital: float) -> dict | None:
+    """The DCF's enterprise value split (McKinsey's economic-profit identity) into the capital invested today, the
+    present value of each forecast year's economic profit (NOPAT less a charge for capital) and the terminal value
+    above the capital the forecast ends with. Capital is charged at WACC for the calendar time it is in use: the
+    capital at the start of a year until the year end (only the part still to come in year 1), and the year's new
+    capital from when the DCF counts it (mid-year) to the year end. The three parts add up to the EV exactly. Capital
+    grows by the reinvestment the DCF counts. Each row is in money of the point where the DCF counts the year's
+    profit (mid-year), so profit less charge is the economic profit. None if capital is not positive."""
+    if invested_capital is None or invested_capital <= 0:
+        return None
+    _, end_n = _timing(dcf.inputs)
+    n, w = len(dcf.years), dcf.inputs.wacc
+    ic, end_prev, rows, total = invested_capital, 0.0, [], 0.0
+    for t, y in enumerate(dcf.years, start=1):
+        end = max(end_n - (n - t), 0.0)
+        f_end, f_prev = (1 + w) ** -end, (1 + w) ** -end_prev
+        k = y.counted_fcf / y.fcf if y.fcf else 1.0  # share of the year counted
+        e = y.pv / y.counted_fcf if y.counted_fcf else y.discount_factor  # the year's average discount factor
+        new = k * y.reinvestment
+        pv_charge = (f_prev - f_end) * ic + (e - f_end) * new
+        pv_ep = e * k * y.nopat - pv_charge
+        rows.append({"label": y.label, "capital": ic, "nopat": k * y.nopat, "charge": pv_charge / e,
+                     "ep": pv_ep / e, "return": y.nopat / ic if ic else None, "pv": pv_ep})
+        total += pv_ep
+        ic += new
+        end_prev = end
+    beyond = dcf.pv_terminal_value - (1 + w) ** -end_prev * ic
+    return {"capital": invested_capital, "rows": rows, "pv_ep": total, "beyond": beyond, "capital_end": ic,
+            "ev": dcf.enterprise_value, "check": invested_capital + total + beyond - dcf.enterprise_value}

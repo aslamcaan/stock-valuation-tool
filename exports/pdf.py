@@ -15,7 +15,8 @@ from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Space
 from engine.rubric import LABELS, WEIGHTS
 from ui.format import millions, money, mult, pct
 from ui.report import DISCLAIMER, with_piotroski
-from engine.insights import peer_regressions, price_walk, return_on_new_capital, value_split
+from engine.classify import DECLINING
+from engine.insights import peer_regressions, price_walk, return_on_new_capital, tornado, value_split
 from ui.insights import dividend_for, mc_for, walk_args
 
 INK = colors.HexColor("#14110e")      # masthead warm black, as in the app
@@ -333,6 +334,16 @@ def build_pdf(rep) -> bytes:
     s.append(table([[x.scenario.name, f"{x.scenario.probability:.0%}", x.scenario.describe(),
                      money(v.per_us_share(x.value_per_share)) if x.result else "-"] for x in v.scenarios],
                    ["Scenario", "Prob.", "Assumptions", "Value"], [20 * mm, 14 * mm, 118 * mm, 30 * mm]))
+    if v.dcf_inputs is not None:
+        cap = 0.0 if v.classification.stage == DECLINING else rep.model.inputs.risk_free.value
+        rows = tornado(v.dcf_inputs, cap)
+        if rows:
+            f = v.per_us_share_factor
+            s.append(P("Which assumption matters most: each input moved alone to its bear and bull setting.", SMALL))
+            s.append(table([[r["label"], f"{r['low_detail']} / {r['high_detail']}", money(r["low"] * f),
+                             money(r["high"] * f), f"{(r['high'] - r['low']) * f:,.2f}"] for r in rows],
+                           ["Input", "Bear / bull setting", "Bear", "Bull", "Swing"],
+                           [38 * mm, 52 * mm, 30 * mm, 30 * mm, 32 * mm]))
     s1 = v.sensitivity_wacc_growth
     if s1:
         s.append(table([[pct(g)] + [money(v.per_us_share(x)) for x in r] for g, r in zip(s1["terminal_growth"], s1["value_per_share"])],

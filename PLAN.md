@@ -454,3 +454,4 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   a part year 1 and mid-year discounting don't distort it. Capital from the US$ balance sheet at the DCF base year
   (TSM was in TWD before the fix). KO: 49.3bn + 34.7bn + 107.7bn = 191.7bn.
 - Excel Analysis tab section 7: economic profit as live formulas on the DCF tab's NOPAT, reinvestment and timing rows; check = sum - DCF EV is 0 on KO, MSFT, TSM, CVX, GRAB, UBER.
+- Compare: cross-checks add the share of EV from value created above capital (GRAB 32.4%, CVX 19.7%).

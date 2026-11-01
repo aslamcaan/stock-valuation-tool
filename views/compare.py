@@ -150,9 +150,10 @@ def cross_checks(rep) -> dict[str, str]:
     """Not in the fair value: the dividend model, the return the forecast earns on new capital and the F-score."""
     from engine.forensic import _consecutive, piotroski
     from engine.insights import return_on_new_capital
-    from ui.insights import dividend_for
+    from ui.insights import dividend_for, ep_for
     out = {"Dividend model value": "n/a", "Dividend growth the price implies": "n/a",
-           "Return on new capital (vs WACC)": "n/a", "Piotroski F-score": "n/a"}
+           "Return on new capital (vs WACC)": "n/a", "EV from value created above capital": "n/a",
+           "Piotroski F-score": "n/a"}
     v = rep.model.valuation
     if v is not None and v.dcf is not None:
         d, _ = dividend_for(rep)
@@ -162,6 +163,9 @@ def cross_checks(rep) -> dict[str, str]:
         rn = return_on_new_capital(v.dcf)
         if rn:
             out["Return on new capital (vs WACC)"] = f"{fmt(rn['roic_new'], 'pct')} ({fmt(rn['wacc'], 'pct')})"
+        ep, _ = ep_for(rep)
+        if ep and ep["ev"] > 0:
+            out["EV from value created above capital"] = fmt((ep["pv_ep"] + ep["beyond"]) / ep["ev"], "pct")
     h = rep.company.historicals
     labels = list(h.fy_labels)
     if len(labels) >= 2 and _consecutive(labels[-2], labels[-1]):
@@ -176,7 +180,8 @@ names = list(next(iter(checks.values())))
 st.markdown(plain_table([[n] + [checks[r.ticker][n] for r in reps] for n in names],
                         ["Cross-check"] + [r.ticker for r in reps]), unsafe_allow_html=True)
 st.caption("Not part of the fair value. The dividend model needs a yield of at least 1%; return on new capital is "
-           "the forecast's rise in operating profit after tax over the capital it reinvests, against WACC.")
+           "the forecast's rise in operating profit after tax over the capital it reinvests, against WACC. Value "
+           "created above capital is the share of our EV that is economic profit, not capital already invested.")
 
 st.markdown("### Valuation multiples")
 table = []

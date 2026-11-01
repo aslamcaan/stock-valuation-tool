@@ -131,7 +131,7 @@ cross-check on the DCF tab's NOPAT, the tornado, and the economic-profit split a
 with a check against its EV. Both files are
 built only when their button is clicked.
 
-**Other pages.** Compare (two saved reports side by side, with key metrics, cross-checks and multiples), Track Record (every call with the MD's reasons, and the
+**Other pages.** Compare (two saved reports side by side, with key metrics, cross-checks including the share of EV created above capital, and multiples), Track Record (every call with the MD's reasons, and the
 price move since), How it works, Talking points (how to explain the tool in an interview, with a worked
 example read live from a saved report) and a Debug page with the raw responses.
 

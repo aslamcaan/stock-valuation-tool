@@ -87,6 +87,8 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
     DCF's operating profit after tax (constant payout) then at terminal growth, at the cost of equity; and the
     dividend growth for ever the price implies, (P x CoE - D0) / (P + D0). KO: $36.10 against a $94.08 price, which
     needs 5.9% a year; CVX: $133.92 against $235.52 (3.1%).
+  - **Tornado**: each input moved alone to its bear and bull setting (sales-to-capital +/-20%), sorted by swing.
+    KO: revenue growth $37.25-$47.75, WACC $38.74-$46.40, margin $37.64-$45.27, sales-to-capital barely matters.
   - **Monte Carlo range**: 2,000 DCFs drawing growth, margin, WACC and terminal growth, each spread so its
     10th-90th percentile range equals the bear-bull step (fixed seed, repeatable). Growth and margin move together
     at the company's own measured correlation (revenue growth against the change in operating margin, at least six

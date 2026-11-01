@@ -11,7 +11,7 @@ from data_desk.tags import LINES
 from engine.analysis import METRIC_SECTION
 from engine.rubric import LABELS, WEIGHTS
 from engine.values import MULTIPLE, PER_SHARE, RATIO
-from ui.insights import dividend_view, monte_carlo_view, regression_view, split_view, walk_view
+from ui.insights import dividend_view, monte_carlo_view, regression_view, split_view, tornado_view, walk_view
 from ui.format import (calc_value, fmt_value, millions, money, mult, pct, plain_table, trace_text, traced_table,
                        when)
 from ui.theme import (ACCENT, CSS, guide, GREEN, ICON, MONO, RATING_COLOUR, RED, TEXT, VERDICT_COLOUR, chip, count, esc,
@@ -538,6 +538,7 @@ def scenarios(rep) -> None:
         html(plain_table([[f"{gs * 100:+.0f}"] + [money(v.per_us_share(x)) for x in row] for gs, row in
                           zip(s2["growth_shift"], s2["value_per_share"])],
                          ["growth \\ margin"] + [f"{m * 100:+.0f}" for m in s2["margin_shift"]]))
+    tornado_view(rep)
     monte_carlo_view(rep)
 
 

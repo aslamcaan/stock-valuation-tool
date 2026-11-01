@@ -10,7 +10,7 @@ import streamlit as st
 
 from engine.classify import DECLINING
 from engine.insights import (dividend_check, growth_margin_correlation, monte_carlo, peer_regressions, price_walk,
-                             return_on_new_capital, value_split)
+                             return_on_new_capital, tornado, value_split)
 from ui.format import millions, money, mult, pct, plain_table
 from ui.theme import ACCENT, BORDER, FAINT, MUTED, TEXT, esc, guide, plotly_layout
 
@@ -218,6 +218,38 @@ def dividend_view(rep) -> None:
                ("Dividend yield", pct(d["yield"]), "latest fiscal year's dividend / price"),
                ("Growth the price implies", pct(d["implied_growth"]),
                 f"dividend growth for ever at a {pct(d['cost_of_equity'])} cost of equity")], accent=2))
+
+
+def tornado_view(rep) -> None:
+    v = rep.model.valuation
+    if v is None or v.dcf_inputs is None:
+        return
+    cap = 0.0 if v.classification.stage == DECLINING else rep.model.inputs.risk_free.value
+    rows = tornado(v.dcf_inputs, cap)
+    if not rows:
+        return
+    f = v.per_us_share_factor
+    base = rows[0]["base"] * f
+    st.markdown("#### Which assumption matters most")
+    _html(guide("Each bar moves one input at a time from the base case to its bear setting (left end) and its bull "
+                "setting (right end), the same steps as the scenarios above; sales-to-capital, which the scenarios do "
+                "not move, goes 20% either way. The longest bar is the assumption to argue about; the line is the "
+                "base-case value."))
+    fig = go.Figure()
+    labels = [r["label"] for r in rows][::-1]
+    for key, colour, name in (("low", "rgba(196,180,156,.55)", "Bear setting"), ("high", ACCENT, "Bull setting")):
+        fig.add_bar(y=labels, x=[(r[key] - r["base"]) * f for r in rows][::-1], base=base, orientation="h",
+                    name=name, marker=dict(color=colour),
+                    customdata=[[r[key] * f, r[key + "_detail"]] for r in rows][::-1],
+                    hovertemplate="%{y}, %{customdata[1]}: $%{customdata[0]:,.2f}<extra></extra>")
+    fig.add_vline(x=base, line=dict(color=TEXT, width=1))
+    fig.update_layout(**plotly_layout(height=60 + 46 * len(rows), barmode="overlay", showlegend=True, bargap=0.35,
+                                      legend=dict(orientation="h", y=1.12, x=0, font=dict(color=MUTED)),
+                                      margin=dict(l=10, r=10, t=40, b=10),
+                                      xaxis=dict(title="Value per share, US$", tickprefix="$")))
+    st.plotly_chart(fig, width="stretch", config=CHART_CONFIG)
+    _html(_kv([(r["label"], f"{money(r['low'] * f)} to {money(r['high'] * f)}",
+                f"{r['low_detail']} / {r['high_detail']}") for r in rows[:3]], accent=0))
 
 
 # --- 3. Monte Carlo (in the scenarios section) -----------------------------------------------------------------------

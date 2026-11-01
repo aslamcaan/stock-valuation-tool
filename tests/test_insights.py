@@ -162,3 +162,22 @@ def test_return_on_new_capital_and_its_flags():
     f = reinvestment_flags(low, Value(0.40, None, "ratio", "FY", "test"))
     assert f and f[0].code == "new_capital_below_wacc" and f[0].level == "amber"
     assert reinvestment_flags(low, Value(0.02, None, "ratio", "FY", "test")) == []  # already below WACC today
+
+
+def test_tornado_moves_one_input_at_a_time_and_sorts_by_swing():
+    from engine.dcf import run_dcf, with_changes
+    from engine.insights import tornado
+    from engine.scenarios import DEFAULT_SCENARIOS
+    from engine.valuation import value_company
+    from tests.engine_fixtures import engine_inputs
+    inp = value_company(engine_inputs("GRAB")).dcf_inputs
+    rows = tornado(inp)
+    swings = [abs(r["high"] - r["low"]) for r in rows]
+    assert swings == sorted(swings, reverse=True)
+    assert {r["label"] for r in rows} >= {"Revenue growth", "Operating margin", "WACC", "Terminal growth"}
+    bear = DEFAULT_SCENARIOS[0]
+    w = next(r for r in rows if r["label"] == "WACC")
+    assert w["low"] == pytest.approx(run_dcf(with_changes(inp, wacc=inp.wacc + bear.wacc_shift)).value_per_share)
+    assert all(r["base"] == pytest.approx(run_dcf(inp).value_per_share) for r in rows)
+    capped = next(r for r in tornado(inp, max_terminal_growth=inp.terminal_growth) if r["label"] == "Terminal growth")
+    assert capped["high"] == pytest.approx(run_dcf(inp).value_per_share)  # no room above the cap

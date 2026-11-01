@@ -251,3 +251,47 @@ def return_on_new_capital(dcf: DCFResult) -> dict | None:
     return {"nopat0": nopat0, "nopat_final": dcf.years[-1].nopat, "reinvestment": reinvested, "gain": gain,
             "roic_new": gain / reinvested, "years": len(dcf.years), "terminal_roic": inp.terminal_roic,
             "wacc": inp.wacc}
+
+
+# --- 7. Tornado: which input moves the value most --------------------------------------------------------------------
+S2C_STEP = 0.20  # sales-to-capital is not in the bear-bull scenarios: +/-20% (capital needs a fifth lower or higher)
+
+
+def tornado(inp: DCFInputs, max_terminal_growth: float | None = None) -> list[dict]:
+    """The base DCF with one input moved at a time, to its bear and to its bull setting (the scenarios' steps;
+    sales-to-capital +/-20%). Rows sorted by the size of the swing: {label, base, low, high, low_detail,
+    high_detail}. Values per ordinary share; a move the DCF cannot take (e.g. terminal growth at WACC) is skipped."""
+    def value(x: DCFInputs) -> float | None:
+        try:
+            return run_dcf(x).value_per_share
+        except DCFError:
+            return None
+
+    base = value(inp)
+    if base is None:
+        return []
+    g_hi = inp.terminal_growth + BULL.terminal_growth_shift
+    if max_terminal_growth is not None:
+        g_hi = min(g_hi, max(max_terminal_growth, inp.terminal_growth))
+    moves = [
+        ("Revenue growth", with_changes(inp, growth_shift=BEAR.growth_shift), f"{BEAR.growth_shift * 100:+.0f} pts a year",
+         with_changes(inp, growth_shift=BULL.growth_shift), f"{BULL.growth_shift * 100:+.0f} pts a year"),
+        ("Operating margin", with_changes(inp, margin_shift=BEAR.margin_shift), f"{BEAR.margin_shift * 100:+.0f} pts",
+         with_changes(inp, margin_shift=BULL.margin_shift), f"{BULL.margin_shift * 100:+.0f} pts"),
+        ("WACC", with_changes(inp, wacc=inp.wacc + BEAR.wacc_shift), f"{(inp.wacc + BEAR.wacc_shift) * 100:.2f}%",
+         with_changes(inp, wacc=inp.wacc + BULL.wacc_shift), f"{(inp.wacc + BULL.wacc_shift) * 100:.2f}%"),
+        ("Terminal growth", with_changes(inp, terminal_growth=inp.terminal_growth + BEAR.terminal_growth_shift),
+         f"{(inp.terminal_growth + BEAR.terminal_growth_shift) * 100:.2f}%",
+         with_changes(inp, terminal_growth=g_hi), f"{g_hi * 100:.2f}%"),
+    ]
+    if all(y.sales_to_capital is not None for y in inp.years):
+        def s2c(k: float) -> DCFInputs:
+            return replace(inp, years=tuple(replace(y, sales_to_capital=y.sales_to_capital * k) for y in inp.years))
+        moves.append(("Sales-to-capital", s2c(1 - S2C_STEP), f"-{S2C_STEP:.0%}", s2c(1 + S2C_STEP), f"+{S2C_STEP:.0%}"))
+    rows = []
+    for label, lo_in, lo_d, hi_in, hi_d in moves:
+        lo, hi = value(lo_in), value(hi_in)
+        if lo is None or hi is None:
+            continue
+        rows.append({"label": label, "base": base, "low": lo, "high": hi, "low_detail": lo_d, "high_detail": hi_d})
+    return sorted(rows, key=lambda r: abs(r["high"] - r["low"]), reverse=True)

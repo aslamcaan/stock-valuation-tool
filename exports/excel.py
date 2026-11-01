@@ -676,7 +676,7 @@ def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
     if mc:
         an.label(f"A{r}", "3. Monte Carlo range of the DCF (from the app's simulation; fixed seed)", bold=True)
         r += 1
-        how = (f"growth and margin drawn with their measured correlation of {corr['rho']:+.2f} ({corr['n']} years)"
+        how = (f"growth and margin drawn with their measured correlation of {corr['rho']:+.2f} (from {corr.get('basis', str(corr['n']) + ' years')})"
                if corr else "inputs drawn independently")
         an.label(f"A{r}", f"{mc['valid']:,} DCFs; {how}")
         r += 1

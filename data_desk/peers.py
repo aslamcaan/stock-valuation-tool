@@ -62,7 +62,18 @@ def metrics_from(h: Historicals, analysis, *, ticker: str, name: str, sic: str, 
         benchmarks={"revenue_growth": rg, "operating_margin": analysis.m("operating_margin", p),
                     "roic": analysis.m("roic", last), "fcf_margin": analysis.m("fcf_margin", p),
                     "net_debt_to_ebitda": analysis.m("net_debt_to_ebitda", p) if ebitda and ebitda > 0 else None},
-        source=source, **financial_fields(h))
+        source=source, growth_margin_pairs=growth_margin_pairs(analysis, h.fy_labels), **financial_fields(h))
+
+
+def growth_margin_pairs(analysis, fy_labels) -> tuple:
+    """(revenue growth, change in operating margin) for each fiscal year after the first."""
+    out = []
+    for prev, cur in zip(fy_labels, fy_labels[1:]):
+        g, m0, m1 = analysis.m("revenue_growth", cur), analysis.m("operating_margin", prev), \
+            analysis.m("operating_margin", cur)
+        if None not in (g, m0, m1):
+            out.append((g, m1 - m0))
+    return tuple(out)
 
 
 def financial_fields(h) -> dict:

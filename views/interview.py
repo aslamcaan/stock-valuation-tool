@@ -169,7 +169,8 @@ qa([
      "each input with its date."),
     ("\"What's the weakest part?\"",
      "Small samples. The Monte Carlo links growth and margin by a correlation measured from about nine years of the "
-     "company's own history (CVX 0.95, KO -0.28), which is noisy, so it is capped at 0.8; WACC and terminal growth are "
+     "company's own history (CVX 0.95, KO -0.28), or pooled with its peers' when it has under six years (GRAB), which "
+     "is noisy, so it is capped at 0.8; WACC and terminal growth are "
      "still drawn independently. The peer regressions run on five to eight peers, so they are a cross-check, not part "
      "of the fair value. The margin fade towards the industry is the biggest single assumption for an exceptional "
      "business, so the return-on-new-capital check flags when it makes growth earn less than WACC (TSMC). And it "
@@ -180,8 +181,8 @@ qa([
      "Judgement: the review desk challenges the weakest assumptions and writes the bear case, and the "
      "MD scores moat, management and governance with cited evidence. A full report costs about US$0.15-0.50 of AI."),
     ("\"What would you build next?\"",
-     "Non-US filers through IFRS filings in other markets; peer-pooled correlations for the Monte Carlo when a "
-     "company's own history is short; and a longer track "
+     "Non-US filers through IFRS filings in other markets; WACC and terminal growth drawn with a measured link in "
+     "the Monte Carlo, not independently; and a longer track "
      "record, so the calls can be scored against what the price did afterwards (the Track Record page already logs "
      "each call with its date)."),
 ])

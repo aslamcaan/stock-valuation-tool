@@ -9,7 +9,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from engine.classify import DECLINING
-from engine.insights import (dividend_check, growth_margin_correlation, monte_carlo, peer_regressions, price_walk,
+from engine.insights import (MIN_CORR_YEARS, dividend_check, growth_margin_correlation, monte_carlo, peer_regressions,
+                             pooled_growth_margin_correlation, price_walk,
                              return_on_new_capital, tornado, value_split)
 from ui.format import millions, money, mult, pct, plain_table
 from ui.theme import ACCENT, BORDER, FAINT, MUTED, TEXT, esc, guide, plotly_layout
@@ -71,7 +72,18 @@ def mc_for(rep) -> tuple[dict | None, dict | None, dict | None]:
     v = m.valuation
     cap = 0.0 if v.classification.stage == DECLINING else m.inputs.risk_free.value
     price = m.verdict.price / v.per_us_share_factor
-    corr = growth_margin_correlation(history_pairs(rep))
+    own = history_pairs(rep)
+    corr = growth_margin_correlation(own)
+    if corr:
+        corr["basis"] = f"the company's last {corr['n']} years"
+    else:  # too short a history of its own: pool it with the peers'
+        series = {rep.ticker: own, **{p.ticker: list(getattr(p, "growth_margin_pairs", ()))
+                                      for p in (getattr(rep, "peers_pool", None)
+                                                or (rep.model.comps.peers if rep.model.comps else []))}}
+        corr = pooled_growth_margin_correlation(series)
+        if corr:
+            corr["basis"] = (f"{corr['n']} company-years pooled across {', '.join(corr['firms'])} (each firm against "
+                             f"its own averages), because the company has under {MIN_CORR_YEARS} years of its own")
     rho = corr["rho"] if corr else 0.0
     ind = mc_cached(v.dcf_inputs, price, cap, 0.0)
     return (mc_cached(v.dcf_inputs, price, cap, rho) if rho else ind), corr, ind
@@ -265,8 +277,8 @@ def monte_carlo_view(rep) -> None:
         return
     sp = mc["spreads"]
     if corr:
-        link = (f"Growth and margin are drawn together, with a correlation of {corr['rho']:+.2f}, measured from the "
-                f"company's last {corr['n']} years of revenue growth against the change in its operating margin"
+        link = (f"Growth and margin are drawn together, with a correlation of {corr['rho']:+.2f}, measured from "
+                f"{corr['basis']} of revenue growth against the change in its operating margin"
                 + (f" ({corr['raw']:+.2f}, capped at 0.8 because a few years cannot make it certain)"
                    if corr["raw"] != corr["rho"] else "")
                 + "; WACC and terminal growth are drawn independently.")

@@ -92,7 +92,9 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
   - **Monte Carlo range**: 2,000 DCFs drawing growth, margin, WACC and terminal growth, each spread so its
     10th-90th percentile range equals the bear-bull step (fixed seed, repeatable). Growth and margin move together
     at the company's own measured correlation (revenue growth against the change in operating margin, at least six
-    years, capped at +/-0.8; CVX 0.95, MSFT 0.43, KO -0.28); the independent range is shown alongside.
+    years, capped at +/-0.8; CVX 0.95, MSFT 0.43, KO -0.28). With a shorter history it is pooled with the peers'
+    histories, each firm measured against its own averages (GRAB: -0.18 over 43 company-years, six firms). The
+    independent range is shown alongside.
   - **Regression-based peer multiples**: EV/Sales against operating margin and EV/EBITDA against revenue growth
     across the peers (needs five), giving the multiple the company warrants at its own margin or growth.
 

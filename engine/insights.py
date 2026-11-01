@@ -125,6 +125,29 @@ def growth_margin_correlation(pairs: list[tuple[float, float]]) -> dict | None:
     return {"raw": r, "rho": max(-MAX_CORR, min(MAX_CORR, r)), "n": len(pairs)}
 
 
+MIN_POOL_FIRMS, MIN_POOL_YEARS, MIN_FIRM_YEARS = 3, 15, 4
+
+
+def pooled_growth_margin_correlation(series: dict[str, list[tuple[float, float]]]) -> dict | None:
+    """The same correlation pooled across firms (the company and its peers), for a company with too short a history
+    of its own. Each firm's growth and margin changes are taken relative to its own averages first, so firms with
+    different growth rates do not create a correlation between them (a within-firm estimate). Needs at least three
+    firms with four or more years each and fifteen firm-years; clipped to +/-0.8."""
+    used = {k: p for k, p in series.items() if len(p) >= MIN_FIRM_YEARS}
+    if len(used) < MIN_POOL_FIRMS or sum(len(p) for p in used.values()) < MIN_POOL_YEARS:
+        return None
+    xs, ys = [], []
+    for p in used.values():
+        mg, mm = mean(g for g, _ in p), mean(m for _, m in p)
+        xs += [g - mg for g, _ in p]
+        ys += [m - mm for _, m in p]
+    sxx, syy = sum(x * x for x in xs), sum(y * y for y in ys)
+    if sxx == 0 or syy == 0:
+        return None
+    r = sum(x * y for x, y in zip(xs, ys)) / math.sqrt(sxx * syy)
+    return {"raw": r, "rho": max(-MAX_CORR, min(MAX_CORR, r)), "n": len(xs), "firms": sorted(used)}
+
+
 def monte_carlo(inp: DCFInputs, price: float, n: int = 2000, seed: int = 7,
                 max_terminal_growth: float | None = None, growth_margin_corr: float = 0.0) -> dict | None:
     """n DCFs, each drawing revenue growth, margin, WACC and terminal growth shifts from normal distributions whose

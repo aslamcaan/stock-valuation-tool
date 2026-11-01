@@ -443,3 +443,7 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   bull setting, sorted by swing. KO: growth $37.25-$47.75, WACC $38.74-$46.40, margin $37.64-$45.27.
 - PDF: tornado table in section 14 (input, bear/bull setting, values, swing).
 - Excel Analysis tab: section 6, the tornado (bear, bull, swing as a formula).
+- Monte Carlo pooled correlation: under six years of its own history, the growth-margin correlation is pooled
+  across the company and its peer pool (each firm demeaned, at least 3 firms x 4 years and 15 firm-years). Peers
+  now carry growth_margin_pairs. GRAB: -0.18 over 43 company-years (GRAB, LYFT, MMYT, PDD, RYDE, UBER). Saved
+  reports pick it up on their next run.

@@ -68,6 +68,8 @@ class CompanyMetrics:
     net_income_common: float | None = None
     ffo: float | None = None
     noi: float | None = None
+    # (revenue growth, change in operating margin) per fiscal year, for the Monte Carlo's pooled correlation
+    growth_margin_pairs: tuple = ()
 
     @property
     def ev(self) -> float | None:

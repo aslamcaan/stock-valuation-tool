@@ -352,7 +352,7 @@ def build_pdf(rep) -> bytes:
         mc, corr, _ = mc_for(rep)
         if mc:
             f = v.per_us_share_factor
-            how = (f"growth and margin drawn with their measured correlation of {corr['rho']:+.2f} ({corr['n']} years), "
+            how = (f"growth and margin drawn with their measured correlation of {corr['rho']:+.2f} (from {corr.get('basis', str(corr['n']) + ' years')}), "
                    "WACC and terminal growth independently" if corr else
                    "growth, margin, WACC and terminal growth drawn independently")
             s.append(P(f"Monte Carlo ({mc['valid']:,} DCFs; {how}, each with its 10th-90th percentile range equal to "

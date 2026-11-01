@@ -181,3 +181,16 @@ def test_tornado_moves_one_input_at_a_time_and_sorts_by_swing():
     assert all(r["base"] == pytest.approx(run_dcf(inp).value_per_share) for r in rows)
     capped = next(r for r in tornado(inp, max_terminal_growth=inp.terminal_growth) if r["label"] == "Terminal growth")
     assert capped["high"] == pytest.approx(run_dcf(inp).value_per_share)  # no room above the cap
+
+
+def test_pooled_correlation_demeans_each_firm_and_needs_enough_firms():
+    from engine.insights import pooled_growth_margin_correlation as pooled
+    # within each firm margins widen in its faster years; the fast-growing firm has lower margin changes overall,
+    # which a naive pool would read as a negative correlation
+    a = [(0.30, 0.00), (0.40, 0.02), (0.20, -0.02), (0.35, 0.01), (0.25, -0.01)]
+    b = [(0.02, 0.05), (0.06, 0.07), (-0.02, 0.03), (0.04, 0.06), (0.00, 0.04)]
+    c = [(0.10, 0.02), (0.15, 0.04), (0.05, 0.00), (0.12, 0.03), (0.08, 0.01)]
+    r = pooled({"A": a, "B": b, "C": c, "D": a[:3]})
+    assert r["rho"] == pytest.approx(0.8) and r["raw"] > 0.9  # positive within firms, then capped
+    assert r["firms"] == ["A", "B", "C"] and r["n"] == 15  # D has too few years
+    assert pooled({"A": a, "B": b}) is None  # two firms are not enough

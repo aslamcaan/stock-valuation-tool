@@ -106,6 +106,9 @@ def verify(data: dict, source_text: str) -> tuple[dict, list[str]]:
     # whole number tokens in the filing ("1,180" -> "1180"; "18" does not match inside "2018" or "1,180")
     src_tokens = {t.replace(",", "") for t in re.findall(r"(?<![\d.,])\d[\d,]*(?:\.\d+)?(?![\d])", src)}
     src_tokens |= {t.rstrip("0").rstrip(".") for t in src_tokens if "." in t}
+    # figures the filing shows as negative: in parentheses ("(110)") or with a minus sign
+    neg_tokens = {t.replace(",", "") for t in re.findall(r"(?:\(\s*|[-−–]\s?)(\d[\d,]*(?:\.\d+)?)(?![\d])", src)}
+    neg_tokens |= {t.rstrip("0").rstrip(".") for t in neg_tokens if "." in t}
     dropped: list[str] = []
 
     def quote_ok(q: str) -> bool:
@@ -116,11 +119,11 @@ def verify(data: dict, source_text: str) -> tuple[dict, list[str]]:
             if k == "quote" or k == "fiscal_year" or k == "period":
                 continue
             if isinstance(v, (int, float)) and not isinstance(v, bool):
-                txt = f"{v:g}"
-                alts = {txt, f"{v:,.0f}".replace(",", ""), f"{v:.1f}", f"{v * 1000:,.0f}".replace(",", ""),
-                        f"{v / 1000:g}"}  # the filing may state it in billions (exactly, not rounded)
-                if not any(a in src_tokens for a in alts):
-                    return False
+                a_ = abs(v)
+                alts = {f"{a_:g}", f"{a_:,.0f}".replace(",", ""), f"{a_:.1f}", f"{a_ * 1000:,.0f}".replace(",", ""),
+                        f"{a_ / 1000:g}"}  # the filing may state it in billions (exactly, not rounded)
+                if not any(a in (neg_tokens if v < 0 else src_tokens) for a in alts):
+                    return False  # a loss must appear as a negative in the filing: "(110)" or "-110"
             elif isinstance(v, str) and k.endswith("_text"):
                 if any(n not in src_tokens for n in _numbers(v)):
                     return False

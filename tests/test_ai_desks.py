@@ -203,3 +203,14 @@ def test_quoted_table_row_matches_the_extracted_table():
                           "comparable_us_tickers": ["LYFT"]}]}
     out, dropped = verify(data, src)
     assert [s["name"] for s in out["segments"]] == ["Mobility"] and not dropped
+
+
+def test_a_loss_must_appear_as_a_negative_in_the_filing():
+    src = " | Financial services | (110) | | | (105) | \n Others | 33 |"
+    seg = {"name": "Financial Services", "quote": "", "comparable_us_tickers": []}
+    out, _ = verify({"segments": [{**seg, "profit_millions": -110}]}, src)
+    assert out["segments"]  # shown as (110)
+    out, _ = verify({"segments": [{**seg, "profit_millions": -33}]}, src)
+    assert not out["segments"]  # 33 is in the filing, but only as a positive
+    out, _ = verify({"segments": [{**seg, "profit_millions": 110}]}, " revenue was 110 ")
+    assert out["segments"]

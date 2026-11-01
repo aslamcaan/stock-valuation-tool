@@ -461,3 +461,5 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Research quote check ignores the '|' the text extractor puts between table cells: quoted table rows were failing verification. Dropped items across KO, MSFT, TSM, CVX, GRAB, UBER: 42 -> 8 (GRAB 19 -> 2; UBER segments 0 -> 2 verified). Recovered one-off items feed margin normalisation, so the six were re-run.
 - Research number check: a negative figure (segment loss) passes only when the filing shows it as negative, '(110)' or '-110'. Before, every negative failed (unsigned source tokens): GRAB Financial Services (-110) and UBER Freight (-33) were dropped.
 - Excel Cover: a 'Tabs' guide (one line per tab present); Analysis tab description lists all seven sections.
+- Terminal value check (DCF section): implied exit EV/EBIT vs peers' median and the company's own today. KO 12.1x vs 17.6x / 27.1x; MSFT 9.6x vs 20.9x / 23.8x.
+- Session end 1 Nov: re-runs of GRAB, UBER, TSM saved with the research quote fixes; the batch stopped before MSFT, KO, CVX (re-run those next session). AI spend today US$3.85 of $5.

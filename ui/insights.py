@@ -4,6 +4,7 @@ pure and fast), so every saved report gets them; each view says how to read it."
 from __future__ import annotations
 
 from functools import lru_cache
+from statistics import median
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -17,6 +18,7 @@ from ui.format import millions, money, mult, pct, plain_table
 from ui.theme import ACCENT, BORDER, FAINT, MUTED, TEXT, esc, guide, plotly_layout
 
 CHART_CONFIG = {"displayModeBar": False}
+NM_EV_EBIT = 100.0  # EV/EBIT above this is not meaningful (near-zero operating income)
 
 
 def _html(s: str) -> None:
@@ -192,6 +194,40 @@ def split_view(rep) -> None:
                     f"the business over {rn['years']} years and operating profit after tax goes from "
                     f"US${rn['nopat0']:,.0f}m to US${rn['nopat_final']:,.0f}m: a return on that new capital of "
                     f"{pct(rn['roic_new'])}, {verdict} ({pct(rn['wacc'])}).", "Return on new capital"))
+
+
+def exit_multiple_check(rep) -> dict | None:
+    """The EV/EBIT our terminal value implies, against the selected peers' median EV/EBIT today and the company's own
+    (the market's EV over its latest operating income). None without a terminal multiple."""
+    m = rep.model
+    v = m.valuation
+    if v is None or v.dcf is None or not v.dcf.implied_exit_ebit_multiple:
+        return None
+    peers = [p.ev / p.operating_income for p in (m.comps.peers if m.comps else [])
+             if p.ev and p.operating_income and p.operating_income > 0 and 0 < p.ev / p.operating_income <= NM_EV_EBIT]
+    me, own = m.company_metrics, None
+    sp = value_split(v.dcf, _ordinary_price(m))
+    if me is not None and me.operating_income and me.operating_income > 0 and sp and sp["market_ev"] > 0:
+        own = sp["market_ev"] / me.operating_income
+    return {"exit": v.dcf.implied_exit_ebit_multiple, "final_year": v.dcf.years[-1].label,
+            "peer_median": median(peers) if peers else None, "peers": len(peers), "own": own,
+            "own_period": getattr(me, "period", "")}
+
+
+def exit_view(rep) -> None:
+    x = exit_multiple_check(rep)
+    if x is None:
+        return
+    items = [(f"Terminal value / EBIT {x['final_year']}", mult(x["exit"]), "what our DCF pays at the end")]
+    if x["peer_median"] is not None:
+        items.append(("Peers today", mult(x["peer_median"]), f"median EV/EBIT of {x['peers']} selected peers"))
+    if x["own"] is not None:
+        items.append((f"{rep.ticker} today", mult(x["own"]), f"market EV / operating income, {x['own_period']}"))
+    _html(guide("The terminal value as a multiple of the final forecast year's operating income, set against what "
+                "the peers and the company trade on today. A terminal multiple below today's is normal, because "
+                "growth has slowed to the terminal rate by then; one well above the peers would mean the DCF is "
+                "paying more for a mature business than the market pays for growing ones.", "Terminal value check"))
+    _html(_kv(items, accent=0))
 
 
 def ep_for(rep) -> tuple[dict | None, str]:

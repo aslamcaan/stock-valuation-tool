@@ -146,7 +146,7 @@ def dcf_block(sh: Sheet, top: int, n: int, I: dict, title: str, g_shift: str = "
     sh.formula(f"B{b + 12}", f"B{b + 11}*{I['adr']}", PS, bold=True)
     return {"vps": sh.ref(f"B{b + 12}"), "ev": sh.ref(f"B{b + 8}"), "tv": sh.ref(f"B{b + 6}"),
             "end_row": b + 13, "fcf_row": r["fcf"], "rev_row": r["rev"], "nopat_row": r["nopat"],
-            "reinv_row": r["reinv"], "last_col": last}
+            "reinv_row": r["reinv"], "last_col": last, "pre_row": r["pre"], "post_row": r["post"], "t_row": r["t"]}
 
 
 # --- workbook -------------------------------------------------------------------------------------------------------
@@ -598,7 +598,7 @@ def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
     from engine.classify import DECLINING
     from engine.insights import (peer_regressions, price_walk, return_on_new_capital, tornado,
                                  value_split)
-    from ui.insights import dividend_for, mc_for, walk_args
+    from ui.insights import dividend_for, ep_for, mc_for, walk_args
     m = rep.model
     v = m.valuation
     if v is None or getattr(v, "dcf_inputs", None) is None or v.dcf is None:
@@ -795,6 +795,55 @@ def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
             an.input(f"C{r}", row["high"] * f, PS)
             an.formula(f"D{r}", f"C{r}-B{r}", PS)
             r += 1
+        r += 1
+    # 7. economic profit (live on the DCF tab)
+    ep, ep_src = ep_for(rep)
+    if ep:
+        n = len(v.dcf.years)
+        an.label(f"A{r}", "7. Economic profit: our EV as capital today plus value created above WACC (US$ millions; "
+                 "live on the DCF tab)", bold=True)
+        r += 1
+        an.label(f"A{r}", f"Capital in the business today ({ep_src})")
+        an.input(f"B{r}", ep["capital"], NUM)
+        cap0 = f"B{r}"
+        r += 2
+        names = ["Year", "Share of the year counted", "Average discount factor of the counted part",
+                 "Discount factor at the year end", "Capital at start", "Operating profit after tax counted",
+                 "Capital charge (WACC on capital in use, mid-year money)", "Economic profit",
+                 "Present value of economic profit"]
+        rr = {k: r + i for i, k in enumerate(["year", "k", "e", "f", "cap", "nopat", "charge", "ep", "pv"])}
+        for k_, row in rr.items():
+            an.label(f"A{row}", names[list(rr).index(k_)])
+        w = I["wacc"]
+        for j in range(n):
+            c = dc = col(2 + j)
+            prev = col(1 + j)
+            pre, post, t = (f"DCF!{dc}{base[x]}" for x in ("pre_row", "post_row", "t_row"))
+            an.formula(f"{c}{rr['year']}", I["years"][j])
+            an.formula(f"{c}{rr['k']}", f"{pre}+{post}", DEC4)
+            an.formula(f"{c}{rr['e']}", f"({pre}+{post}*(1+{w})^(-{t}))/{c}{rr['k']}", DEC4)
+            an.formula(f"{c}{rr['f']}", f"(1+{w})^(-MAX({I['end_n']}-{n - 1 - j},0))", DEC4)
+            an.formula(f"{c}{rr['cap']}", cap0 if j == 0 else
+                       f"{prev}{rr['cap']}+{prev}{rr['k']}*DCF!{prev}{base['reinv_row']}", NUM)
+            an.formula(f"{c}{rr['nopat']}", f"{c}{rr['k']}*DCF!{dc}{base['nopat_row']}", NUM)
+            f_prev = "1" if j == 0 else f"{prev}{rr['f']}"
+            an.formula(f"{c}{rr['charge']}", f"(({f_prev}-{c}{rr['f']})*{c}{rr['cap']}+({c}{rr['e']}-{c}{rr['f']})"
+                       f"*{c}{rr['k']}*DCF!{dc}{base['reinv_row']})/{c}{rr['e']}", NUM)
+            an.formula(f"{c}{rr['ep']}", f"{c}{rr['nopat']}-{c}{rr['charge']}", NUM)
+            an.formula(f"{c}{rr['pv']}", f"{c}{rr['ep']}*{c}{rr['e']}", NUM)
+        last = col(1 + n)
+        r = rr["pv"] + 2
+        end_cap = f"({last}{rr['cap']}+{last}{rr['k']}*DCF!{last}{base['reinv_row']})"
+        rows = [("Capital in the business today", cap0),
+                ("Present value of economic profit over the forecast", f"SUM(B{rr['pv']}:{last}{rr['pv']})"),
+                ("Terminal value above the capital the forecast ends with (present value)",
+                 f"{base['tv']}-{last}{rr['f']}*{end_cap}"),
+                ("Enterprise value (sum)", f"B{r}+B{r + 1}+B{r + 2}")]
+        for i, (label, fm) in enumerate(rows):
+            an.label(f"A{r + i}", label, bold=i == 3)
+            an.formula(f"B{r + i}", fm, NUM, bold=i == 3)
+        an.label(f"A{r + 4}", "Check: sum minus the DCF tab's EV (should be 0)")
+        an.formula(f"B{r + 4}", f"B{r + 3}-{base['ev']}", NUM, check=True)
 
 
 def export_bytes(rep, cached: bool = True) -> bytes:

@@ -53,6 +53,12 @@ html(kv([("Desks", "8", "data, checks, research, news, modelling, review, impact
 st.subheader("Worked example")
 
 
+def _lower_first(label: str) -> str:
+    """'Operating margin' -> 'operating margin'; acronyms such as 'WACC' stay as they are."""
+    word = label.split()[0]
+    return label if word.isupper() else label[0].lower() + label[1:]
+
+
 @st.cache_resource(show_spinner=False, max_entries=16)
 def _example(report_id: str):
     return example(load(report_id, svc.store))
@@ -95,6 +101,17 @@ else:
                           f"value and {sp['growth_market']:.0%} of the market's." if sp["growth_ours"] >= 0 else
                           f"**What the price pays for.** In our DCF, growth subtracts value (reinvestment earns less "
                           f"than WACC); the market prices {sp['growth_market']:.0%} of its enterprise value as growth.")
+        if "tornado" in x:
+            t1 = x["tornado"]
+            points.append(f"**Which assumption matters most.** {t1[0]['label']} alone moves the DCF from "
+                          f"{money(t1[0]['low'])} to {money(t1[0]['high'])} ({t1[0]['low_detail']} / "
+                          f"{t1[0]['high_detail']})" + (f"; next is {_lower_first(t1[1]['label'])}, {money(t1[1]['low'])} to "
+                                                        f"{money(t1[1]['high'])}" if len(t1) > 1 else "") + ".")
+        if "ep" in x:
+            e = x["ep"]
+            points.append(f"**Capital or value created?** US${e['capital'] / 1000:,.1f}bn of our enterprise value is "
+                          f"capital already in the business; {e['created']:.0%} is economic profit, returns above "
+                          f"WACC, over the forecast and after it.")
         if "mc" in x:
             mc = x["mc"]
             points.append(f"**How sure is the DCF?** Across {mc['n']:,} versions with growth, margin, WACC and terminal "

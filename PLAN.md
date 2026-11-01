@@ -456,3 +456,4 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Excel Analysis tab section 7: economic profit as live formulas on the DCF tab's NOPAT, reinvestment and timing rows; check = sum - DCF EV is 0 on KO, MSFT, TSM, CVX, GRAB, UBER.
 - Compare: cross-checks add the share of EV from value created above capital (GRAB 32.4%, CVX 19.7%).
 - Tried and dropped: Mauboussin's market-implied forecast period. Our forecasts converge to terminal growth (2.5%) by the final year, so extending them mostly measures terminal ROIC vs WACC; most results were 'beyond 60 years' and CVX's own DCF could not be matched. Choosing a different growth to extend would be an unsourced assumption.
+- Talking points worked example: 'Which assumption matters most' (top two tornado inputs) and 'Capital or value created?' (EP share of EV), from the same functions as the report.

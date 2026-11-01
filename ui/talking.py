@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from engine.insights import peer_regressions, price_walk, value_split
+from engine.classify import DECLINING
+from engine.insights import peer_regressions, price_walk, tornado, value_split
 from ui.format import money, mult, pct
-from ui.insights import mc_for, walk_args
+from ui.insights import ep_for, mc_for, walk_args
 
 CONVENTIONS = {"Today's margin held", "Own tax rate", "Today's ROIC held", "3% terminal growth",
                "Higher terminal growth"}
@@ -43,6 +44,14 @@ def example(rep) -> dict | None:
     if sp and sp["market_ev"] > 0 and v.dcf.enterprise_value > 0:
         out["split"] = {"no_growth_ev": sp["no_growth_ev"], "growth_ours": sp["growth_ev"] / v.dcf.enterprise_value,
                         "growth_market": sp["market_growth_ev"] / sp["market_ev"]}
+    cap = 0.0 if v.classification.stage == DECLINING else m.inputs.risk_free.value
+    tor = tornado(v.dcf_inputs, cap)
+    if tor:
+        out["tornado"] = [{**r, "low": r["low"] * f, "high": r["high"] * f} for r in tor[:2]]
+    ep, _ = ep_for(rep)
+    if ep and ep["ev"] > 0:
+        out["ep"] = {"capital": ep["capital"], "created": (ep["pv_ep"] + ep["beyond"]) / ep["ev"],
+                     "years": len(ep["rows"]), "pv_ep": ep["pv_ep"]}
     mc, corr, _ = mc_for(rep)
     if mc:
         out["mc"] = {"p10": mc["pct"][10] * f, "p50": mc["pct"][50] * f, "p90": mc["pct"][90] * f,

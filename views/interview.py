@@ -171,10 +171,13 @@ qa([
      "Small samples. The Monte Carlo links growth and margin by a correlation measured from about nine years of the "
      "company's own history (CVX 0.95, KO -0.28), which is noisy, so it is capped at 0.8; WACC and terminal growth are "
      "still drawn independently. The peer regressions run on five to eight peers, so they are a cross-check, not part "
-     "of the fair value. And it covers US-listed companies only, because it depends on SEC filings."),
+     "of the fair value. The margin fade towards the industry is the biggest single assumption for an exceptional "
+     "business, so the return-on-new-capital check flags when it makes growth earn less than WACC (TSMC). And it "
+     "covers US-listed companies only, because it depends on SEC filings."),
     ("\"Where does AI actually add value?\"",
-     "Reading: segments, one-off items, risks and KPIs from a 100-page annual report, with every quote checked against "
-     "the filing text. Judgement: the review desk challenges the weakest assumptions and writes the bear case, and the "
+     "Reading: segment names and comparable companies (the segment figures themselves come from the 10-K's XBRL), "
+     "one-off items, risks and KPIs from a 100-page annual report, with every quote checked against the filing text. "
+     "Judgement: the review desk challenges the weakest assumptions and writes the bear case, and the "
      "MD scores moat, management and governance with cited evidence. A full report costs about US$0.15-0.50 of AI."),
     ("\"What would you build next?\"",
      "Non-US filers through IFRS filings in other markets; peer-pooled correlations for the Monte Carlo when a "
@@ -187,7 +190,8 @@ st.subheader("Show, don't tell")
 st.markdown(
     "1. Search a company live and let the desks run (a minute or two).\n"
     "2. Header: price, fair value, verdict and how the rating was scored.\n"
-    "3. Valuation tab: the walk from our DCF to the price, then the Monte Carlo range.\n"
+    "3. Valuation tab: the walk from our DCF to the price, the tornado (which assumption matters most), then the "
+    "Monte Carlo range.\n"
     "4. Hover any figure in Financials to show its filing, XBRL tag and fetch time.\n"
     "5. What if: press \"Market's discount rate\" to show the DCF meeting the price.\n"
     "6. Download the Excel model: its formulas are live and its fair value equals the app's.")

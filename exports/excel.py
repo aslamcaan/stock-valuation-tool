@@ -588,13 +588,36 @@ def build_workbook(rep) -> Workbook:
             cover.ws[f"A{18 + i}"].fill = fill
     cover.ws["A24"] = ("Based on assumptions and public data; may contain errors; not financial advice.")
     cover.ws["A24"].font = Font(italic=True, size=9)
+    cover.label("A26", "Tabs", bold=True)
+    for i, t in enumerate(t for t in wb.sheetnames if t in TAB_GUIDE):
+        cover.ws[f"A{27 + i}"] = t
+        cover.ws[f"B{27 + i}"] = TAB_GUIDE[t]
     cover.ws.column_dimensions["B"].width = 30
     return wb
 
 
+TAB_GUIDE = {
+    "Inputs": "Every input in blue (assumptions on yellow), with its source in column C",
+    "Historicals": "Reported statements from SEC XBRL (US$ millions)",
+    "Ratios": "Margins, returns and leverage from the historicals",
+    "WACC": "Risk-free rate, beta, equity risk premium, cost of debt, weights",
+    "DCF": "The base-case forecast, terminal value and bridge to equity",
+    "Forecast": "The base-case forecast lines, linked to the DCF tab",
+    "Calc": "The full DCF recalculated for each scenario and sensitivity cell",
+    "Scenarios": "Bear, base and bull DCFs and their weighting",
+    "Sensitivity": "Value per share across WACC and terminal growth",
+    "SOTP": "Sum of the parts: each segment at its comparables' multiple",
+    "Comps": "Peer multiples and the prices they imply",
+    "Hist multiples": "The company's own five-year multiples",
+    "Summary": "The blend of the methods and the fair value",
+    "Analysis": "What explains the value; none of it changes the fair value",
+}
+
+
 def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
     """The report's explaining analyses: the walk from our DCF to the price, what the price pays for (live formulas on
-    the DCF tab), the Monte Carlo range and the peer regressions (live SLOPE / INTERCEPT / RSQ on the peers)."""
+    the DCF tab), the Monte Carlo range, the peer regressions (live SLOPE / INTERCEPT / RSQ on the peers), the
+    dividend cross-check, the tornado and the economic-profit split (live on the DCF tab)."""
     from engine.classify import DECLINING
     from engine.insights import (peer_regressions, price_walk, return_on_new_capital, tornado,
                                  value_split)
@@ -605,8 +628,9 @@ def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
         return
     f = v.per_us_share_factor
     an = Sheet(wb, "Analysis", "US$ per US share unless stated",
-               "Explains the value: the walk to the price, the no-growth split, the Monte Carlo range and peer "
-               "regressions. None of these changes the fair value.")
+               "Explains the value: the walk to the price, the no-growth split, the Monte Carlo range, peer "
+               "regressions, the dividend cross-check, the tornado and the economic-profit split. None of these "
+               "changes the fair value.")
     an.ws.column_dimensions["A"].width = 60
     for c_ in "BCD":
         an.ws.column_dimensions[c_].width = 15

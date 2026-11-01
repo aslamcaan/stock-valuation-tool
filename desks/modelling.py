@@ -142,6 +142,13 @@ def segments_from_research(svc, cd: CompanyData, research: dict, notes: list[str
         fy = next((p.label for p in h.periods if p.kind == "FY"
                    and abs((p.end - date.fromisoformat(end)).days) <= 20), None) or fy
         named = match_names(xrows, segs)
+        unmatched = {k: r for k, r in xrows.items() if k not in named}
+        if unmatched and research.get("segments_unverified"):  # names confirmed by XBRL, so the comparables stand
+            extra = match_names(unmatched, research["segments_unverified"])
+            named.update(extra)
+            if extra:
+                notes.append("SOTP: comparables for " + ", ".join(sorted(extra)) + " from the research desk, whose "
+                             "quote for the segment could not be verified; the segment names match the XBRL note")
         items = [{"name": named[k]["name"] if k in named else k, "revenue": r["revenue"],
                   "profit": r.get("operating_income"), "growth": r.get("growth"),
                   "tickers": (named.get(k) or {}).get("comparable_us_tickers") or []} for k, r in xrows.items()]

@@ -182,3 +182,16 @@ def test_rating_cannot_point_against_the_verdict():
     assert gate_by_verdict("Strong Sell", "Undervalued")[0] == "Hold"
     assert gate_by_verdict("Buy", "Undervalued") == ("Buy", "")
     assert gate_by_verdict("Buy", "Fairly valued") == ("Buy", "")
+
+
+def test_segment_with_unverified_quote_keeps_only_its_name_and_comparables():
+    src = "Our Mobility segment connects riders and drivers. Delivery revenue was $17,248 million."
+    data = {"segments": [
+        {"name": "Mobility", "revenue_millions": 29670, "quote": "Mobility is our biggest business.",
+         "comparable_us_tickers": ["LYFT"]},
+        {"name": "Delivery", "revenue_millions": 17248, "quote": "Delivery revenue was $17,248 million.",
+         "comparable_us_tickers": ["DASH"]}]}
+    out, dropped = verify(data, src)
+    assert [s["name"] for s in out["segments"]] == ["Delivery"]
+    assert out["segments_unverified"] == [{"name": "Mobility", "comparable_us_tickers": ["LYFT"]}]  # no numbers
+    assert any("Mobility" in d for d in dropped)

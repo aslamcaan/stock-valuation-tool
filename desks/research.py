@@ -124,6 +124,7 @@ def verify(data: dict, source_text: str) -> tuple[dict, list[str]]:
         return True
 
     out = dict(data)
+    unverified_segments = []
     for key in ("segments", "geographic_mix", "kpis", "risk_factors", "one_off_items", "guidance",
                 "commodity_sensitivities"):
         kept = []
@@ -134,7 +135,14 @@ def verify(data: dict, source_text: str) -> tuple[dict, list[str]]:
                 dropped.append(f"{key}: '{item.get('name') or item.get('description') or item.get('region') or item.get('metric')}' contains a number not in the filing")
             else:
                 kept.append(item)
+                continue
+            if key == "segments" and item.get("name"):
+                # no quote and no numbers: only the name (usable if the XBRL segment note confirms it) and the
+                # comparables, which are the desk's judgement, not facts from the filing
+                unverified_segments.append({"name": item["name"],
+                                            "comparable_us_tickers": item.get("comparable_us_tickers") or []})
         out[key] = kept
+    out["segments_unverified"] = unverified_segments
     for key in ("convertible_debt", "share_classes", "interest_rate_sensitivity", "fx_exposure"):
         item = dict(data.get(key, {}))
         if item.get("quote") and not quote_ok(item["quote"]):

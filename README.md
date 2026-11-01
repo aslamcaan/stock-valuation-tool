@@ -68,7 +68,9 @@ point against the valuation:** an Overvalued verdict caps it at Hold, an Underva
   income read from the 10-K's XBRL segment note (the research desk's reading of the text as the fallback), each
   segment valued on its US-listed comparables' median EV/EBIT (EV/Sales if it has no operating profit), unallocated
   corporate costs capitalised and deducted; it replaces the DCF in the blend. Comparables listed only at home (e.g.
-  Coca-Cola FEMSA) are used with their market cap converted at FRED's rate. *Comparable companies* (peers from SEC
+  Coca-Cola FEMSA) are used with their market cap converted at FRED's rate. When the research desk's quote for a
+  segment fails verification, only its name and comparables are kept, and only if the XBRL note reports a segment
+  of that name (UBER: Mobility, Delivery, Freight). *Comparable companies* (peers from SEC
   frames, EV/Sales dropped when the margin gap to peers makes it misleading); *own five-year multiples*.
 - *Reverse DCF*: the growth or margin the price implies, the discount rate the price implies, and a DCF on
   sell-side conventions, so the gap to analysts' targets is explained rather than hidden.

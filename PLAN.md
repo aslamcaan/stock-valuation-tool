@@ -442,3 +442,4 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Tornado chart (engine.insights.tornado, Valuation tab before the Monte Carlo): one input at a time to its bear and
   bull setting, sorted by swing. KO: growth $37.25-$47.75, WACC $38.74-$46.40, margin $37.64-$45.27.
 - PDF: tornado table in section 14 (input, bear/bull setting, values, swing).
+- Excel Analysis tab: section 6, the tornado (bear, bull, swing as a formula).

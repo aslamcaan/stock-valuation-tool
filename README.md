@@ -118,7 +118,8 @@ the app's, and a PDF of the full report. Every formula's result is also stored i
 in Excel's Protected View and in phone or browser previews. Tabs: Cover, Inputs, Historicals, Ratios, WACC, DCF,
 Forecast, Calc, Scenarios, Sensitivity, SOTP (when applied: segment metric x comparables' multiple), Comps, Hist
 multiples, Summary, and Analysis: the walk from our DCF to the price, the no-growth split as formulas on the DCF tab,
-the Monte Carlo percentiles, and the peer regressions rebuilt with Excel's SLOPE, INTERCEPT and RSQ. Both files are
+the Monte Carlo percentiles, the peer regressions rebuilt with Excel's SLOPE, INTERCEPT and RSQ, the dividend
+cross-check on the DCF tab's NOPAT, and the tornado. Both files are
 built only when their button is clicked.
 
 **Other pages.** Compare (two saved reports side by side, with key metrics, cross-checks and multiples), Track Record (every call with the MD's reasons, and the

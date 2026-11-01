@@ -595,7 +595,9 @@ def build_workbook(rep) -> Workbook:
 def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
     """The report's explaining analyses: the walk from our DCF to the price, what the price pays for (live formulas on
     the DCF tab), the Monte Carlo range and the peer regressions (live SLOPE / INTERCEPT / RSQ on the peers)."""
-    from engine.insights import peer_regressions, price_walk, return_on_new_capital, value_split
+    from engine.classify import DECLINING
+    from engine.insights import (peer_regressions, price_walk, return_on_new_capital, tornado,
+                                 value_split)
     from ui.insights import dividend_for, mc_for, walk_args
     m = rep.model
     v = m.valuation
@@ -776,6 +778,23 @@ def analysis_sheet(wb: Workbook, rep, I: dict, base: dict) -> None:
             an.formula(f"B{r + i}", fm, PCT if i == 4 else PS, bold=i == 3)
         an.label(f"A{r + 5}", "Check: Excel minus app (should be 0.00)")
         an.formula(f"B{r + 5}", f"B{r + 3}-{dv['value'] * v.per_us_share_factor!r}", PS, check=True)
+        r += 7
+    # 6. tornado
+    cap = 0.0 if v.classification.stage == DECLINING else m.inputs.risk_free.value
+    rows = tornado(v.dcf_inputs, cap)
+    if rows:
+        an.label(f"A{r}", "6. Which assumption matters most: each input alone at its bear and bull setting "
+                 "(from the app)", bold=True)
+        r += 1
+        for j, hd in enumerate(["Input (bear / bull setting)", "Bear", "Bull", "Swing"]):
+            an.head(f"{col(1 + j)}{r}", hd)
+        r += 1
+        for row in rows:
+            an.label(f"A{r}", f"{row['label']} ({row['low_detail']} / {row['high_detail']})")
+            an.input(f"B{r}", row["low"] * f, PS)
+            an.input(f"C{r}", row["high"] * f, PS)
+            an.formula(f"D{r}", f"C{r}-B{r}", PS)
+            r += 1
 
 
 def export_bytes(rep, cached: bool = True) -> bytes:

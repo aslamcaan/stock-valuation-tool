@@ -265,3 +265,13 @@ Excel (`python scripts/excel_check.py file.xlsx`, Windows only, needs `requireme
 - **Filing extraction** relies on standard Item headings; integrated annual reports (e.g. ASML) extract only partly.
 - **Estimate revisions** come from the tool's own daily consensus snapshots, so they appear only after 30/60/90 days of use.
 - **Not financial advice.**
+
+## About this project, data and licence
+
+Built by Aslam Khan with Claude Code (Anthropic's coding assistant) as a project to show what can be built with AI.
+The AI reads, judges and writes; all arithmetic is tested Python.
+
+- **Live site:** https://aslamanalysis.streamlit.app (public overview on the login page; full access is by password, because each report costs AI credits).
+- **Data:** company figures come from SEC EDGAR; rates from FRED; industry data from Damodaran. Prices and estimates come from FMP, Tiingo and Finnhub on the owner's own API keys, which are not in this repository.
+- **Test fixtures** (`tests/fixtures`) hold recorded responses so the tests run offline. They include a small amount of recorded provider data used only for testing; do not reuse it. Use your own keys for live data (see `.env.example`).
+- **Licence:** MIT, see `LICENSE`.

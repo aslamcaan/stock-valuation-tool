@@ -465,7 +465,8 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Session end 1 Nov: re-runs of GRAB, UBER, TSM saved with the research quote fixes; the batch stopped before MSFT, KO, CVX (re-run those next session). AI spend today US$3.85 of $5.
 - 3 Nov: the detailed How it works page (rating weights, cut points, hard-stop thresholds) is removed from the
   logged-in app: a short public overview (ui/overview.py) now sits under the login form, so visitors see what the
-  tool does without the password, and nobody can copy the scoring rules from a public page. Repo is private.
+  tool does without the password. The repo is now public under the MIT licence (audited first: no secrets in the
+  history; a few recorded provider values remain in test fixtures, see the README).
 - Share classes: PLTR's run stopped on the market-cap hard stop (computed 429.6bn vs FMP 410.3bn, 4.5%). The 10-Q
   cover shows Class A 2,306.7m + B 101.8m + F 1.0m = 2,409.5m, matching our 2,409.2m; FMP's figure matches Class A
   alone. When the cover page confirms our count and the provider matches a proper subset of the classes, the gap is

@@ -7,10 +7,10 @@ import streamlit as st
 from ui.theme import ICON, esc
 
 DESKS = [
-    ("Data desk", "Ten years of filings from SEC EDGAR, with prices and exchange rates from dated sources, "
+    ("Data desk", "Up to ten years of filings from SEC EDGAR, with prices and exchange rates from dated sources, "
                   "cross-checked against a second provider.", ["SEC EDGAR", "Dated sources"]),
-    ("Data checks", "The balance sheet must balance and the cash flow must tie. If a hard check fails, the tool refuses "
-                    "to value the company and names the line that broke.", ["Code only"]),
+    ("Data checks", "The balance sheet must balance and the market value must match a second data provider. If either fails, "
+                    "the tool refuses to value the company and names the line that broke.", ["Code only"]),
     ("Research desk", "AI reads the latest annual report for segments, one-off items and risks. Every quote is checked "
                       "against the filing text.", ["AI reads", "Quotes verified"]),
     ("News desk", "Searches recent news and drops anything undated, stale or unverifiable.", ["Dated and verified"]),

@@ -127,3 +127,19 @@ def test_cash_flow_ties_before_reclassification_to_held_for_sale():
     h = hist(cfo={"FY2025": 19697}, cfi={"FY2025": -8685}, cff={"FY2025": -11644}, fx_effect_on_cash={"FY2025": 40},
              change_in_cash={"FY2025": -947}, change_in_cash_incl_disposal={"FY2025": -592})
     assert checks.cash_flow_tie(h) == []
+
+
+def test_a_company_that_stopped_tagging_debt_is_debt_free_only_if_its_last_debt_was_immaterial():
+    from data_desk.standardise import DEBT_FREE_NOTE, standardise
+    # repaid: 0.5% of assets when last tagged, nothing since -> debt-free, and the key-line check passes
+    h = hist(total_assets={"FY2021": 1000, "FY2022": 1200, "FY2023": 1500}, total_debt={"FY2021": 5})
+    h = standardise(h)
+    assert h.v("total_debt", "FY2023") == 0.0 and h.v("debt_for_valuation", "FY2023") == 0.0
+    assert DEBT_FREE_NOTE in h.get("total_debt", "FY2023").note
+    assert [f.code for f in checks.debt_free_inferred(h, ["FY2023"], DEBT_FREE_NOTE)] == ["debt_free_inferred"]
+    # material debt when last tagged: the figure stays missing (the key-line flag says so)
+    h = standardise(hist(total_assets={"FY2021": 1000, "FY2022": 1200}, total_debt={"FY2021": 300}))
+    assert h.get("total_debt", "FY2022") is None
+    # no balance sheet, or no earlier debt at all: nothing is inferred
+    h = standardise(hist(total_assets={"FY2021": 1000}))
+    assert h.get("total_debt", "FY2021") is None

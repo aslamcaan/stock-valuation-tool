@@ -226,6 +226,17 @@ def missing_key_lines(h: Historicals, valuation_periods: list[str]) -> list[Flag
     return flags
 
 
+def debt_free_inferred(h: Historicals, valuation_periods: list[str], marker: str) -> list[Flag]:
+    """Say so when a period's zero debt is inferred (no debt line, but the last tagged debt was immaterial)."""
+    flags = []
+    for p in valuation_periods:
+        v = h.get("total_debt", p)
+        if v is not None and v.note and marker in v.note:
+            flags.append(Flag(INFO, "debt_free_inferred", "No debt reported: treated as debt-free", f"{p}: {v.note}.",
+                              p, {"total_debt": v.value}))
+    return flags
+
+
 def ambiguous_debt(h: Historicals, valuation_periods: list[str], marker: str) -> list[Flag]:
     flags = []
     for p in valuation_periods:

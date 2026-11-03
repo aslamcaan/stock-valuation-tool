@@ -78,15 +78,20 @@ def _range_strip(lo: float, hi: float, label: str, price: float, fv: float | Non
         pos = (v - a) / (b - a)
         return "l" if outward == "r" and pos > 0.8 else ("r" if outward == "l" and pos < 0.2 else outward)
     side_price = side(price, "l" if (fv is None or price <= fv) else "r")
-    marks.append(f"<div class='lab {side_price}' style='left:{x(price)};color:{TEXT}'>Price {esc(money(price))}</div>")
-    if fv:
+    stack = ""
+    if fv:  # both labels pushed to the same side and the marks close: the price label drops below the line
         side_fv = side(fv, "r" if price <= fv else "l")
+        if side_fv == side_price and abs(price - fv) / (b - a) < 0.3:
+            stack = " low"
+    marks.append(f"<div class='lab {side_price}{stack}' style='left:{x(price)};color:{TEXT}'>Price "
+                 f"{esc(money(price))}</div>")
+    if fv:
         marks += [f"<div class='mark fv' style='left:{x(fv)};background:{ACCENT}'></div>",
                   f"<div class='lab {side_fv}' style='left:{x(fv)};color:{ACCENT}'>Fair value {esc(money(fv))}</div>"]
     legend = (f"<span><i style='background:rgba(255,122,26,.22);border:1px solid rgba(255,122,26,.6)'></i>{esc(label)} "
               f"<span class='n'>{esc(money(lo))} – {esc(money(hi))}</span>"
               + (f" (base <span class='n'>{esc(money(base))}</span>)" if base is not None else "") + "</span>")
-    return (f"<div class='vt-range' role='img' aria-label='{esc(label)}: {esc(money(lo))} to {esc(money(hi))}; "
+    return (f"<div class='vt-range{' stacked' if stack else ''}' role='img' aria-label='{esc(label)}: {esc(money(lo))} to {esc(money(hi))}; "
             f"price {esc(money(price))}'><div class='track'></div>{''.join(marks)}</div>"
             f"<div class='vt-legend'>{legend}</div>")
 

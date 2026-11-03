@@ -471,3 +471,5 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   alone. When the cover page confirms our count and the provider matches a proper subset of the classes, the gap is
   amber (mcap_provider_share_classes) plus the multiple-share-classes flag, never a hard stop. Without that evidence
   it still stops.
+
+- 3 Nov: Debt that a company stopped tagging is taken as zero only when the balance sheet is present and the last tagged debt was under 1% of assets (Palantir: nothing since 2021). Flagged as info `debt_free_inferred`; otherwise the figure stays missing. Only Palantir among the saved companies changed (DCF per share $292 -> $383). Price/fair value labels on the range strip stack when they would overlap.

@@ -15,7 +15,7 @@ from data_desk import checks, lineage
 from data_desk.adr import adr_ratio, implied_ratio
 from data_desk.fmp_statements import annual_values, ltm_from_quarters
 from data_desk.fx import FxRates, FxSeries, to_usd
-from data_desk.standardise import AMBIGUOUS_DEBT, standardise
+from data_desk.standardise import AMBIGUOUS_DEBT, DEBT_FREE_NOTE, standardise
 from data_desk.xbrl import extract
 from datasources.fred import FX_SERIES
 from engine.analysis import Analysis, analyse
@@ -366,6 +366,7 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
     flags += checks.balance_sheet(h, valuation_periods)
     flags += checks.missing_key_lines(h, valuation_periods)
     flags += checks.ambiguous_debt(h, valuation_periods, AMBIGUOUS_DEBT)
+    flags += checks.debt_free_inferred(h, valuation_periods, DEBT_FREE_NOTE)
     flags += checks.statement_sums(h)
     flags += checks.cash_flow_tie(h)
     flags += checks.net_income_vs_operating(h)

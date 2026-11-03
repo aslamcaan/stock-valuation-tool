@@ -217,6 +217,7 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
 @keyframes vt-fade {from {opacity: 0;}}
 .vt-range .lab.l {transform: translateX(calc(-100% - 6px));}
 .vt-range .lab.r {transform: translateX(6px);}
+.vt-range .lab.low {top: 42px;} .vt-range.stacked {height: 62px;}
 .vt-legend {display: flex; flex-wrap: wrap; gap: .3rem 1.4rem; font-size: .76rem; color: var(--vt-muted); margin: .25rem .4rem 0;}
 .vt-legend .n {font-family: var(--vt-mono); color: var(--vt-text);}
 .vt-legend i {display: inline-block; width: 18px; height: 8px; border-radius: 4px; margin-right: .4rem; vertical-align: 0;}

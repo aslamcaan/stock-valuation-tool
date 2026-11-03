@@ -90,6 +90,29 @@ def _total_debt(h: Historicals, p: str, c: str) -> Value | None:
     return current
 
 
+DEBT_FREE_MAX_SHARE = 0.01  # the last tagged debt was under 1% of that year's total assets
+DEBT_FREE_NOTE = "treated as debt-free"
+
+
+def _debt_free(h: Historicals, p: str, c: str) -> Value | None:
+    """A balance sheet with no debt line at all. A company that repaid its debt stops tagging it (Palantir: nothing
+    since 2021), so the line is absent rather than zero. Taken as zero only when the balance sheet is there (total
+    assets reported) and the latest earlier period that did tag debt had under 1% of its assets in it; otherwise the
+    figure stays missing and the key-line flag says so."""
+    if not has(h.get("total_assets", p)):
+        return None
+    labels = [x.label for x in h.periods]
+    for q in reversed(labels[:labels.index(p)]):
+        d, ta = h.get("total_debt", q), h.get("total_assets", q)
+        if has(d):
+            if has(ta) and ta.value > 0 and d.value <= DEBT_FREE_MAX_SHARE * ta.value:
+                return Value(0.0, c, MILLIONS, p, "inferred",
+                             note=f"no debt tagged at {p}; at {q} it was {d.value:,.0f} ({d.value / ta.value:.1%} of "
+                                  f"assets): {DEBT_FREE_NOTE}")
+            return None
+    return None
+
+
 def standardise(h: Historicals) -> Historicals:
     c = h.currency
     if h.ltm and h.fy_labels and h.ltm.source == "EDGAR":
@@ -145,6 +168,8 @@ def standardise(h: Historicals) -> Historicals:
 
         # --- always-calculated aggregates -------------------------------------------------------------
         debt = _total_debt(h, p, c)
+        if not has(debt):
+            debt = _debt_free(h, p, c)
         if has(debt):
             _set(h, "total_debt", p, debt)
         fin_in_debt = has(debt) and _includes_finance_leases(debt)

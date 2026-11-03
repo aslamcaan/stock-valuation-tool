@@ -97,6 +97,21 @@ def _fx_rates(svc, currency: str) -> FxRates | None:
                                        c.fetched_at_iso)})
 
 
+def _provider_class_gap(svc, cik: int, sub: dict, our_shares: float, provider_shares: float) -> dict | None:
+    """{classes, counts, ...} when the filing's cover page shows several share classes that together match our share
+    count while the provider's market cap covers only some of them; else None."""
+    from data_desk.share_classes import cover_counts, one_class_gap
+
+    found = cover_counts(svc, cik, sub)
+    if found is None:
+        return None
+    date_, counts = found
+    covered = one_class_gap(counts, our_shares, provider_shares)
+    if covered is None:
+        return None
+    return {"date": date_, "counts": counts, "covered": covered}
+
+
 def _facts_from_filing(svc, cik: int, filing, payload: dict, fetched_at: str) -> tuple[Historicals, dict] | None:
     """When companyfacts lags the latest annual report, read that filing's XBRL instance and merge it in.
     None unless the merged data then contains the new fiscal year."""
@@ -303,8 +318,17 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
     if point_in_time and len(shares_date) == 10 and (today - date.fromisoformat(shares_date)).days > checks.STALE_DAYS:
         point_in_time = False  # a share count this old cannot support a hard stop (buybacks/issuance since)
         detail += f" The share count is dated {shares_date}, over {checks.STALE_DAYS} days ago."
+    classes = None
+    if (mcap and provider and mcap.value and price and price.value and shares and shares.value
+            and checks.rel_diff(mcap.value, provider.value) > checks.MCAP_TOLERANCE):
+        # a gap: has the provider counted only some share classes? (read the filing's cover page to find out)
+        classes = _provider_class_gap(svc, cik, sub, shares.value, provider.value / price.value * ratio)
     flags += checks.market_cap(mcap.value if mcap else None, provider.value if provider else None,
-                               mc.source or "provider", detail, point_in_time)
+                               mc.source or "provider", detail, point_in_time, classes)
+    if classes:
+        flags += checks.multiple_share_classes(
+            len(classes["counts"]), "cover page " + classes["date"] + ": "
+            + ", ".join(f"{n} {v:,.1f}m" for n, v in classes["counts"].items()))
     if mcap and provider and mcap.value and price and shares:
         implied = implied_ratio(shares.value, price.value, provider.value)
         if implied and abs(implied / ratio - 1) > 0.10 and abs(implied - 1) > 0.10:

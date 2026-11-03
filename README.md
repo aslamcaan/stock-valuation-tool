@@ -136,8 +136,10 @@ with a check against its EV. Both files are
 built only when their button is clicked.
 
 **Other pages.** Compare (two saved reports side by side, with key metrics, cross-checks including the share of EV created above capital, and multiples), Track Record (every call with the MD's reasons, and the
-price move since), How it works, Talking points (how to explain the tool in an interview, with a worked
-example read live from a saved report) and a Debug page with the raw responses.
+price move since), Talking points (how to explain the tool in an interview, with a worked
+example read live from a saved report) and a Debug page with the raw responses. A short, public "How it works" (the
+eight desks in order and three principles, with no thresholds, weights or prompts) sits under the password box, so a
+visitor can see what the tool does before logging in; the detailed rules stay behind the password.
 
 ## Accuracy safeguards
 
@@ -170,7 +172,7 @@ assumptions and says so.
 | `engine/` | **Pure** valuation engine: classification, forecast, WACC, DCF, scenarios, reverse DCF, comps, history multiples, SOTP, financial-sector toolkits, forensic scores, verdict, rubric, news repricing |
 | `desks/` | AI client (structured outputs, cost caps, response cache), number guard, research / news / review / impact / MD desks, modelling desk, pipeline |
 | `exports/` | Excel model with live formulas, PDF report, formula verifier |
-| `views/`, `ui/` | Streamlit app: password gate, search, run screen, report (incl. What if and History), Compare, Track Record, How it works, Debug |
+| `views/`, `ui/` | Streamlit app: password gate, search, run screen, report (incl. What if and History), Compare, Track Record, Talking points, Debug; the login screen shows the public overview |
 
 ## Setup
 

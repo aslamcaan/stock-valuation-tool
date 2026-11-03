@@ -11,6 +11,7 @@ import time
 import streamlit as st
 
 from core.config import PROJECT_ROOT, load_settings
+from ui.overview import show_overview
 from ui.theme import LOGO
 
 MAX_ATTEMPTS = 5
@@ -19,13 +20,14 @@ LOCKOUT_SECONDS = 60
 
 def _login_screen(password: str) -> None:
     st.markdown(f"<div class='vt-login'>{LOGO.format(s=52)}<h1>Stock Valuation Tool</h1>"
-                "<p class='vt-muted'>Equity research and valuation. Private site: enter the password to continue.</p>"
+                "<p class='vt-muted'>Equity research and valuation. Enter the password for full access; how it works is below.</p>"
                 "</div>", unsafe_allow_html=True)
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
         locked_until = st.session_state.get("auth_locked_until", 0.0)
         if time.time() < locked_until:
             st.error(f"Too many attempts. Try again in {locked_until - time.time():.0f} seconds.")
+            show_overview()
             st.stop()
         with st.form("login"):
             entered = st.text_input("Password", type="password", label_visibility="collapsed",
@@ -43,6 +45,7 @@ def _login_screen(password: str) -> None:
                 st.session_state.auth_locked_until = time.time() + LOCKOUT_SECONDS
                 st.session_state.auth_failures = 0
             st.error("Wrong password.")
+    show_overview()
 
 
 def _secret_count() -> str:

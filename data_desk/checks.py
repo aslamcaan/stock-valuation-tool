@@ -105,13 +105,24 @@ def cash_flow_tie(h: Historicals) -> list[Flag]:
 
 
 def market_cap(computed: float | None, provider: float | None, provider_name: str, detail: str,
-               point_in_time_shares: bool = True) -> list[Flag]:
+               point_in_time_shares: bool = True, class_gap: dict | None = None) -> list[Flag]:
     """Hard stop at >3%, but only when the share count is a point-in-time count. A weighted-average
-    fallback cannot support a hard stop, so a gap is then amber."""
+    fallback cannot support a hard stop, so a gap is then amber. `class_gap` (from the filing's cover page) says the
+    provider's figure covers only some share classes while ours covers all of them: amber, with the classes named."""
     if computed is None or provider is None:
         return [Flag(AMBER, "mcap_unchecked", "Market cap could not be cross-checked",
                      f"Market cap check skipped: {detail}", None, {"computed": computed, "provider": provider})]
     d = rel_diff(computed, provider)
+    if d > MCAP_TOLERANCE and class_gap:
+        counts, covered = class_gap["counts"], class_gap["covered"]
+        left_out = [n for n in counts if n not in covered]
+        listing = ", ".join(f"{n} {v:,.1f}m" for n, v in counts.items())
+        return [Flag(AMBER, "mcap_provider_share_classes", "Provider market cap covers only some share classes",
+                     f"Computed market cap {_fmt(computed)}m vs {provider_name} {_fmt(provider)}m ({d:.1%} apart). "
+                     f"{provider_name}'s figure matches {' and '.join(covered)} alone; the filing's cover page "
+                     f"({class_gap['date']}) shows {listing}, totalling {sum(counts.values()):,.1f}m, which matches "
+                     f"our share count. {' and '.join(left_out)} are left out of {provider_name}'s figure, so this is "
+                     f"not a hard stop. {detail}", None, {"computed": computed, "provider": provider, "diff": d})]
     if d > MCAP_TOLERANCE and not provider_name.upper().startswith("FMP"):
         # the brief's hard stop is against FMP; a secondary provider's market cap often uses a stale share count
         return [Flag(AMBER, "mcap_mismatch_secondary", "Market cap differs from a secondary provider",

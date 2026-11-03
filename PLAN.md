@@ -463,3 +463,11 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
 - Excel Cover: a 'Tabs' guide (one line per tab present); Analysis tab description lists all seven sections.
 - Terminal value check (DCF section): implied exit EV/EBIT vs peers' median and the company's own today. KO 12.1x vs 17.6x / 27.1x; MSFT 9.6x vs 20.9x / 23.8x.
 - Session end 1 Nov: re-runs of GRAB, UBER, TSM saved with the research quote fixes; the batch stopped before MSFT, KO, CVX (re-run those next session). AI spend today US$3.85 of $5.
+- 3 Nov: the detailed How it works page (rating weights, cut points, hard-stop thresholds) is removed from the
+  logged-in app: a short public overview (ui/overview.py) now sits under the login form, so visitors see what the
+  tool does without the password, and nobody can copy the scoring rules from a public page. Repo is private.
+- Share classes: PLTR's run stopped on the market-cap hard stop (computed 429.6bn vs FMP 410.3bn, 4.5%). The 10-Q
+  cover shows Class A 2,306.7m + B 101.8m + F 1.0m = 2,409.5m, matching our 2,409.2m; FMP's figure matches Class A
+  alone. When the cover page confirms our count and the provider matches a proper subset of the classes, the gap is
+  amber (mcap_provider_share_classes) plus the multiple-share-classes flag, never a hard stop. Without that evidence
+  it still stops.

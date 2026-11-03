@@ -405,8 +405,11 @@ h5 {font-size: .9rem !important; color: var(--vt-muted); margin-top: 1.2rem !imp
 @keyframes vt-tape {to {transform: translateX(-50%);}}
 .vt-tape span {font-family: var(--vt-mono); font-size: .8rem; color: var(--vt-muted); white-space: nowrap;}
 .vt-tape span b {color: var(--vt-text); font-weight: 600; margin-right: .5rem;}
-.vt-login {text-align: center; margin: 13vh 0 1.6rem;}
+.vt-login {text-align: center; margin: 5vh 0 1.6rem;}
+.vt-overview {max-width: 1100px; margin: 3.5rem auto 2rem;}
+.vt-overview h2 {margin-bottom: .2rem !important;}
 .vt-login h1 {font-size: 2rem !important; margin: .9rem 0 .25rem;}
+.vt-login p {max-width: 34rem; margin: 0 auto !important;}
 .vt-rc {padding: .1rem .1rem .2rem;}
 .vt-rc .top {display: flex; justify-content: space-between; align-items: baseline;}
 .vt-rc .t {font-family: var(--vt-display); font-stretch: 120%; font-weight: 800; font-size: 1.35rem; letter-spacing: -.02em;}

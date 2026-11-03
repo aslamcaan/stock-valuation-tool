@@ -55,7 +55,7 @@ Radii: 9px buttons, 12–20px cards, pills fully rounded. Easing: ease-out expo 
 - `.vt-run` analysis screen with `.vt-node` desk cards (waiting, running, done, failed, skipped).
 - `.vt-hero` + `.vt-tape` (latest calls, pauses on hover) on the landing page; `[class*=st-key-card_]` lifting cards.
 - `.vt-dist` rating distribution, `.vt-call` call card and `.vt-mini` price-vs-fair-value strip on the Track Record.
-- `.vt-steps`, `.vt-rules` on How it works (rubric weights and cut points read from `engine.rubric`).
+- `.vt-steps`, `.vt-rules` in the public overview under the login form (`ui/overview.py`: no weights, cut points or thresholds).
 - Charts: `plotly_layout()`; football field bars orange (intrinsic), sand (multiples), faint (market references).
 
 ## PDF

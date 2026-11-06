@@ -264,6 +264,39 @@ def currency_mismatch(reporting: str, trading: str = "USD") -> list[Flag]:
                  None, {})]
 
 
+ADR_TOLERANCE = 0.10
+
+
+def adr_ratio_status(ticker: str, ratio: float, ratio_on_file: bool, foreign_filer: bool,
+                     implied: float | None) -> list[Flag]:
+    """The ADR ratio turns per-ordinary-share values into per-US-share values, so a wrong or assumed one moves every
+    fair value by that factor. `implied` is the ordinary shares per US share that price x shares vs the provider's
+    market cap implies (None when that check could not run)."""
+    if implied is not None and abs(implied / ratio - 1) > ADR_TOLERANCE and abs(implied - 1) > ADR_TOLERANCE:
+        return [Flag(AMBER, "adr_ratio_check", "ADR ratio may be wrong",
+                     f"Shares x price vs the provider's market cap implies {implied:.2f} ordinary shares per US share; "
+                     f"the ratio used is {ratio:g}. Every per-share value is scaled by the ratio used, so check it "
+                     "and add the right one to data_desk/adr.py.", None, {"implied": implied, "ratio": ratio})]
+    if ratio_on_file:
+        return []
+    if implied is None and foreign_filer:
+        return [Flag(AMBER, "adr_ratio_unverified", "ADR ratio missing and not verified",
+                     f"{ticker} files as a foreign private issuer (20-F or 40-F), so its US shares may be ADSs, but "
+                     "no ADR ratio is on file and the market-cap check could not run. 1:1 is assumed; if the ratio "
+                     "differs, every per-share value is off by that factor.", None, {"ratio": ratio})]
+    return []
+
+
+def adr_ratio_applied(company_ratio: float, valuation_factor: float) -> list[Flag]:
+    """The factor that converts values to per-US-share must be the company's ADR ratio."""
+    if abs(valuation_factor - company_ratio) > 1e-9:
+        return [Flag(RED, "adr_ratio_not_applied", "ADR ratio not applied to per-share values",
+                     f"The company's ADR ratio is {company_ratio:g} but the valuation converts per-share values with "
+                     f"{valuation_factor:g}. Fair values may not be comparable with the US share price.", None,
+                     {"company_ratio": company_ratio, "valuation_factor": valuation_factor})]
+    return []
+
+
 def multiple_share_classes(n_classes: int, detail: str) -> list[Flag]:
     if n_classes <= 1:
         return []

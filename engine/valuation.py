@@ -17,7 +17,7 @@ from engine.scenarios import (DEFAULT_SCENARIOS, ScenarioResult, grid_growth_mar
                               reverse_dcf, run_scenarios, street_conventions)
 from engine.shares import diluted_shares
 from engine.sotp import Segment, SOTPResult, run_sotp
-from engine.values import MILLIONS, PER_SHARE, RATIO, SHARES_M, Value, calc
+from engine.values import MILLIONS, PER_SHARE, RATIO, SHARES_M, Value, calc, percentile_label
 from engine.wacc import WaccInputs, WaccResult, compute_wacc, synthetic_rating
 
 LARGE_FIRM_MCAP = 5_000.0  # US$m: Damodaran's large-firm rating table above this
@@ -157,10 +157,15 @@ def value_company(i: EngineInputs) -> Valuation:
         cls = replace(cls, stage=i.overrides["stage"], override=i.overrides.get("stage_reason", "override"))
     cyc = cycle_position(h, cur_margin.value)
     if cyc.get("above_90th"):
-        flags.append(Flag(AMBER, "margin_above_90th", "Margins near a 10-year high (possible cyclical peak)",
+        still_loss = cyc["current_margin"] <= 0  # the best margin in the range can still be a loss
+        flags.append(Flag(AMBER, "margin_above_90th",
+                          f"Operating margin near the top of its {cyc['years']}-year range"
+                          + ("" if still_loss else " (possible cyclical peak)"),
                           f"Current operating margin {cyc['current_margin']:.1%} is at the "
-                          f"{cyc['percentile']:.0%} percentile of the last {cyc['years']} years "
-                          f"(range {cyc['min_margin']:.1%} to {cyc['max_margin']:.1%}).", cur_p,
+                          f"{percentile_label(cyc['percentile'])} of the last {cyc['years']} years "
+                          f"(range {cyc['min_margin']:.1%} to {cyc['max_margin']:.1%})."
+                          + (" It is still a loss, so this is a narrowing loss, not a profit peak." if still_loss
+                             else ""), cur_p,
                           {"percentile": cyc["percentile"], "current_margin": cyc["current_margin"]}))
 
     if cls.stage == CYCLICAL:  # PROMPT.md 4b: futures where available, spot with a flag if not

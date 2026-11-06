@@ -84,3 +84,10 @@ def first_present(values: Iterable[Value]) -> Value | None:
         if v is not None and v.value is not None:
             return v
     return None
+
+
+def percentile_label(p: float) -> str:
+    """A rank between 0 and 1 as an ordinal percentile: 0.93 -> '93rd percentile' (not '93% percentile')."""
+    n = round(p * 100)
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix} percentile"

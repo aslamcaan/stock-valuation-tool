@@ -321,6 +321,7 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
     for c in [c for c in ei.consensus if c.fiscal_year_end > today][:1]:  # the nearest year not yet ended
         if c.revenue and c.revenue_high and c.revenue_low:
             disp = (c.revenue_high - c.revenue_low) / c.revenue
+    flags += checks.adr_ratio_applied(adr, v.per_us_share_factor)
     all_flags = sort_flags(flags + provider_flags(notes))
     # consensus and peers have their own signals, so they are not counted again in completeness;
     # flags are counted once per code (not once per period)
@@ -464,6 +465,7 @@ def run_financial(cd: CompanyData, svc, ei: EngineInputs, toolkit: str, today: d
     verdict = blend({k: v.value for k, v in fv.methods.items()}, ei.price.value, fv.weights)
     pt = svc.market.price_target(cd.profile.ticker)
     targets = pt.data if pt.available else None
+    flags += checks.adr_ratio_applied(ei.adr_ratio or 1.0, fv.per_us_share_factor)
     all_flags = sort_flags(flags + provider_flags(notes))
     key = {"bank": ("cet1_ratio", "rote", "tbvps"), "insurer": ("combined_ratio", "roe", "bvps"),
            "reit": ("ffo_per_share", "affo_per_share", "noi")}[toolkit]

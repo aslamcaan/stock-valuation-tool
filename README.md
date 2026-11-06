@@ -149,7 +149,7 @@ visitor can see what the tool does before logging in; the detailed rules stay be
   FRED (period averages for flows, period ends for balances).
 - EDGAR is cross-checked against FMP on revenue, net income, cash, debt and shares (amber flag above 2%).
 - Flags include net income far above operating income, negative FCF, terminal value above 80% of EV, WACC outside
-  6-15%, convertible debt, multiple share classes and margins near a 10-year high (possible cyclical peak).
+  6-15%, convertible debt, multiple share classes and operating margin near the top of its own range of up to 10 years (a possible cyclical peak, when it is a profit).
 - Every number in AI text is checked against the computed results; a failing sentence is regenerated once, then
   dropped and logged. Fetched text is data, never instructions. The AI desks never see the user's view of a stock.
 - If the Anthropic API fails (e.g. out of credit) the report still completes its valuation without the AI desks.

@@ -474,3 +474,14 @@ Source brief: `PROMPT.md`. Rules: `CLAUDE.md`. Tick items as they are completed 
   it still stops.
 
 - 3 Nov: Debt that a company stopped tagging is taken as zero only when the balance sheet is present and the last tagged debt was under 1% of assets (Palantir: nothing since 2021). Flagged as info `debt_free_inferred`; otherwise the figure stays missing. Only Palantir among the saved companies changed (DCF per share $292 -> $383). Price/fair value labels on the range strip stack when they would overlap.
+
+- 6 Nov (Jumia run bugs): (1) The MD wrote its thesis in the same AI call that scores the rubric, before code mapped the
+  scores to the final rating, so the text said "Hold" under a "Sell" header. The prompt now forbids naming a rating, and
+  `desks/rating_guard.py` drops any sentence that names a rating other than `md.rating` (the notch fields may also name the
+  rubric rating); the news view is guarded the same way. (2) Margin labels: the flag said "10-year high" for a 7-year
+  history and "93% percentile" (now "93rd percentile", `engine.values.percentile_label`); evidence keys `margin_std_10y` and
+  `growth_std_10y` lost the "10y"; the forecast notes say "years on file, up to 10"; a best-in-range margin that is still a
+  loss no longer says "possible cyclical peak". (3) ADR: JMIA (2 ordinary shares per ADS) added to the table; it was 1:1,
+  so every per-share value was half what it should be (market cap implied 1.87). New flags: `adr_ratio_unverified` (a
+  20-F/40-F filer with no ratio on file and no market-cap check) and `adr_ratio_not_applied` (red: the valuation's
+  per-US-share factor must equal the company's ratio); `adr_ratio_check` now says every per-share value scales with it.

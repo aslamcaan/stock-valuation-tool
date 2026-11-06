@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from desks.ai import SONNET, AIClient
 from desks.guarded import DATE_OK, guarded_call
+from desks.rating_guard import drop_wrong_ratings
 from desks.research import _arr, _obj
 from engine.rubric import (AI_CRITERIA, LABELS, Score, apply_notch, conflicts_with_verdict, gate_by_verdict,
                            rating_from,
@@ -46,9 +47,13 @@ code-scored half of the rating rubric. Your job:
    debate you take and why, a direct response to the review desk's bear case (and to its bull case), 2-3 things that
    have to be true, catalysts with dates (from the filing or results; say "date not disclosed" if unknown), and what
    would change your view. Give the 3-5 key risks, each with a verbatim quote from the filing extracts.
-4. The rating cannot point against the valuation: an Overvalued verdict caps it at Hold and an Undervalued verdict
+4. Never name a rating (Strong Buy, Buy, Hold, Sell, Strong Sell) in any text field. Code turns the scores into the
+   rating after you reply and shows it separately, so any rating you name may not match it. Refer to the valuation
+   verdict (Undervalued, Fairly valued, Overvalued), the score and the evidence instead. Only notch_reason and
+   rating_vs_verdict_explanation may name a rating, and only when they say how the rubric rating was moved.
+   The rating cannot point against the valuation: an Overvalued verdict caps it at Hold and an Undervalued verdict
    floors it at Hold, whatever the quality scores. Write the view to be consistent with that (a great business at
-   too high a price is a Hold, not a Buy). If the weighted score alone would point the other way, say so in
+   too high a price does not earn a buy). If the weighted score alone would point the other way, say so in
    rating_vs_verdict_explanation; otherwise leave it empty.
 Rules: never calculate. Only use numbers from the computed results (rounded as shown) or verbatim filing quotes.
 UK English. Be decisive and specific.
@@ -129,7 +134,12 @@ def run_md(ai: AIClient, report_id: str, report, summary: dict, review: dict, so
         log.append("MD: rating conflicts with the valuation verdict but no explanation was given; notch removed")
         rating = code_rating
         conflict = conflicts_with_verdict(rating, report.verdict.verdict)
+    notched = rating
     rating, gate = gate_by_verdict(rating, report.verdict.verdict)
     if gate:
         conflict = False
+    # one rating per report: text written before the rating existed may not name a different one
+    named_ok = {"notch_reason": {code_rating, notched}, "rating_vs_verdict_explanation": {code_rating, notched}}
+    data, wrong = drop_wrong_ratings(data, rating, "MD", named_ok)
+    log += wrong
     return MDResult(scores, avg, code_rating, rating, data["conviction"], data, conflict, log, gate)

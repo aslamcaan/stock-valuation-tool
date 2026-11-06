@@ -10,7 +10,7 @@ from data_desk.standardise import DERIVED_LABELS
 from data_desk.tags import LINES
 from engine.analysis import METRIC_SECTION
 from engine.rubric import LABELS, WEIGHTS
-from engine.values import MULTIPLE, PER_SHARE, RATIO
+from engine.values import MULTIPLE, PER_SHARE, RATIO, percentile_label
 from ui.insights import dividend_view, ep_view, exit_view, monte_carlo_view, regression_view, split_view, tornado_view, walk_view
 from ui.format import (calc_value, fmt_value, millions, money, mult, pct, plain_table, trace_text, traced_table,
                        when)
@@ -363,7 +363,7 @@ def stage(rep) -> None:
     cyc = v.cycle
     if cyc.get("available"):
         st.markdown(f"**Cycle position.** Current operating margin {pct(cyc['current_margin'])} sits at the "
-                    f"{cyc['percentile']:.0%} percentile of the last {cyc['years']} years (range "
+                    f"{percentile_label(cyc['percentile'])} of the last {cyc['years']} years (range "
                     f"{pct(cyc['min_margin'])} to {pct(cyc['max_margin'])}; mid-cycle {pct(cyc['mid_cycle_margin'])}).")
     if rep.review:
         cj = rep.review.get("cycle_judgement", {})

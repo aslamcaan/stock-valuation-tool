@@ -259,7 +259,7 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
         target, why = ind_m, "ramps to the industry margin (mature peers)"
         m_tail = _lerp(my2, target, rest)
     elif stage == CYCLICAL and mid_cycle_margin is not None:
-        target, why = mid_cycle_margin, "normalised to the mid-cycle margin (10-year average) from year 3"
+        target, why = mid_cycle_margin, "normalised to the mid-cycle margin (average of the years on file, up to 10) from year 3"
         m_tail = [target] * rest
     elif stage == MATURE_STABLE and five_year_avg_margin is not None:
         target, why = five_year_avg_margin, "returns to the 5-year median margin (history trend)"
@@ -268,7 +268,7 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
         # a going concern cannot lose money in perpetuity: a loss-making decliner either recovers or is liquidated,
         # so the margin reverts (to its own mid-cycle level where there is one, else half way to the industry)
         if mid_cycle_margin is not None and mid_cycle_margin > 0:
-            target, why = mid_cycle_margin, ("reverts to the 10-year average margin (a non-positive margin cannot be "
+            target, why = mid_cycle_margin, ("reverts to the average margin of the years on file, up to 10 (a non-positive margin cannot be "
                                              "held in perpetuity by a going concern)")
         else:
             target, why = my2 + 0.5 * (ind_m - my2), ("closes half the gap to the industry margin (a non-positive "

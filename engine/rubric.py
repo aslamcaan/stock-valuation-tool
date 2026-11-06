@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from engine.values import percentile_label
+
 RATINGS = ["Strong Sell", "Sell", "Hold", "Buy", "Strong Buy"]
 WEIGHTS = {
     # code-scored
@@ -48,7 +50,7 @@ def score_business_quality(roic: float | None, wacc: float | None, margin_pct: f
         parts.append(f"ROIC {roic:.1%} vs WACC {wacc:.1%} ({spread * 100:+.1f} points)")
     if margin_pct is not None:
         scores.append(_band(margin_pct, [0.2, 0.4, 0.6, 0.8]))
-        parts.append(f"operating margin at the {margin_pct:.0%} percentile of peers")
+        parts.append(f"operating margin at the {percentile_label(margin_pct)} of peers")
     if not scores:
         return Score("business_quality", 3, "insufficient data: neutral score", "code")
     return Score("business_quality", round(sum(scores) / len(scores)), "; ".join(parts), "code")

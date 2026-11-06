@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 from core.cache import CacheMiss
 from core.http import DataSourceError
 from data_desk import checks, lineage
-from data_desk.adr import adr_ratio, implied_ratio
+from data_desk.adr import adr_ratio, implied_ratio, is_foreign_private_issuer, on_file
 from data_desk.fmp_statements import annual_values, ltm_from_quarters
 from data_desk.fx import FxRates, FxSeries, to_usd
 from data_desk.standardise import AMBIGUOUS_DEBT, DEBT_FREE_NOTE, standardise
@@ -329,12 +329,9 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
         flags += checks.multiple_share_classes(
             len(classes["counts"]), "cover page " + classes["date"] + ": "
             + ", ".join(f"{n} {v:,.1f}m" for n, v in classes["counts"].items()))
-    if mcap and provider and mcap.value and price and shares:
-        implied = implied_ratio(shares.value, price.value, provider.value)
-        if implied and abs(implied / ratio - 1) > 0.10 and abs(implied - 1) > 0.10:
-            flags.append(Flag(AMBER, "adr_ratio_check", "ADR ratio may be wrong",
-                              f"Shares x price vs provider market cap implies {implied:.2f} ordinary shares per US "
-                              f"share; the ratio used is {ratio:g} ({ratio_src}).", None, {"implied": implied}))
+    implied = (implied_ratio(shares.value, price.value, provider.value)
+               if mcap and provider and mcap.value and price and price.value and shares and shares.value else None)
+    flags += checks.adr_ratio_status(ticker.upper(), ratio, on_file(ticker), is_foreign_private_issuer(sub), implied)
     market = Market(price, shares, ratio, ratio_src, mcap, provider, beta)
 
     # --- cross-check EDGAR vs FMP (latest fiscal year) -----------------------------------------------------

@@ -17,6 +17,7 @@ from datetime import date, timedelta
 
 from data_desk.sector_etf import sector_etf
 from desks.ai import SONNET, AIClient
+from desks.rating_guard import drop_wrong_ratings
 from desks.guarded import DATE_OK, guarded_call
 from desks.news import TIER_LABEL, NewsItem, NewsResult
 from desks.research import _arr, _obj
@@ -307,5 +308,8 @@ def run_news_view(ai: AIClient, report_id: str, res: ImpactResult, rating: str |
                              payload=payload, schema=NEWS_VIEW_SCHEMA, sources=sources, effort="low",
                              max_tokens=4000, instructions="Write the news summary.", skip=SKIP,
                              quotable=_news_text([i.item for i in res.items]))
+    if rating:
+        data, wrong = drop_wrong_ratings(data, rating, "MD news view")
+        log += wrong
     res.view = data
     res.guard_log += log

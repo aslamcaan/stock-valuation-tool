@@ -117,7 +117,7 @@ def classify(h: Historicals, sic: str, current_margin: float | None = None) -> C
     growth_std = pstdev([x for _, x in growth[-10:]]) if len(growth) >= 3 else None
     profitable_share = (sum(1 for _, m in ms if m > 0) / len(ms)) if ms else 0.0
     ev = {"revenue_cagr_3y": cagr3, "latest_revenue_growth": latest_growth, "operating_margin": margin_now,
-          "margin_std_10y": margin_std, "growth_std_10y": growth_std, "profitable_year_share": profitable_share,
+          "margin_std": margin_std, "growth_std": growth_std, "profitable_year_share": profitable_share,
           "cyclical_sic": is_cyclical_sic(sic), "years_of_history": len(rev)}
 
     def done(stage: str, reason: str) -> Classification:

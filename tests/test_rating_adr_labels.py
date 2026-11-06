@@ -89,3 +89,13 @@ def test_the_ratio_reaches_every_per_us_share_value():
 def test_percentiles_are_ordinals_not_percentages():
     assert [percentile_label(x) for x in (0.01, 0.02, 0.03, 0.11, 0.21, 0.9286)] == [
         "1st percentile", "2nd percentile", "3rd percentile", "11th percentile", "21st percentile", "93rd percentile"]
+
+
+def test_guard_catches_lowercase_rating_wording_but_not_verbs():
+    from desks.rating_guard import drop_wrong_ratings
+    d = {"a": "It is a hold, not a buy.", "b": "Investors who hold the stock may sell shares.",
+         "c": "Downgrade to hold.", "d": "It was a sell."}
+    out, log = drop_wrong_ratings(d, "Sell", "MD")
+    assert out["a"] == "" and out["c"] == ""
+    assert out["b"] == d["b"] and out["d"] == d["d"]
+    assert len(log) == 2

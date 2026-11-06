@@ -8,11 +8,18 @@ import re
 from desks.number_guard import SENTENCE_RE
 
 RATING_RE = re.compile(r"\b(Strong Buy|Strong Sell|Buy|Hold|Sell)\b(?![-\w])")
+# Lowercase rating words are ordinary verbs ("investors who hold the stock"), so they only count as a rating when
+# the wording makes it one: "a hold", "rated sell", "rating of buy", "downgrade to hold".
+LOWER_RE = re.compile(
+    r"\b(?:(?:rating|rated|rates?|call|recommendation|recommends?|upgrade[sd]?|downgrade[sd]?|view|stays?|remains?)"
+    r"\s+(?:of\s+|is\s+|as\s+|at\s+|to\s+|a\s+|an\s+)?|a\s+|an\s+)"
+    r"(strong buy|strong sell|buy|hold|sell)\b(?![-\w])", re.I)
 SKIP_KEYS = {"criterion", "side", "conviction", "date", "level", "code", "stage", "severity"}
 
 
 def _mismatch(sentence: str, allowed: set[str]) -> list[str]:
-    return [m for m in RATING_RE.findall(sentence) if m not in allowed]
+    found = RATING_RE.findall(sentence) + [m.title() for m in LOWER_RE.findall(sentence)]
+    return [m for m in found if m not in allowed]
 
 
 def _clean_text(text: str, allowed: set[str]) -> tuple[str, list[tuple[str, list[str]]]]:

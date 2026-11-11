@@ -304,3 +304,29 @@ def multiple_share_classes(n_classes: int, detail: str) -> list[Flag]:
                  f"{n_classes} share classes found ({detail}). Market cap and per-share values use all classes "
                  f"combined; check voting control and any price differences between classes.", None,
                  {"classes": n_classes})]
+
+
+SHARE_TOLERANCE = 0.02   # sources whose share counts differ by more than this are shown side by side
+DILUTION_LIMIT = 0.10    # diluted shares more than this far above the cover-page count get a flag
+
+
+def share_count_gap(filing: float | None, filing_note: str, other: float | None, other_name: str) -> list[Flag]:
+    """The valuation uses the cover-page count of the latest filing, at one date. When another source's count is more
+    than 2% away, both are shown and the filing figure is the one used."""
+    if not filing or not other or rel_diff(filing, other) <= SHARE_TOLERANCE:
+        return []
+    return [Flag(AMBER, "share_count_sources", "Share counts differ between sources",
+                 f"The filing's cover page gives {filing:,.1f}m shares ({filing_note}); {other_name} gives "
+                 f"{other:,.1f}m ({rel_diff(filing, other):.1%} apart). The filing figure is the one used: it is "
+                 "dated, and from the company.", None, {"filing_shares": filing, "other_shares": other})]
+
+
+def dilution_gap(basic: float | None, diluted: float | None, detail: str = "") -> list[Flag]:
+    """Diluted shares well above the cover-page count (RSUs, options) cut the per-share value by the same share."""
+    if not basic or not diluted or diluted / basic - 1 <= DILUTION_LIMIT:
+        return []
+    return [Flag(AMBER, "dilution_high", "Diluted share count well above the cover-page count",
+                 f"The valuation divides by {diluted:,.1f}m diluted shares, {diluted / basic - 1:.1%} above the "
+                 f"{basic:,.1f}m on the filing's cover page" + (f" ({detail})" if detail else "") +
+                 ". Check the unvested RSU and option figures: they lower every per-share value.", None,
+                 {"basic_shares": basic, "diluted_shares": diluted})]

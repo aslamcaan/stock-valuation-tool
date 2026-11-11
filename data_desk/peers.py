@@ -24,6 +24,38 @@ from engine.analysis import analyse
 from engine.comps import CompanyMetrics, earnings_distorted
 from engine.model import Historicals
 
+# Companies that are never a peer, whatever a data provider says: a bitcoin treasury company is not a software
+# business, and conglomerates have no single industry to compare with.
+PEER_BLOCKLIST = {
+    "MSTR": "bitcoin treasury company", "BRK-A": "conglomerate", "BRK-B": "conglomerate", "BRK.A": "conglomerate",
+    "BRK.B": "conglomerate", "GE": "conglomerate (GE Aerospace)", "GEV": "power equipment, not semiconductors",
+    "MMM": "conglomerate", "HON": "conglomerate",
+}
+# Well-known industries where the SIC code is too coarse: the core peers are named. A company in a group is compared
+# with the rest of its group first.
+PEER_GROUPS = {
+    "memory and storage": ("MU", "SNDK", "WDC", "STX"),
+    "AI compute": ("NVDA", "AMD", "AVGO"),
+}
+
+
+def peer_group(ticker: str) -> tuple[str, tuple[str, ...]] | None:
+    t = ticker.upper()
+    return next(((name, members) for name, members in PEER_GROUPS.items() if t in members), None)
+
+
+def is_true_peer(ticker: str, sic: str | None, own_ticker: str, own_sic: str) -> bool:
+    """A peer shares the company's 3-digit SIC code or is a named peer of it (and is never on the blocklist). With no
+    SIC for the company itself there is nothing to compare, so every non-blocked candidate counts."""
+    t = ticker.upper()
+    if t in PEER_BLOCKLIST:
+        return False
+    group = peer_group(own_ticker)
+    if group:  # a named industry: its members, or the same 4-digit SIC. A 3-digit match is too loose (DELL, HPE, FTNT)
+        return t in group[1] or (bool(own_sic) and (sic or "")[:4] == own_sic[:4])
+    return not own_sic or (sic or "")[:3] == own_sic[:3]
+
+
 MAX_CANDIDATES = 15
 MAX_SEC_CANDIDATES = 8   # added from SEC frames on top of the provider peers
 SEC_SCAN = 60            # nearest-by-revenue filers whose SIC is looked up
@@ -211,9 +243,14 @@ def candidate_tickers(svc, ticker: str) -> tuple[list[str], dict]:
     fh = _ok(svc.finnhub.call, "peers", ticker)
     if fh is not None and isinstance(fh.payload, list):
         cands += fh.payload
+    group = peer_group(ticker)
+    if group:
+        cands = list(group[1]) + cands  # the named core peers come first
     seen, out = set(), []
     for c in cands:
         c = str(c).upper()
+        if c in PEER_BLOCKLIST:
+            continue
         if c != ticker.upper() and c in rows and c not in seen:
             seen.add(c)
             out.append(c)
@@ -226,12 +263,19 @@ def gather_peers(svc, ticker: str, progress=None) -> tuple[list[CompanyMetrics],
     """(candidate metrics, notes about candidates that were skipped)."""
     tickers, rows = candidate_tickers(svc, ticker)
     notes = [] if tickers else ["no US-listed peer candidates from FMP or Finnhub"]
+    own = rows.get(ticker.upper())
+    sub = _ok(svc.edgar.submissions, int(own["cik"])) if own else None
+    own_sic = str((sub.payload if sub else {}).get("sic") or "")
     out: list[CompanyMetrics] = []
     with ThreadPoolExecutor(max_workers=4) as pool:
         for t, (m, why) in zip(tickers, pool.map(lambda t: peer_metrics(svc, t, rows), tickers)):
             if progress:
                 progress(f"Peer {t}: {'ok' if m else why}")
             if m is not None:
+                if not is_true_peer(t, m.sic, ticker, own_sic):
+                    notes.append(f"{t}: left out of the peer set (SIC {m.sic or 'unknown'} does not match the "
+                                 f"company's {own_sic[:3]}x and it is not a named peer)")
+                    continue
                 out.append(m)
             elif why:
                 notes.append(why)

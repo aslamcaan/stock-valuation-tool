@@ -84,6 +84,8 @@ Rules:
 - Only news articles, press releases, filings and official statements: never stock-quote pages, price pages or
   forecast pages.
 - At most 4 items per tier, most material first. Skip duplicates of the same story. Prefer the most recent.
+- The prompt gives the date of the share price used in the report. News published since that date is not in the
+  price: run a search for it, and put such items first within their tier.
 - summary: 2-3 sentences of what happened, factual, from the source. why_material: one sentence on how it could
   affect revenue, margins, costs, risk or valuation. Do not calculate or estimate numbers; quote figures only as the
   source reports them.
@@ -358,6 +360,13 @@ def _company_domain(svc, ticker: str) -> str:
         return ""
 
 
+def price_date(cd) -> str | None:
+    """The date (YYYY-MM-DD) of the share price used in the report, when the provider gave a timestamp."""
+    price = getattr(getattr(cd, "market", None), "price", None)
+    m = re.match(r"\d{4}-\d{2}-\d{2}", str(getattr(price, "period", "") or ""))
+    return m.group(0) if m else None
+
+
 def run_news(ai: AIClient, svc, report_id: str, cd, exposure, peers: list[str], as_of: datetime | None = None,
              force: bool = False) -> NewsResult:
     """`cd` is a CompanyData; `exposure` an ExposureProfile; `peers` peer names/tickers for the industry tier."""
@@ -373,7 +382,10 @@ def run_news(ai: AIClient, svc, report_id: str, cd, exposure, peers: list[str], 
                           f"url=\"{esc(c['url'])}\">{esc(c['headline'])}. {esc(c['summary'])}</candidate>"
                           for k, c in candidates.items())
     # Hour-level timestamp: the cached answer is reused within the hour only (news freshness rule).
+    since = price_date(cd)
     content = (f"Company: {p.name} ({p.ticker}), {p.sic_description}. Today is {now:%Y-%m-%d} (hour {now:%H} UTC).\n"
+               + (f"The share price used in the report is dated {since}: search for news published since then.\n"
+                  if since else "") +
                f"Maximum age: macro {MAX_AGE_DAYS['macro']} days, micro and industry {MAX_AGE_DAYS['industry']}, "
                f"company {MAX_AGE_DAYS['company']}.\n"
                f"Peers: {', '.join(peers[:6]) or 'none identified'}.\n"

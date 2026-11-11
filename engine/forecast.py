@@ -7,10 +7,13 @@ and a confidence level. Rules:
 - Later years fade from the year-2 value toward the industry median, by stage:
   early / high growth: 10 years (years 3-5 toward the industry rate, 6-10 toward terminal growth);
   mature, cyclical, declining: 5 years toward terminal growth.
+- Growth: every year is capped at the company's best year in the last decade, and a company growing faster than
+  its industry fades monotonically (no re-acceleration). Raw analyst consensus is used only in the bull scenario.
 - Margins: early -> ramp to the industry (mature-peer) margin; high / mature growth -> close half the gap to
-  the industry margin; mature stable -> 5-year average; cyclical -> mid-cycle (10-year average) from year 3.
-- Tax: the latest effective rate is held through the explicit forecast; the marginal (statutory) rate applies in
-  the terminal value (multinationals keep low effective rates for years; steady state converges to statutory).
+  the industry margin; mature stable -> 5-year average; cyclical -> a straight-line fade from year 3 to the
+  mid-cycle target (half way between the median margin and the 90th percentile of the years on file).
+- Tax: the latest effective rate phases up to the marginal (statutory) rate by year 5 (low effective rates last
+  a few years, not for ever); the marginal rate applies in the terminal value.
 - Reinvestment: sales-to-capital (company history, else industry).
 Every number is a Value; per-year paths are plain floats derived from those Values by the rules above.
 """
@@ -27,7 +30,9 @@ from engine.flags import AMBER, INFO, Flag
 from engine.model import Historicals
 from engine.values import RATIO, Value
 
-HORIZON = {EARLY: 10, HIGH_GROWTH: 10}
+HORIZON = {EARLY: 10, HIGH_GROWTH: 10, CYCLICAL: 7}  # a cyclical's margin fade needs 4-5 years before it settles
+TAX_PHASE_YEARS = 5          # the effective tax rate reaches the marginal rate in this forecast year
+CYCLICAL_ROIC_SPREAD = 0.04  # terminal ROIC of a cyclical: WACC plus this (3-5 points; no durable pricing power assumed)
 DEFAULT_HORIZON = 5
 MIN_ANALYSTS = 3
 CONSENSUS_BASIS_GAP = 0.03
@@ -78,6 +83,7 @@ class ForecastPlan:
     base_end: date | None = None
     flags: list[Flag] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    raw_growth_path: list[float] | None = None   # uncapped analyst-consensus path: the bull scenario's input
 
     def path(self, name: str) -> list[float]:
         return self.drivers[name].path
@@ -86,6 +92,19 @@ class ForecastPlan:
 def _lerp(a: float, b: float, n: int) -> list[float]:
     """n values stepping from a toward b, ending at b."""
     return [a + (b - a) * (k + 1) / n for k in range(n)] if n > 0 else []
+
+
+def fade_growth(path: list[float], cap: float | None, floor_rate: float) -> list[float]:
+    """The base-case growth path: no year above `cap` (the company's best year), and while growth is above
+    `floor_rate` (the industry rate) it only falls, never re-accelerates."""
+    out: list[float] = []
+    for x in path:
+        if cap is not None and x > cap:
+            x = cap
+        if out and out[-1] >= floor_rate:
+            x = min(x, out[-1])
+        out.append(x)
+    return out
 
 
 def _fy_ends(last_end: date, count: int) -> list[date]:
@@ -100,7 +119,8 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
                consensus: list[ConsensusYear], industry_margin: Value | None, industry_growth: Value | None,
                industry_sales_to_capital: Value | None, effective_tax: Value | None, marginal_tax: Value,
                risk_free: Value, wacc: float, roic: Value | None, mid_cycle_margin: float | None,
-               five_year_avg_margin: float | None, overrides: dict | None = None) -> ForecastPlan:
+               five_year_avg_margin: float | None, overrides: dict | None = None,
+               cycle_target_margin: float | None = None) -> ForecastPlan:
     overrides = overrides or {}
     fy = h.fy_labels
     base = fy[-1]
@@ -174,7 +194,9 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
         if best_hist is not None and max(first2) > best_hist:
             flags.append(Flag(AMBER, "consensus_above_history", "Consensus growth above best historical year",
                               f"Consensus revenue growth {max(first2):.1%} exceeds the company's best year in the "
-                              f"last decade ({best_hist:.1%}).", labels[0],
+                              f"last decade ({best_hist:.1%}). The base case caps every year at that best year and "
+                              f"lets growth fade without re-accelerating; the raw consensus is the bull case only.",
+                              labels[0],
                               {"consensus_growth": max(first2), "best_historical_growth": best_hist}))
     else:
         if stage == CYCLICAL and len(rev) >= 4 and rev[0][1] > 0 and rev[-1][1] > 0:
@@ -208,9 +230,21 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
         tail = _lerp(y2, g, n - k)
     growth_path = first2 + tail
     growth_path = growth_path[:n]
+    raw_growth_path = list(growth_path) if use_cons else None
+    cap = max(best_hist, ind_g) if best_hist is not None and len(growth_hist) >= 3 else None
+    faded = fade_growth(growth_path, cap, ind_g)
+    if any(abs(a - b) > 1e-9 for a, b in zip(faded, growth_path)):
+        capped = cap is not None and max(growth_path) > cap + 1e-9
+        g_source += ("; " + (f"no year above the company's best year in the last decade ({best_hist:.1%}), and "
+                             if capped else "") + "growth above the industry rate only fades, never re-accelerates"
+                     + ("; the raw consensus path is used in the bull case only" if use_cons else ""))
+    if raw_growth_path is not None and all(abs(a - b) <= 1e-9 for a, b in zip(raw_growth_path, faded)):
+        raw_growth_path = None  # nothing was changed: the bull case needs no separate path
+    growth_path = faded
     if "revenue_growth" in overrides:
         growth_path = list(overrides["revenue_growth"])[:n] + growth_path[len(overrides["revenue_growth"]):]
         g_source = "user override"
+        raw_growth_path = None
     drivers = {"revenue_growth": DriverRow(
         "revenue_growth", "Revenue growth", hist_growth, cons_v,
         Value(ind_g, None, RATIO, "industry", industry_growth.source if industry_growth else "terminal growth",
@@ -258,9 +292,11 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
     elif stage == EARLY:
         target, why = ind_m, "ramps to the industry margin (mature peers)"
         m_tail = _lerp(my2, target, rest)
-    elif stage == CYCLICAL and mid_cycle_margin is not None:
-        target, why = mid_cycle_margin, "normalised to the mid-cycle margin (average of the years on file, up to 10) from year 3"
-        m_tail = [target] * rest
+    elif stage == CYCLICAL and (cycle_target_margin is not None or mid_cycle_margin is not None):
+        target = cycle_target_margin if cycle_target_margin is not None else mid_cycle_margin
+        why = ("fades in a straight line from year 3 to the mid-cycle target (half way between the median and the "
+               "90th-percentile margin of the years on file, up to 10), so there is no cliff")
+        m_tail = _lerp(my2, target, rest)
     elif stage == MATURE_STABLE and five_year_avg_margin is not None:
         target, why = five_year_avg_margin, "returns to the 5-year median margin (history trend)"
         m_tail = _lerp(my2, target, rest)
@@ -282,7 +318,7 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
         m_tail = _lerp(my2, target, rest)
     if "target_margin" in overrides:
         target, why = overrides["target_margin"], "user override"
-        m_tail = _lerp(my2, target, rest) if stage != CYCLICAL else [target] * rest
+        m_tail = _lerp(my2, target, rest)
     margin_path = m12 + m_tail
     if "margin_shift" in overrides:  # news impact: temporary margin change per year, on top of the path
         shift = list(overrides["margin_shift"])
@@ -294,11 +330,16 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
 
     # --- tax ---------------------------------------------------------------------------------------------
     t0 = effective_tax.value if effective_tax is not None and 0 <= effective_tax.value <= 0.40 else marginal_tax.value
-    tax_path = [t0] * n
+    tax_path = []
+    for k in range(n):
+        yr = k - skipped_n + 1  # forecast year, 1 = the first year not yet reported
+        frac = 0.0 if yr <= 1 else min(1.0, (yr - 1) / (TAX_PHASE_YEARS - 1))
+        tax_path.append(t0 + (marginal_tax.value - t0) * frac if t0 < marginal_tax.value else t0)
     drivers["tax_rate"] = DriverRow("tax_rate", "Tax rate", effective_tax, None, marginal_tax,
                                     _v(marginal_tax.value, "marginal (statutory) rate in the terminal value", "chosen"),
-                                    tax_path, "latest effective rate held through the explicit forecast; the marginal "
-                                    "(statutory) rate applies in the terminal value", "Medium")
+                                    tax_path, f"latest effective rate in year 1, rising in a straight line to the "
+                                    f"marginal (statutory) rate by year {TAX_PHASE_YEARS}; the marginal rate applies "
+                                    "in the terminal value", "Medium")
 
     # --- reinvestment: sales-to-capital ----------------------------------------------------------------
     s2c_hist = _sales_to_capital(h)
@@ -324,11 +365,15 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
     else:
         t_roic = Value(wacc, None, RATIO, "terminal", "rule",
                        note="terminal ROIC = WACC: no excess returns in steady state")
+    if stage == CYCLICAL and "terminal_roic" not in overrides and t_roic.value > wacc + CYCLICAL_ROIC_SPREAD:
+        t_roic = Value(wacc + CYCLICAL_ROIC_SPREAD, None, RATIO, "terminal", "rule",
+                       note=f"cyclical: WACC {wacc:.1%} plus {CYCLICAL_ROIC_SPREAD * 100:.0f} points (a cyclical's "
+                            f"returns do not stay at their peak; no durable pricing power assumed)")
     if t_roic.value <= g:
         t_roic = Value(g + 0.02, None, RATIO, "terminal", "rule", note="raised to terminal growth + 2 points")
 
     return ForecastPlan(base, base_rev, labels, labels[:skipped_n], stub, valuation_date, drivers, g_val, t_roic,
-                        stage, list(all_ends), base_period.end, flags, notes)
+                        stage, list(all_ends), base_period.end, flags, notes, raw_growth_path)
 
 
 def _sales_to_capital(h: Historicals) -> Value | None:

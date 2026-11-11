@@ -60,7 +60,7 @@ _cooldown: dict[str, float] = {}
 
 
 def get(source: str, url: str, *, params: dict | None = None, headers: dict | None = None,
-        limiter: RateLimiter | None = None, timeout: float = 30, retries: int = 3,
+        limiter: RateLimiter | None = None, timeout: float = 30, retries: int = 4,
         session: requests.Session | None = None) -> requests.Response:
     sess = session or requests
     last_err: Exception | None = None
@@ -82,7 +82,7 @@ def get(source: str, url: str, *, params: dict | None = None, headers: dict | No
             last_err.quota = resp.status_code == 429 and any(w in (resp.text or "")[:500].lower() for w in QUOTA_WORDS)
             if last_err.quota:
                 break  # a quota does not clear on retry
-            time.sleep(2.0 * (attempt + 1))
+            time.sleep(2.0 * 2 ** attempt)  # exponential backoff: 2, 4, 8, 16 seconds
             continue
         if resp.status_code >= 400:
             body = resp.text[:300].replace("\n", " ")

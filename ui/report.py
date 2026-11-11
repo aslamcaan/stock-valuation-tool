@@ -163,10 +163,11 @@ def verdict_card(rep) -> None:
 
     imp = getattr(rep, "impact", None)
     fv_sub = (f"News-adjusted {money(imp.adjusted_fair_value)}" if imp is not None and not imp.error
-              and imp.adjusted is not None else "Blend of the valuation methods")
+              and imp.adjusted is not None else "Scenario-weighted DCF (blend not used)"
+              if getattr(vd, "fallback", None) else "Blend of the valuation methods")
     gap_col = None if vd.gap is None else (GREEN if vd.gap > 0 else RED)
     kpis = [
-        _kpi("Share price", money(price.value), f"{price.source} · {when(price.period)[:11].strip(', ')}", trace_text(price)),
+        _kpi("Share price", money(price.value), f"{price.source} · {when(price.period)}", trace_text(price)),
         _kpi("Fair value", money(vd.fair_value), fv_sub, trace_text(m.trace.get("fair_value")), ACCENT),
         _kpi("Upside", "–" if vd.gap is None else f"{vd.gap:+.1%}", "fair value vs price", colour=gap_col),
         _kpi("Verdict", vd.verdict or "–", f"Confidence: {vd.confidence or '–'}",
@@ -187,6 +188,9 @@ def verdict_card(rep) -> None:
     else:
         stats.append(f"WACC <span class='n'>{pct(v.wacc.wacc.value)}</span>")
         stats.append(f"Toolkit <b>{esc(v.classification.toolkit)}</b>")
+    ne = getattr(getattr(cd, "market", None), "next_earnings", None)
+    stats.append("Next results <span class='n'>" + (esc(when(ne["date"])) if ne and ne.get("date") else "date not known")
+                 + "</span>")
     stats.append(f"Report <span class='n'>{esc(when(rep.created_at))}</span>")
     stats.append(f"AI cost <span class='n'>{esc(money(rep.ai_cost, 3))}</span>")
 
@@ -194,6 +198,9 @@ def verdict_card(rep) -> None:
     chips = "".join(chip(f.level, f.title, f.message) for f in key[:6])
     if len(key) > 6:
         chips += f"<span class='vt-chip info'>+{len(key) - 6} more in Review &amp; flags</span>"
+    # what the reader must see before the numbers: the headline is not the plain blend, the run was partial, or a data check failed
+    for note in ([vd.headline_note] if getattr(vd, "headline_note", "") else []) + list(getattr(vd, "top_notes", []) or []):
+        html(f"<div class='vt-note warn'><b>Read this first.</b> {esc(note)}</div>")
     html(f"<div class='vt-head'><div class='top'>{ident}{_ring(rep.md)}</div><div class='vt-kpis'>{''.join(kpis)}</div>"
          f"{strip}<div class='vt-stats'>{''.join(f'<span>{x}</span>' for x in stats)}</div>"
          + (f"<div class='vt-chips'>{chips}</div>" if chips else "") + "</div>")

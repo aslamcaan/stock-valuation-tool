@@ -2,9 +2,11 @@
 
 Stage rules (PROMPT.md 4b), applied in this order, with the evidence recorded:
 1. Declining: revenue fell in each of the last 3 fiscal years.
-2. Cyclical: cyclical SIC code, or volatile revenue and margins while mostly profitable.
+2. Cyclical: cyclical SIC code (checked before growth, so a 175% revenue spike in memory chips is a cycle, not a
+   start-up), or volatile revenue and margins while mostly profitable.
 3. Early / pre-profit: revenue growth > 25% (latest, or 3-year CAGR with margin < 10%), or negative operating margin.
-4. High growth, profitable: growth 15-25%.
+   A company with a positive operating margin and positive free cash flow is never pre-profit.
+4. High growth, profitable: growth 15-25%, or faster growth from a company that is already profitable.
 5. Mature growth: growth 5-15%.
 6. Mature stable: growth < 5% with low margin volatility (otherwise mature growth).
 Growth = 3-year revenue CAGR (the latest year is reported alongside). The review desk may override, with a reason.
@@ -12,7 +14,7 @@ Growth = 3-year revenue CAGR (the latest year is reported alongside). The review
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from statistics import mean, pstdev
+from statistics import mean, median, pstdev
 
 from engine.model import Historicals
 
@@ -97,8 +99,12 @@ def cycle_position(h: Historicals, current_margin: float | None) -> dict:
     s = sorted(ms)
     k = 0.9 * (len(s) - 1)
     p90 = s[int(k)] + (s[min(int(k) + 1, len(s) - 1)] - s[int(k)]) * (k - int(k))
+    # mid-cycle target for a cyclical's margin path: half way between the typical year (the median, so one trough
+    # year such as a -37% margin does not drag it down) and the 90th percentile
+    cycle_target = (median(ms) + p90) / 2
     return {"available": True, "years": len(ms), "current_margin": current_margin, "percentile": pct,
-            "p90_margin": p90, "mid_cycle_margin": mean(ms), "min_margin": min(ms), "max_margin": max(ms),
+            "p90_margin": p90, "mid_cycle_margin": mean(ms), "median_margin": median(ms),
+            "cycle_target_margin": cycle_target, "min_margin": min(ms), "max_margin": max(ms),
             "margin_std": pstdev(ms), "volatile": pstdev(ms) > VOLATILE_MARGIN,
             "above_90th": current_margin >= p90 and current_margin > min(ms)}
 
@@ -116,9 +122,12 @@ def classify(h: Historicals, sic: str, current_margin: float | None = None) -> C
     margin_std = pstdev([m for _, m in ms]) if len(ms) >= 3 else None
     growth_std = pstdev([x for _, x in growth[-10:]]) if len(growth) >= 3 else None
     profitable_share = (sum(1 for _, m in ms if m > 0) / len(ms)) if ms else 0.0
+    fcf_p = h.ltm.label if h.ltm and h.v("fcf", h.ltm.label) is not None else (fy[-1] if fy else None)
+    fcf_now = h.v("fcf", fcf_p) if fcf_p else None
+    profitable_now = margin_now is not None and margin_now > 0 and fcf_now is not None and fcf_now > 0
     ev = {"revenue_cagr_3y": cagr3, "latest_revenue_growth": latest_growth, "operating_margin": margin_now,
           "margin_std": margin_std, "growth_std": growth_std, "profitable_year_share": profitable_share,
-          "cyclical_sic": is_cyclical_sic(sic), "years_of_history": len(rev)}
+          "cyclical_sic": is_cyclical_sic(sic), "years_of_history": len(rev), "positive_fcf": fcf_now is not None and fcf_now > 0}
 
     def done(stage: str, reason: str) -> Classification:
         return Classification(toolkit, toolkit_reason, stage, reason, ev)
@@ -129,19 +138,26 @@ def classify(h: Historicals, sic: str, current_margin: float | None = None) -> C
     volatile = (growth_std is not None and margin_std is not None and growth_std > 0.15 and margin_std > 0.07
                 and profitable_share >= 0.7 and (cagr3 is None or cagr3 < 0.25))
     sic_cycle_evidence = ((margin_std or 0) > VOLATILE_MARGIN or (growth_std or 0) > VOLATILE_GROWTH)
-    if ev["cyclical_sic"] and profitable_share >= 0.5 and sic_cycle_evidence:
-        return done(CYCLICAL, f"SIC {sic} is a cyclical industry; operating margin ranged "
-                    f"{min(m for _, m in ms):.1%} to {max(m for _, m in ms):.1%} over {len(ms)} years")
+    short_history = len(ms) < 5  # too few years to show a cycle: the industry is the evidence
+    if ev["cyclical_sic"] and (sic_cycle_evidence or short_history) and             (profitable_share >= 0.5 or (margin_now is not None and margin_now > 0)):
+        span = (f"operating margin ranged {min(m for _, m in ms):.1%} to {max(m for _, m in ms):.1%} over {len(ms)} "
+                f"years" if ms else "no operating margin history")
+        return done(CYCLICAL, f"SIC {sic} is a cyclical industry; {span}"
+                    + ("; with under five years of history the industry decides, not the company's own margins"
+                       if short_history and not sic_cycle_evidence else ""))
     if volatile:
         return done(CYCLICAL, f"revenue growth volatility {growth_std:.1%} and margin volatility {margin_std:.1%} "
                     f"over {len(ms)} years while mostly profitable")
     if margin_now is not None and margin_now < 0:
         return done(EARLY, f"operating margin is negative ({margin_now:.1%})")
-    if latest_growth is not None and latest_growth > 0.25:
+    if latest_growth is not None and latest_growth > 0.25 and not profitable_now:
         return done(EARLY, f"revenue grew {latest_growth:.1%} in the latest year (above 25%)")
-    if cagr3 is not None and cagr3 > 0.25 and (margin_now is None or margin_now < 0.10):
+    if cagr3 is not None and cagr3 > 0.25 and (margin_now is None or margin_now < 0.10) and not profitable_now:
         return done(EARLY, f"3-year revenue CAGR {cagr3:.1%} (above 25%) with a thin operating margin "
                     f"({margin_now:.1%})")
+    if profitable_now and (g is not None and g > 0.25 or (latest_growth or 0) > 0.25):
+        return done(HIGH_GROWTH, f"revenue growing fast (3-year CAGR {g:.1%}, latest year {latest_growth:.1%}) "
+                    f"but already profitable: operating margin {margin_now:.1%} and positive free cash flow")
     if g is None:
         return done(MATURE_GROWTH, "insufficient history: mature growth assumed")
     if g >= 0.15:

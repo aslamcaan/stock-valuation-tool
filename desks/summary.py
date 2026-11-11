@@ -13,6 +13,31 @@ RULE_THRESHOLDS = {"terminal_value_share_of_ev_max": 0.80, "whole_enterprise_val
                    "kpi_divergence_points": 5, "stale_filing_days": 120, "cyclical_peak_percentile": 90,
                    "beneish_m_threshold": -1.78}
 
+def components_of(vd) -> dict:
+    """The blend's components by name. When a sum of the parts replaced the DCF it is named as such, so no desk can
+    mistake it for the DCF (which is dcf.figures)."""
+    sotp = bool(getattr(vd, "dcf_is_sotp", False))
+    return {("sum_of_the_parts" if k == "dcf" and sotp else k): _r(x, 2) for k, x in vd.components.items()}
+
+
+def calendar_of(report) -> dict:
+    """The price's timestamp and the next results date, so the MD can date the earnings catalyst. The date also appears
+    as separate numbers (year, month, day), which the number guard can then match when the text writes it out."""
+    m = getattr(getattr(report, "company", None), "market", None)
+    out: dict = {}
+    price = getattr(m, "price", None)
+    if price is not None:
+        out["price_as_of"] = str(price.period)
+    ne = getattr(m, "next_earnings", None)
+    if ne and ne.get("date"):
+        y, mo, d = (int(x) for x in ne["date"][:10].split("-"))
+        out["next_earnings"] = {"date": ne["date"][:10], "year": y, "month": mo, "day": d,
+                                "eps_estimate": _r(ne.get("eps_estimate"), 2), "source": "earnings calendar"}
+    else:
+        out["next_earnings"] = None
+    return out
+
+
 def financial_summary(report, research: dict | None = None) -> dict:
     """Banks, insurers, REITs: the toolkit's metrics (computed and reported) and valuation methods."""
     from engine.financials import method_label
@@ -37,6 +62,7 @@ def financial_summary(report, research: dict | None = None) -> dict:
         "company": {"name": cd.profile.name, "ticker": cd.profile.ticker, "sic": cd.profile.sic_description,
                     "reporting_currency": cd.profile.reporting_currency, "latest_fiscal_year": fv.period},
         "price": _r(vd.price, 2),
+        "calendar": calendar_of(report),
         "toolkit": {"toolkit": fv.toolkit, "why_no_dcf": fv.why_no_dcf},
         "historicals_usd_m": {line: {p: _r(h.v(line, p), 2) for p in periods} for line in FS_LINES[fv.toolkit]},
         "sector_metrics": {m.key: {"label": m.label, "computed": _r(m.value.value),
@@ -49,8 +75,9 @@ def financial_summary(report, research: dict | None = None) -> dict:
                            "book_value_per_share_used": _r(fv.base_per_share.value, 2) if fv.base_per_share else None},
         "methods": methods,
         "verdict": {"fair_value": _r(vd.fair_value, 2), "gap": _r(vd.gap), "verdict": vd.verdict,
-                    "confidence": vd.confidence, "components": {k: _r(x, 2) for k, x in vd.components.items()},
-                    "weights": {k: _r(w) for k, w in vd.weights_used.items()}},
+                    "confidence": vd.confidence, "components": components_of(vd),
+                    "weights": {("sum_of_the_parts" if k == "dcf" and getattr(vd, "dcf_is_sotp", False) else k): _r(w)
+                                for k, w in vd.weights_used.items()}},
         "analyst_targets": report.analyst_targets,
         "flags": [{"level": f.level, "code": f.code, "message": f.message} for f in report.flags],
         "rule_thresholds": RULE_THRESHOLDS,
@@ -89,6 +116,7 @@ def build_summary(report, research: dict | None = None) -> dict:
         "company": {"name": cd.profile.name, "ticker": cd.profile.ticker, "sic": cd.profile.sic_description,
                     "reporting_currency": cd.profile.reporting_currency, "latest_fiscal_year": last},
         "price": _r(vd.price, 2),
+        "calendar": calendar_of(report),
         "stage": {"stage": v.classification.stage_label, "reason": v.classification.stage_reason,
                   "evidence": {k: _r(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else x
                                for k, x in v.classification.evidence.items()}},
@@ -102,6 +130,9 @@ def build_summary(report, research: dict | None = None) -> dict:
         "terminal": {"growth": _r(plan.terminal_growth.value), "roic": _r(plan.terminal_roic.value)},
         "dcf": None if not v.dcf else {
             "value_per_share": _r(v.per_us_share(v.dcf.value_per_share), 2),
+            # every DCF figure, produced once by the engine (per US share): quote these and no other DCF value
+            "figures": {k: _r(x, 2) for k, x in (getattr(v, "dcf_figures", None) or {}).items()},
+            "left_out_of_the_blend": bool(getattr(v, "model_fit_failed", False)),
             "tv_share_of_ev": _r(v.dcf.tv_share_of_ev, 3), "enterprise_value_m": _r(v.dcf.enterprise_value, 0),
             "scenarios": {s.scenario.name: {"value": _r(v.per_us_share(s.value_per_share), 2),
                                             "probability": s.scenario.probability,
@@ -114,8 +145,11 @@ def build_summary(report, research: dict | None = None) -> dict:
                                             "current": _r(hm.current, 2), "implied_price": _r(hm.implied_price, 2)}
                                  for hm in report.history.values()},
         "verdict": {"fair_value": _r(vd.fair_value, 2), "gap": _r(vd.gap), "verdict": vd.verdict,
-                    "confidence": vd.confidence, "components": {k: _r(x, 2) for k, x in vd.components.items()},
-                    "weights": {k: _r(w) for k, w in vd.weights_used.items()}},
+                    "confidence": vd.confidence, "components": components_of(vd),
+                    "weights": {("sum_of_the_parts" if k == "dcf" and getattr(vd, "dcf_is_sotp", False) else k): _r(w)
+                                for k, w in vd.weights_used.items()},
+                    "blend_fair_value": _r(getattr(vd, "blend_fair_value", None), 2),
+                    "headline_is_the_scenario_weighted_dcf": bool(getattr(vd, "fallback", None))},
         "analyst_targets": report.analyst_targets,
         "flags": [{"level": f.level, "code": f.code, "message": f.message} for f in report.flags],
         # the brief's own thresholds, so a desk may say "above the 80% limit" without failing the number guard

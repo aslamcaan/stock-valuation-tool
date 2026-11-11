@@ -3,7 +3,7 @@ sensitivities, reverse DCF, SOTP, plus the valuation flags. Takes EngineInputs, 
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from statistics import median
 
@@ -89,6 +89,11 @@ class Valuation:
     asset_value_per_share: Value | None  # declining companies: tangible book cross-check
     flags: list[Flag]
     per_us_share_factor: float          # ADR ratio: value per ordinary share x this = value per US share
+    # every DCF figure the report may quote, per US share, produced once here: the blend, every section and the AI
+    # desks read these (keys: base_case, bear, base, bull, probability_weighted, structural)
+    dcf_figures: dict = field(default_factory=dict)
+    model_fit: dict | None = None       # set when the first DCF failed its fit check (and what was done about it)
+    model_fit_failed: bool = False      # the DCF still fails its fit check: it is left out of the blend
 
     def per_us_share(self, x: float | None) -> float | None:
         return None if x is None else x * self.per_us_share_factor
@@ -112,6 +117,19 @@ def _uses(v: Value | None, marker: str) -> bool:
 def _neg(v: Value, name: str) -> Value:
     return calc(lambda x: -x, f"minus {name}", v.period, MILLIONS, v.currency, **{name: v})
 
+
+
+def fit_failure(dcf: DCFResult | None, margin_now: float) -> str | None:
+    """Why a DCF is not a usable estimate, or None: terminal value above 100% of enterprise value (the explicit years
+    destroy value), or free cash flows over the explicit years summing to less than zero for a profitable company."""
+    if dcf is None:
+        return None
+    if dcf.tv_share_of_ev > 1.0:
+        return f"terminal value is {dcf.tv_share_of_ev:.0%} of enterprise value, above 100%"
+    if margin_now > 0 and dcf.sum_pv_fcf < 0:
+        return (f"free cash flow over the explicit years sums to {dcf.sum_pv_fcf:,.0f}m (negative) for a company "
+                f"with a positive operating margin ({margin_now:.1%})")
+    return None
 
 
 def reinvestment_flags(dcf, roic_now) -> list[Flag]:
@@ -153,7 +171,6 @@ def value_company(i: EngineInputs) -> Valuation:
                       operating_income=h.get("operating_income", cur_p), revenue=h.get("revenue", cur_p))
     cls = classify(h, i.sic, cur_margin.value)
     if i.overrides.get("stage"):
-        from dataclasses import replace
         cls = replace(cls, stage=i.overrides["stage"], override=i.overrides.get("stage_reason", "override"))
     cyc = cycle_position(h, cur_margin.value)
     if cyc.get("above_90th"):
@@ -187,21 +204,26 @@ def value_company(i: EngineInputs) -> Valuation:
     bs_date = next(p.end for p in h.periods if p.label == bs_p)
     mixed = []
 
-    def at_bs(line: str) -> Value | None:
+    def at_bs(line: str, stale_is_zero: bool = False) -> Value | None:
         v = h.get(line, bs_p)
         if v is not None and v.value is not None:
             return v
         v = _latest(h, line)
         if v is not None and v.period != bs_p:
+            if stale_is_zero:  # one balance-sheet date: an item not reported at it counts as zero, and the flag says so
+                if v.value:
+                    mixed.append(f"{line.replace('_', ' ')} ({v.value:,.0f}m at {v.period}) treated as zero")
+                return None
             mixed.append(f"{line.replace('_', ' ')} from {v.period}")
         return v
     debt = at_bs("debt_for_valuation") or Value(0.0, "USD", MILLIONS, bs_p, "assumed zero")
-    minority = at_bs("minority_interest")
-    preferred = at_bs("preferred_equity")
-    investments = at_bs("long_term_investments")
+    minority = at_bs("minority_interest", True)
+    preferred = at_bs("preferred_equity", True)
+    investments = at_bs("long_term_investments", True)
     if mixed:
-        flags.append(Flag(AMBER, "bridge_mixed_periods", "Equity bridge mixes balance-sheet dates",
-                          f"Cash is at {bs_p}, but {', '.join(mixed)} (not reported at {bs_p}).", bs_p,
+        flags.append(Flag(AMBER, "bridge_mixed_periods", "Equity bridge built from one balance-sheet date",
+                          f"The bridge uses the {bs_p} balance sheet. Not reported at {bs_p}: {', '.join(mixed)}. "
+                          "An item missing at that date is left out rather than taken from another year.", bs_p,
                           {"items": mixed}))
     bridge: list[tuple[str, Value]] = [("Debt", _neg(debt, "debt")), ("Cash and investments", cash)]
     if investments is not None and investments.value:
@@ -254,14 +276,17 @@ def value_company(i: EngineInputs) -> Valuation:
                                                           h.v("goodwill_intangible_impairment", p) or 0.0))
                         / h.v("revenue", p)
                         for p in h.fy_labels[-5:] if h.v("operating_income", p) is not None and h.v("revenue", p))
-    plan = build_plan(
-        h, cls.stage, valuation_date=i.valuation_date, current_margin=cur_margin, consensus=i.consensus,
-        industry_margin=i.industry.operating_margin, industry_growth=i.industry.revenue_growth,
-        industry_sales_to_capital=i.industry.sales_to_capital,
-        effective_tax=a.metrics.get("effective_tax_rate", {}).get(last), marginal_tax=i.marginal_tax,
-        risk_free=i.risk_free, wacc=wacc, roic=a.metrics.get("roic", {}).get(last),
-        mid_cycle_margin=cyc.get("mid_cycle_margin"), five_year_avg_margin=median(margins_5y) if margins_5y else None,
-        overrides=i.overrides)
+    def make_plan(overrides: dict) -> ForecastPlan:
+        return build_plan(
+            h, cls.stage, valuation_date=i.valuation_date, current_margin=cur_margin, consensus=i.consensus,
+            industry_margin=i.industry.operating_margin, industry_growth=i.industry.revenue_growth,
+            industry_sales_to_capital=i.industry.sales_to_capital,
+            effective_tax=a.metrics.get("effective_tax_rate", {}).get(last), marginal_tax=i.marginal_tax,
+            risk_free=i.risk_free, wacc=wacc, roic=a.metrics.get("roic", {}).get(last),
+            mid_cycle_margin=cyc.get("mid_cycle_margin"),
+            five_year_avg_margin=median(margins_5y) if margins_5y else None,
+            overrides=overrides, cycle_target_margin=cyc.get("cycle_target_margin"))
+    plan = make_plan(i.overrides)
     flags += plan.flags
     g = plan.terminal_growth.value
     if g >= i.risk_free.value or g > 0.04:
@@ -285,11 +310,44 @@ def value_company(i: EngineInputs) -> Valuation:
     dcf_inputs = dcf = None
     scen, scen_value, structural = [], None, None
     sens1 = sens2 = rev = None
+    model_fit, model_fit_failed = None, False
     try:
         dcf_inputs = to_dcf_inputs(plan, wacc, bridge_t, shares.value, balance_sheet_date=bs_date)
         dcf = run_dcf(dcf_inputs)
+        fit = fit_failure(dcf, cur_margin.value)
+        ind_s2c = i.industry.sales_to_capital.value if i.industry.sales_to_capital is not None else None
+        s2c_now = plan.drivers["sales_to_capital"].chosen.value
+        if fit and ind_s2c and s2c_now < ind_s2c and "sales_to_capital" not in i.overrides:
+            # the company's own sales-to-capital is so low that growth swallows its cash: re-run at the industry figure
+            plan2 = make_plan({**i.overrides, "sales_to_capital": ind_s2c})
+            inputs2 = to_dcf_inputs(plan2, wacc, bridge_t, shares.value, balance_sheet_date=bs_date)
+            dcf2 = run_dcf(inputs2)
+            fit2 = fit_failure(dcf2, cur_margin.value)
+            model_fit = {"failure": fit, "company_sales_to_capital": s2c_now, "industry_sales_to_capital": ind_s2c,
+                         "after_rerun": fit2 or "passes", "value_before": dcf.value_per_share,
+                         "value_after": dcf2.value_per_share}
+            plan, dcf_inputs, dcf, fit = plan2, inputs2, dcf2, fit2
+            flags.append(Flag(AMBER, "model_fit_rerun", "DCF re-run with sales-to-capital at the industry figure",
+                              f"The first DCF failed its fit check ({model_fit['failure']}) with the company's own "
+                              f"sales-to-capital of {s2c_now:.2f}. It was re-run with the industry figure of "
+                              f"{ind_s2c:.2f}" + (" and now passes." if not fit2 else f", but still fails: {fit2}."),
+                              None, {"company_sales_to_capital": s2c_now, "industry_sales_to_capital": ind_s2c}))
+        if fit:
+            model_fit_failed = True
+            model_fit = {**(model_fit or {}), "failure": fit}
+            flags.append(Flag(AMBER, "model_fit_failed", "DCF fails its own fit check: left out of the blend",
+                              f"The DCF is not a usable estimate for this company: {fit}. It is shown for reference "
+                              "but not blended into the fair value.", None, {}))
         g_cap = 0.0 if cls.stage == DECLINING else i.risk_free.value
-        scen, scen_value = run_scenarios(dcf_inputs, DEFAULT_SCENARIOS, max_terminal_growth=g_cap)
+        scen_defs, by_scenario = DEFAULT_SCENARIOS, None
+        if plan.raw_growth_path:  # the bull case is where the analysts' raw growth path is used
+            raw_years = tuple(replace(y, revenue_growth=plan.raw_growth_path[k])
+                              for k, y in enumerate(dcf_inputs.years))
+            by_scenario = {"Bull": replace(dcf_inputs, years=raw_years)}
+            scen_defs = tuple(replace(sc, growth_shift=0.0, raw_consensus_growth=True) if sc.name == "Bull" else sc
+                              for sc in DEFAULT_SCENARIOS)
+        scen, scen_value = run_scenarios(dcf_inputs, scen_defs, max_terminal_growth=g_cap,
+                                         inputs_by_scenario=by_scenario)
         sens1, sens2 = grid_wacc_growth(dcf_inputs), grid_growth_margin(dcf_inputs)
         rev = reverse_dcf(dcf_inputs, ordinary_price.value)
         eff, roic_now = a.metrics.get("effective_tax_rate", {}).get(last), a.metrics.get("roic", {}).get(last)
@@ -299,7 +357,6 @@ def value_company(i: EngineInputs) -> Valuation:
             rev["street"] = {"value_per_share": run_dcf(street_in).value_per_share, "changes": street_changes,
                              "implied_wacc": implied_wacc(street_in, ordinary_price.value)}
         if cls.stage == CYCLICAL:
-            from dataclasses import replace
             held = tuple(replace(y, operating_margin=cur_margin.value) for y in dcf_inputs.years)
             structural = run_dcf(replace(dcf_inputs, years=held, terminal_margin=cur_margin.value))
     except DCFError as exc:
@@ -326,6 +383,12 @@ def value_company(i: EngineInputs) -> Valuation:
             asset_value = calc(lambda t, s: t / s, "tangible book value / diluted shares", pe.period, PER_SHARE, "USD",
                                tangible_book=tb, shares=shares)
 
+    factor = i.adr_ratio
+    figures = {k: (None if x is None else x * factor) for k, x in {
+        "base_case": dcf.value_per_share if dcf else None, "probability_weighted": scen_value,
+        "structural": structural.value_per_share if structural else None,
+        **{s.scenario.name.lower(): s.value_per_share for s in scen}}.items()}
     return Valuation(cls, cyc, w, {"interest_cover": interest_cover, **rating, "large_firm": large,
                                    "pre_tax_cost_of_debt": kd}, plan, dcf_inputs, dcf, scen, scen_value, structural,
-                     sens1, sens2, rev, sotp, shares, bridge, asset_value, flags, i.adr_ratio)
+                     sens1, sens2, rev, sotp, shares, bridge, asset_value, flags, i.adr_ratio, figures, model_fit,
+                     model_fit_failed)

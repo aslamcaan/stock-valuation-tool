@@ -60,6 +60,7 @@ class Market:
     provider_market_cap: Value | None  # US$m
     beta: Value | None
     notes: list[str] = field(default_factory=list)
+    next_earnings: dict | None = None  # {date, eps_estimate} from an earnings calendar, when one answered
 
 
 @dataclass
@@ -333,6 +334,13 @@ def build_company_data(ticker: str, svc, today: date | None = None, kpis: dict |
                if mcap and provider and mcap.value and price and price.value and shares and shares.value else None)
     flags += checks.adr_ratio_status(ticker.upper(), ratio, on_file(ticker), is_foreign_private_issuer(sub), implied)
     market = Market(price, shares, ratio, ratio_src, mcap, provider, beta)
+    sf = _safe(svc.fmp.call, "shares_float", ticker)
+    fmp_out = ((sf.payload or [{}])[0].get("outstandingShares") if sf and sf.payload else None)
+    if fmp_out and shares and shares.value and ratio == 1:  # FMP counts ADSs for ADR issuers: compared only at 1:1
+        flags += checks.share_count_gap(shares.value, f"{shares.tag or shares.source}, {shares.period}",
+                                        float(fmp_out) / 1e6, "FMP")
+    ne = svc.market.next_earnings(ticker, today)
+    market.next_earnings = ne.data if ne.available else None
 
     # --- cross-check EDGAR vs FMP (latest fiscal year) -----------------------------------------------------
     st = {k: _safe(svc.fmp.call, k, ticker) for k in ("income_statement", "balance_sheet", "cash_flow")}

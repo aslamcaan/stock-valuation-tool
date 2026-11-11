@@ -6,7 +6,7 @@ and every widening step is reported.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from statistics import median
 
 MIN_PEERS = 5
@@ -158,6 +158,7 @@ class CompsResult:
     implied_price: float | None          # median of the multiples' implied prices
     benchmarks: dict[str, dict]
     excluded: list[str] = field(default_factory=list)
+    normalised_note: str = ""            # set when a cyclical's earnings were taken at the mid-cycle margin
 
 
 def implied_from_multiple(key: str, multiple: float, company: CompanyMetrics, shares: float, bridge: float,
@@ -177,10 +178,38 @@ def implied_from_multiple(key: str, multiple: float, company: CompanyMetrics, sh
     return (multiple * metric + bridge) / shares * adr_ratio
 
 
+def mid_cycle_metrics(company: CompanyMetrics, target_margin: float, tax_rate: float
+                      ) -> tuple[CompanyMetrics, str] | None:
+    """A cyclical's earnings at the mid-cycle operating margin instead of today's peak, so a peer multiple is not
+    applied to peak profit (a memory maker earning 9x trailing earnings at the top of the cycle is not cheap).
+    Revenue is unchanged; operating income, EBITDA, net income, free cash flow and forward EPS fall by the excess profit
+    (after tax for the last three). None when the company is not above the target margin."""
+    if not company.revenue or company.revenue <= 0 or company.operating_income is None:
+        return None
+    cur = company.operating_income / company.revenue
+    if cur <= target_margin:
+        return None
+    excess = company.operating_income - company.revenue * target_margin
+    after_tax = excess * (1 - tax_rate)
+    ni = company.net_income - after_tax if company.net_income is not None else None
+    eps = None
+    if company.forward_eps and company.net_income and company.net_income > 0 and ni is not None and ni > 0:
+        eps = company.forward_eps * ni / company.net_income
+    out = replace(company, operating_income=company.revenue * target_margin,
+                  ebitda=None if company.ebitda is None else company.ebitda - excess,
+                  net_income=ni, fcf=None if company.fcf is None else company.fcf - after_tax, forward_eps=eps)
+    return out, (f"multiples applied to mid-cycle earnings: operating margin {target_margin:.1%} instead of today's "
+                 f"{cur:.1%} (a cyclical's peak profit is not capitalised at a peer multiple)")
+
+
 def run_comps(company: CompanyMetrics, peers: list[CompanyMetrics], steps: list[str], shares: float, bridge: float,
-              adr_ratio: float = 1.0) -> CompsResult:
-    """`bridge` is the signed amount from EV to equity (cash - debt - minorities), `shares` diluted ordinary shares."""
+              adr_ratio: float = 1.0, normalised: CompanyMetrics | None = None,
+              normalised_note: str = "") -> CompsResult:
+    """`bridge` is the signed amount from EV to equity (cash - debt - minorities), `shares` diluted ordinary shares.
+    `normalised` (a cyclical's mid-cycle earnings) is what the peer multiples are applied to; the company's own
+    multiples are still shown on its actual earnings."""
     own = company.multiples()
+    base = normalised or company
     res: dict[str, MultipleResult] = {}
     excluded: list[str] = []
     for key, (label, basis) in MULTIPLES.items():
@@ -192,9 +221,9 @@ def run_comps(company: CompanyMetrics, peers: list[CompanyMetrics], steps: list[
             continue
         q1, md, q3 = _quartiles(list(vals.values()))
         res[key] = MultipleResult(key, label, vals, q1, md, q3, own[key],
-                                  implied_from_multiple(key, q1, company, shares, bridge, adr_ratio),
-                                  implied_from_multiple(key, md, company, shares, bridge, adr_ratio),
-                                  implied_from_multiple(key, q3, company, shares, bridge, adr_ratio), basis)
+                                  implied_from_multiple(key, q1, base, shares, bridge, adr_ratio),
+                                  implied_from_multiple(key, md, base, shares, bridge, adr_ratio),
+                                  implied_from_multiple(key, q3, base, shares, bridge, adr_ratio), basis)
     gap = _sales_margin_gap(company, peers)
     if gap and res["ev_sales"].implied_price is not None:
         res["ev_sales"].in_blend, res["ev_sales"].note = False, gap
@@ -203,7 +232,8 @@ def run_comps(company: CompanyMetrics, peers: list[CompanyMetrics], steps: list[
     if res["pe_forward"].implied_price is not None and res["pe_trailing"].implied_price is not None:
         implied.remove(res["pe_trailing"].implied_price)  # forward P/E preferred; avoid double-weighting P/E
     benchmarks = benchmark(company, peers)
-    return CompsResult(peers, steps, res, median(implied) if implied else None, benchmarks, excluded)
+    return CompsResult(peers, steps, res, median(implied) if implied else None, benchmarks, excluded,
+                       normalised_note if normalised else "")
 
 
 def _sales_margin_gap(company: CompanyMetrics, peers: list[CompanyMetrics]) -> str:

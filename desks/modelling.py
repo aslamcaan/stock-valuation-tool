@@ -14,10 +14,11 @@ from data_desk.history_data import price_series, week52, year_points
 from data_desk.peers import gather_peers, latest_period, metrics_from, next_fy_eps, peer_metrics
 from data_desk.segments import match_names
 from data_desk.valuation_inputs import build_engine_inputs, crp_from_filing_geography, one_off_adjustments
-from engine.classify import CORPORATE, toolkit_for_sic
+from engine.classify import CORPORATE, CYCLICAL, toolkit_for_sic
 from engine.financials import FinancialError, FinancialValuation, FinInputs, method_label, value_financial
 from engine.sotp import Segment
-from engine.comps import NM_ABOVE, CompanyMetrics, CompsResult, run_comps, select_peers
+from engine.comps import (MIN_PEERS, NM_ABOVE, CompanyMetrics, CompsResult, mid_cycle_metrics, run_comps,
+                          select_peers)
 from engine.flags import AMBER, INFO, RED, Flag, sort_flags
 from engine.history_multiples import HistoryResult, history_multiples, implied_price
 from engine.valuation import EngineInputs, Valuation, ValuationError, value_company
@@ -73,6 +74,31 @@ def provider_flags(notes: list[str]) -> list[Flag]:
                  "A data provider refused requests while this report ran (" + hit[0].split(";")[0][:120] + "). "
                  "Fallbacks were used where they exist: peers from SEC data, the price from Tiingo, the forecast from "
                  "history instead of analyst consensus. Re-run the report later for the full data.", None, {})]
+
+
+def partial_inputs(ei, closes) -> list[str]:
+    """Core inputs that are missing from this run (the report then rests on fallbacks)."""
+    missing = []
+    if not ei.consensus:
+        missing.append("analyst consensus")
+    if not closes:
+        missing.append("price history")
+    return missing
+
+
+def top_notes(flags: list[Flag], notes: list[str], missing: list[str]) -> list[str]:
+    """Plain-English lines printed at the top of the report: a partial run (a provider refused requests and a core
+    input is missing) and any red data-check flag, which the rest of the report would otherwise bury."""
+    out = []
+    if missing and provider_flags(notes):
+        out.append("Partial report: the market-data provider refused requests and " + " and ".join(missing)
+                   + (" is" if len(missing) == 1 else " are") + " missing, so the forecast and multiples rest on "
+                   "fallbacks. Confidence is Low. Re-run the report later for the full data.")
+    reds = [f for f in flags if f.level == RED]
+    if reds:
+        out.append("Data check failed (red flag): " + "; ".join(
+            f"{f.title}" + (f" ({f.period})" if f.period else "") for f in reds[:3]) + ". Confidence is lowered.")
+    return out
 
 
 def _median(xs: list[float]) -> float:
@@ -289,10 +315,19 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
         peers, peer_notes = gather_peers(svc, cd.profile.ticker, progress=say)
         notes += peer_notes
     chosen, steps = select_peers(me, peers)
-    comps = run_comps(me, chosen, steps, shares, bridge, adr) if chosen else None
-    if comps is None or len(chosen) < 5:
+    norm, norm_note = None, ""
+    if v.classification.stage == CYCLICAL and v.plan.drivers.get("operating_margin") is not None:
+        got = mid_cycle_metrics(me, v.plan.drivers["operating_margin"].chosen.value, ei.marginal_tax.value)
+        if got:
+            norm, norm_note = got
+            flags.append(Flag(INFO, "comps_mid_cycle", "Peer multiples applied to mid-cycle earnings", norm_note + ".",
+                              None, {}))
+    comps = run_comps(me, chosen, steps, shares, bridge, adr, normalised=norm, normalised_note=norm_note)         if chosen else None
+    comps_usable = comps is not None and len(chosen) >= MIN_PEERS
+    if not comps_usable:
         flags.append(Flag(AMBER, "few_peers", "Fewer than 5 comparable companies",
-                          f"Only {len(chosen)} usable peers after widening ({'; '.join(steps)}).", None,
+                          f"Only {len(chosen)} true peers (same 3-digit SIC or a named peer; {'; '.join(steps)}). "
+                          "The comps value is shown but given no weight in the fair value.", None,
                           {"peers": len(chosen)}))
     elif len(steps) > 1:
         flags.append(Flag(INFO, "peers_widened", "Peer filter widened",
@@ -302,19 +337,21 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
     say("Computing historical multiples")
     closes, price_src, splits = price_series(svc, cd.profile.ticker, today - timedelta(days=365 * 6 + 30))
     pts = year_points(cd.historicals_usd, closes, adr, splits)
-    current_metrics = {"revenue": me.revenue, "ebitda": me.ebitda, "fcf": me.fcf, "net_income": me.net_income}
+    cm = norm or me  # a cyclical's historical multiples are applied to mid-cycle earnings too
+    current_metrics = {"revenue": cm.revenue, "ebitda": cm.ebitda, "fcf": cm.fcf, "net_income": cm.net_income}
     hist = history_multiples(pts, me.multiples(), current_metrics, shares, bridge, adr)
     w52 = week52(closes, today)
 
     revisions = estimate_revisions(svc, cd.profile.ticker, today)
 
     # --- verdict ----------------------------------------------------------------------------------------------------
-    dcf_v = v.per_us_share(v.scenario_value)
-    comps_v = comps.implied_price if comps else None
+    dcf_v = None if v.model_fit_failed else v.per_us_share(v.scenario_value)  # one DCF figure: v.dcf_figures
+    comps_v = comps.implied_price if comps_usable else None
     hist_v = implied_price(hist)
     sotp_v = v.per_us_share(v.sotp.value_per_share) if v.sotp.applicable else None
     weights = (overrides or {}).get("blend_weights")
-    verdict = blend({"dcf": dcf_v, "comps": comps_v, "history": hist_v}, ei.price.value, weights, sotp_v)
+    verdict = blend({"dcf": dcf_v, "comps": comps_v, "history": hist_v}, ei.price.value, weights, sotp_v,
+                    dcf_value=dcf_v)
     pt = svc.market.price_target(cd.profile.ticker)
     targets = pt.data if pt.available else None
     disp = None
@@ -322,6 +359,7 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
         if c.revenue and c.revenue_high and c.revenue_low:
             disp = (c.revenue_high - c.revenue_low) / c.revenue
     flags += checks.adr_ratio_applied(adr, v.per_us_share_factor)
+    flags += checks.dilution_gap(ei.basic_shares.value, v.diluted_shares.value, v.diluted_shares.formula or "")
     all_flags = sort_flags(flags + provider_flags(notes))
     # consensus and peers have their own signals, so they are not counted again in completeness;
     # flags are counted once per code (not once per period)
@@ -332,8 +370,12 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
                                 amber_flags=len({f.code for f in all_flags if f.level == AMBER and f.code != "few_peers"}),
                                 tv_share=v.dcf.tv_share_of_ev if v.dcf else None,
                                 completeness=sum(key_inputs) / len(key_inputs),
-                                peers_meet_brief_filter=bool(comps) and len(steps) <= 3)
+                                peers_meet_brief_filter=comps_usable and len(steps) <= 3)
     verdict.confidence, verdict.confidence_reasons = level, reasons
+    verdict.top_notes = top_notes(all_flags, notes, partial_inputs(ei, closes))
+    if any(n.startswith("Partial report") for n in verdict.top_notes) and verdict.confidence != "Low":
+        verdict.confidence = "Low"
+        verdict.confidence_reasons = ["a core input is missing after the data provider refused requests"] + reasons
     bear, base, bull = (v.per_us_share(s.value_per_share) for s in v.scenarios) if len(v.scenarios) == 3 else (None,) * 3
     football = football_field(dcf_bear=bear, dcf_base=base, dcf_bull=bull, comps=comps.multiples if comps else {},
                               history=hist, analyst_targets=targets, week52=w52, sotp=sotp_v)
@@ -354,7 +396,9 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
         trace["history_value"] = _v(hist_v, "median of implied prices at 5-year median multiples: " + ", ".join(
             f"{h.label} {h.implied_price:,.2f} ({h.median:.1f}x)" for h in hist.values() if h.implied_price is not None))
     if verdict.fair_value is not None:
-        trace["fair_value"] = _v(verdict.fair_value, "weighted blend: " + ", ".join(
+        trace["fair_value"] = _v(verdict.fair_value, ("scenario-weighted DCF (the blend was not used): "
+                                                      + verdict.headline_note) if verdict.fallback else
+                                 "weighted blend: " + ", ".join(
             f"{k} {verdict.components[k]:,.2f} x {w:.0%}" for k, w in verdict.weights_used.items()))
         trace["gap"] = _v(verdict.gap, "fair value / price - 1", RATIO)
 
@@ -362,6 +406,17 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
                              assumptions_table(ei, v, verdict), sources(cd, ei, price_src), notes)
     say("Modelling complete")
     return report
+
+
+def refresh_headline_trace(model: ValuationReport) -> None:
+    """Re-point the traced headline numbers at the verdict after it changed (the review desk took it off the blend)."""
+    vd = model.verdict
+    if vd.fair_value is None:
+        return
+    model.trace["fair_value"] = _v(vd.fair_value, ("scenario-weighted DCF (the blend was not used): "
+                                                   + vd.headline_note) if vd.fallback else "weighted blend: " + ", ".join(
+        f"{k} {vd.components[k]:,.2f} x {w:.0%}" for k, w in vd.weights_used.items()))
+    model.trace["gap"] = _v(vd.gap, "fair value / price - 1", RATIO)
 
 
 def estimate_revisions(svc, ticker: str, today: date) -> dict:

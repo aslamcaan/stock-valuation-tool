@@ -18,6 +18,7 @@ ENDPOINTS = {
     "profile": ("stock/profile2", "reference"),
     "metric": ("stock/metric", "reference"),
     "earnings": ("stock/earnings", "estimates"),
+    "earnings_calendar": ("calendar/earnings", "estimates"),
     "recommendation": ("stock/recommendation", "estimates"),
     "company_news": ("company-news", "news"),
     "insider_transactions": ("stock/insider-transactions", "fundamentals"),

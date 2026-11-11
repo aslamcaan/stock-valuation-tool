@@ -58,3 +58,10 @@ def _isolated_database(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "")
     monkeypatch.setenv("APP_PASSWORD", "")
     monkeypatch.setenv("VT_IGNORE_SECRETS", "1")
+
+
+@pytest.fixture(autouse=True)
+def _fixture_prices_are_not_stale(monkeypatch):
+    """Recorded quotes are old by design; the stale-quote rule is tested on its own (tests/test_review_fixes_9nov.py)."""
+    import datasources.market as market
+    monkeypatch.setattr(market, "STALE_HOURS", 10 ** 7)

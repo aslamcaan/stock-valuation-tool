@@ -14,9 +14,12 @@ class Scenario:
     margin_shift: float = 0.0       # added to every year's and the terminal margin (points, so it works for losses)
     wacc_shift: float = 0.0
     terminal_growth_shift: float = 0.0
+    raw_consensus_growth: bool = False  # revenue growth is the analysts' raw path (the base case caps and fades it)
 
     def describe(self) -> str:
         parts = []
+        if self.raw_consensus_growth:
+            parts.append("revenue growth follows the raw analyst consensus path (uncapped)")
         if self.growth_shift:
             parts.append(f"revenue growth {self.growth_shift * 100:+.0f} points a year")
         if self.margin_shift:
@@ -54,16 +57,19 @@ def apply(inp: DCFInputs, s: Scenario, max_terminal_growth: float | None = None)
                         wacc=inp.wacc + s.wacc_shift, terminal_growth=g)
 
 
-def run_scenarios(inp: DCFInputs, scenarios=DEFAULT_SCENARIOS, max_terminal_growth: float | None = None
+def run_scenarios(inp: DCFInputs, scenarios=DEFAULT_SCENARIOS, max_terminal_growth: float | None = None,
+                  inputs_by_scenario: dict[str, DCFInputs] | None = None
                   ) -> tuple[list[ScenarioResult], float | None]:
-    """Each scenario's result and the probability-weighted value per share."""
+    """Each scenario's result and the probability-weighted value per share. `inputs_by_scenario` swaps the starting
+    inputs of a named scenario (the bull case starts from the raw consensus growth path)."""
     total_p = sum(s.probability for s in scenarios)
     if abs(total_p - 1) > 1e-9:
         raise ValueError(f"scenario probabilities sum to {total_p:.2f}, not 1")
     out = []
     for s in scenarios:
         try:
-            out.append(ScenarioResult(s, run_dcf(apply(inp, s, max_terminal_growth))))
+            start = (inputs_by_scenario or {}).get(s.name, inp)
+            out.append(ScenarioResult(s, run_dcf(apply(start, s, max_terminal_growth))))
         except DCFError as exc:
             out.append(ScenarioResult(s, None, str(exc)))
     if any(r.result is None for r in out):

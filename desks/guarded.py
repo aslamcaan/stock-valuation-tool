@@ -5,6 +5,7 @@ import json
 import re
 
 from desks.ai import AIClient, CostCapExceeded
+from desks.dcf_guard import drop_wrong_dcf
 from desks.number_guard import apply_cleaning, check_fields, flatten_numbers, numbers_from_text, strings_in
 
 SKIP_KEYS = {"criterion", "stage", "suggested_stage", "view", "severity", "side", "conviction", "code", "level"}
@@ -89,7 +90,9 @@ def guarded_call(ai: AIClient, *, report_id: str, desk: str, model: str, system:
                     log.append(f"{desk}: dropped from {k}: \"{s[:160]}\" (unsupported: {', '.join(r.bad_numbers)})")
             cleaned = apply_cleaning(_without(data, skip_keys), results)
             data = _merge_back(data, cleaned)
-    return data, log
+    # one DCF per report: a dollar figure labelled DCF must be one the model computed
+    data, dcf_log = drop_wrong_dcf(data, payload, desk)
+    return data, log + dcf_log
 
 
 def _merge_back(original, cleaned):

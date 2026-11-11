@@ -112,6 +112,34 @@ def gate_by_verdict(rating: str, verdict: str | None) -> tuple[str, str]:
     return rating, ""
 
 
+MC_BUY_MIN = 0.30        # a Buy needs at least this share of Monte Carlo runs above the price
+SELL_GAP = -0.30         # a fair value more than this far below the price is a Sell, never a Hold
+
+
+def gate_by_evidence(rating: str, *, fair_value: float | None, price: float | None, dcf_bull: float | None,
+                     prob_above: float | None) -> tuple[str, list[str]]:
+    """The rating must point the same way as the valuation evidence, whatever the quality scores say:
+    - no Buy or Strong Buy when the price is above even the bull DCF, or fewer than 30% of Monte Carlo runs land above
+      the price;
+    - no Hold when the fair value is more than 30% below the price.
+    Returns (rating, notes for each move)."""
+    notes: list[str] = []
+    if RATINGS.index(rating) > RATINGS.index("Hold"):
+        if dcf_bull is not None and price is not None and price > dcf_bull:
+            notes.append(f"{rating} capped at Hold: the price (${price:,.2f}) is above even the bull-case DCF "
+                         f"(${dcf_bull:,.2f})")
+            rating = "Hold"
+        elif prob_above is not None and prob_above < MC_BUY_MIN:
+            notes.append(f"{rating} capped at Hold: only {prob_above:.0%} of Monte Carlo runs land above the price "
+                         f"(a Buy needs {MC_BUY_MIN:.0%})")
+            rating = "Hold"
+    if rating == "Hold" and fair_value is not None and price and fair_value / price - 1 < SELL_GAP:
+        notes.append(f"Hold lowered to Sell: the fair value (${fair_value:,.2f}) is {1 - fair_value / price:.0%} below "
+                     f"the price (${price:,.2f})")
+        rating = "Sell"
+    return rating, notes
+
+
 def conflicts_with_verdict(rating: str, verdict: str | None) -> bool:
     return (rating in ("Buy", "Strong Buy") and verdict == "Overvalued") or \
            (rating in ("Sell", "Strong Sell") and verdict == "Undervalued")

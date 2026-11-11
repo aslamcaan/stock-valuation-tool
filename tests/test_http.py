@@ -56,7 +56,7 @@ def test_a_source_that_keeps_returning_429_fails_fast_afterwards(monkeypatch):
             h.get("TEST", "https://x/y", session=S())
         except h.DataSourceError as e:
             assert e.status == 429
-    assert len(calls) == 3  # the second request did not reach the network
+    assert len(calls) == 4  # four attempts with exponential backoff; the second request did not reach the network
     h._cooldown.pop("TEST", None)
 
 

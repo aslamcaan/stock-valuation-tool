@@ -31,9 +31,10 @@ from desks.md import MDResult, run_md
 from desks.modelling import ValuationReport, run_modelling
 from desks.news import NewsResult, run_news
 from desks.research import ResearchResult, merge_one_offs, run_one_offs, run_research
-from desks.review import STAGES, run_review
+from desks.review import STAGES, headline_challenge, run_review
 from desks.summary import build_summary
 from engine.forensic import ForensicScore, forensic_scores
+from engine.verdict import fall_back_to_dcf
 from engine.valuation import ValuationError
 
 DESKS = ["Data desk", "Data checks", "Research desk", "News desk", "Modelling desk", "Review desk", "Impact analyst",
@@ -266,6 +267,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
                     review, relog = recheck(review, summary_of(model), sources, "Review desk")
                     rep.guard_log += relog
             rep.review = review or None
+            apply_headline_review(model, review)  # a review that discards the blend takes the headline off it
             if review_failed:
                 p("Review desk", FAILED, review_failed)
             else:
@@ -280,7 +282,8 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
 
             p("MD", RUNNING, "Scoring the rubric and writing the investment view…")
             svc.ai.ledger.unhold(rid)
-            md = run_md(svc.ai, rid, model, summary_of(model), review, sources, news=news_view)
+            md = run_md(svc.ai, rid, model, summary_of(model), review, sources, news=news_view,
+                        evidence=rating_evidence(rep, model))
             rep.md = md
             rep.guard_log += md.guard_log
             if rep.impact and rep.impact.items and not rep.impact.error:
@@ -312,6 +315,38 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
             p("Impact analyst", SKIPPED, "No valuation or AI desks off" if rep.model is None or not use_ai
               else "Not reached")
     return _finish(rep, p, cost(), svc.store)
+
+
+def apply_headline_review(model, review: dict | None) -> str | None:
+    """If the review desk says the headline fair value is not credible (or raises a high-severity challenge on the fair
+    value, the blend, the margin path or the growth path), the blend stops driving the verdict: the scenario-weighted DCF
+    does, confidence is Low and the reason is printed at the top. Returns the reason, or None."""
+    reason = headline_challenge(review)
+    v = getattr(model, "valuation", None)
+    if not reason or v is None or model.verdict.fallback:
+        return None
+    model.verdict = fall_back_to_dcf(model.verdict, (getattr(v, "dcf_figures", None) or {}).get("probability_weighted")
+                                     if not getattr(v, "model_fit_failed", False) else None, reason, "review_desk")
+    from desks.modelling import refresh_headline_trace
+    refresh_headline_trace(model)
+    return reason
+
+
+def rating_evidence(rep, model) -> dict | None:
+    """What the rating is checked against: the fair value, the price, the bull-case DCF and the share of Monte Carlo runs
+    above the price (None for banks, insurers and REITs, which have no DCF)."""
+    v = getattr(model, "valuation", None)
+    if v is None or v.dcf_inputs is None:
+        return None
+    prob = None
+    try:
+        from engine.report_mc import mc_for
+        mc, _, _ = mc_for(rep)
+        prob = mc["prob_above_price"] if mc else None
+    except Exception:  # the rating check must never stop the report: without the Monte Carlo only the DCF range applies
+        prob = None
+    return {"fair_value": model.verdict.fair_value, "price": model.verdict.price,
+            "dcf_bull": (getattr(v, "dcf_figures", None) or {}).get("bull"), "prob_above": prob}
 
 
 def _impact_job(svc, rid, model, news, exposure, summary, sources, p, cost) -> ImpactResult | None:

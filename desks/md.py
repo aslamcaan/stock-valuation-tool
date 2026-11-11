@@ -8,8 +8,8 @@ from desks.ai import SONNET, AIClient
 from desks.guarded import DATE_OK, guarded_call
 from desks.rating_guard import drop_wrong_ratings
 from desks.research import _arr, _obj
-from engine.rubric import (AI_CRITERIA, LABELS, Score, apply_notch, conflicts_with_verdict, gate_by_verdict,
-                           rating_from,
+from engine.rubric import (AI_CRITERIA, LABELS, Score, apply_notch, conflicts_with_verdict, gate_by_evidence,
+                           gate_by_verdict, rating_from,
                            score_business_quality, score_financial_quality, score_financial_strength,
                            score_financial_strength_sector, score_revisions, score_valuation_gap)
 
@@ -46,7 +46,9 @@ code-scored half of the rating rubric. Your job:
 3. Write the investment view: a thesis, 3-4 short reasoning lines for the verdict card, which side of the bull/bear
    debate you take and why, a direct response to the review desk's bear case (and to its bull case), 2-3 things that
    have to be true, catalysts with dates (from the filing or results; say "date not disclosed" if unknown), and what
-   would change your view. Give the 3-5 key risks, each with a verbatim quote from the filing extracts.
+   would change your view. The next results date is in calendar.next_earnings when an earnings calendar gave one:
+   use it for the earnings catalyst (date as YYYY-MM-DD). News published since calendar.price_as_of is the most
+   recent: list material items from "news" among the catalysts, with their dates. Give the 3-5 key risks, each with a verbatim quote from the filing extracts.
 4. Never name a rating (Strong Buy, Buy, Hold, Sell, Strong Sell) in any text field. Code turns the scores into the
    rating after you reply and shows it separately, so any rating you name may not match it. Refer to the valuation
    verdict (Undervalued, Fairly valued, Overvalued), the score and the evidence instead. Only notch_reason and
@@ -55,6 +57,9 @@ code-scored half of the rating rubric. Your job:
    floors it at Hold, whatever the quality scores. Write the view to be consistent with that (a great business at
    too high a price does not earn a buy). If the weighted score alone would point the other way, say so in
    rating_vs_verdict_explanation; otherwise leave it empty.
+   The code also checks the rating against "rating_evidence": a buy needs the price below the bull-case DCF and at
+   least 30% of Monte Carlo runs above the price, and a fair value more than 30% below the price cannot be a hold.
+   Write the view to match that evidence.
 Rules: never calculate. Only use numbers from the computed results (rounded as shown) or verbatim filing quotes.
 UK English. Be decisive and specific.
 Write ratios such as margins, ROIC, WACC and growth as percentages to one decimal (30.9%), never as decimals (0.309); money with its unit ($10.1bn, $116m)."""
@@ -102,12 +107,17 @@ def code_scores(report) -> list[Score]:
 
 
 def run_md(ai: AIClient, report_id: str, report, summary: dict, review: dict, sources: str,
-           news: dict | None = None) -> MDResult:
-    """`news` is the impact analyst's computed payload (desks.impact.impact_payload), when the news desk ran."""
+           news: dict | None = None, evidence: dict | None = None) -> MDResult:
+    """`news` is the impact analyst's computed payload (desks.impact.impact_payload), when the news desk ran.
+    `evidence` holds fair_value, price, dcf_bull and prob_above (the Monte Carlo share above the price): the rating may
+    not point against it (engine.rubric.gate_by_evidence)."""
     codes = code_scores(report)
     payload = {**summary, "review_desk": review,
                "code_scores": [{"criterion": LABELS[s.criterion], "score": s.score, "evidence": s.evidence}
                                for s in codes]}
+    if evidence:
+        payload["rating_evidence"] = {k: (None if x is None else round(float(x), 4 if k == "prob_above" else 2))
+                                      for k, x in evidence.items()}
     if news:
         payload["news"] = news
     data, log = guarded_call(ai, report_id=report_id, desk="MD", model=SONNET, system=SYSTEM, payload=payload,
@@ -136,8 +146,12 @@ def run_md(ai: AIClient, report_id: str, report, summary: dict, review: dict, so
         conflict = conflicts_with_verdict(rating, report.verdict.verdict)
     notched = rating
     rating, gate = gate_by_verdict(rating, report.verdict.verdict)
-    if gate:
+    ev_notes: list[str] = []
+    if evidence:
+        rating, ev_notes = gate_by_evidence(rating, **evidence)
+    if gate or ev_notes:
         conflict = False
+        gate = "; ".join([g for g in [gate, *ev_notes] if g])
     # one rating per report: text written before the rating existed may not name a different one
     named_ok = {"notch_reason": {code_rating, notched}, "rating_vs_verdict_explanation": {code_rating, notched}}
     data, wrong = drop_wrong_ratings(data, rating, "MD", named_ok)

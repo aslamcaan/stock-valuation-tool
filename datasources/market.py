@@ -68,6 +68,22 @@ def _reason(exc: Exception) -> str:
     return str(exc)[:160]
 
 
+STALE_HOURS = 6  # a quote older than this is not "latest" while the market is open; others are asked
+
+
+def _when(iso: str | None) -> datetime | None:
+    try:
+        d = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _is_stale(iso: str | None) -> bool:
+    d = _when(iso)
+    return d is None or datetime.now(timezone.utc) - d > timedelta(hours=STALE_HOURS)
+
+
 def _ts(epoch: int | float | None) -> str | None:
     return datetime.fromtimestamp(epoch, timezone.utc).isoformat(timespec="seconds") if epoch else None
 
@@ -78,8 +94,10 @@ class MarketData:
 
     # --- prices --------------------------------------------------------------------------
     def quote(self, symbol: str) -> MarketResult:
-        """{price, as_of} in the US listing's currency (US$)."""
-        return _first([
+        """{price, as_of} in the US listing's currency (US$): the latest price any provider has, intraday included.
+        The first provider answers unless its price is more than a few hours old; then the others are asked and the
+        newest timestamp wins, so a stale close is not used when a fresher price exists."""
+        attempts = [
             ("FMP", lambda: self.fmp.call("quote", symbol),
              lambda p: {"price": float(p[0]["price"]), "as_of": _ts(p[0].get("timestamp"))}),
             ("Tiingo", lambda: self.tiingo.quote(symbol),
@@ -87,7 +105,40 @@ class MarketData:
                         "as_of": p[0].get("timestamp")}),
             ("Finnhub", lambda: self.finnhub.call("quote", symbol),
              lambda p: {"price": float(p["c"]), "as_of": _ts(p.get("t"))} if p.get("c") else None),
-        ])
+        ]
+        first = _first(attempts)
+        if not first.available or not _is_stale(first.data.get("as_of")):
+            return first
+        best, notes = first, list(first.notes) + [f"{first.source}: price as of {first.data.get('as_of') or 'unknown'} "
+                                                  "looked stale: other providers asked"]
+        for i, att in enumerate(attempts):
+            if att[0] == first.source:
+                continue
+            alt = _first([att])
+            if alt.available and (_when(alt.data.get("as_of")) or datetime.min.replace(tzinfo=timezone.utc)) >                     (_when(best.data.get("as_of")) or datetime.min.replace(tzinfo=timezone.utc)):
+                best = alt
+        best.notes = notes + ([f"{best.source} had the newest price"] if best.source != first.source else [])
+        return best
+
+    def next_earnings(self, symbol: str, today: date | None = None) -> MarketResult:
+        """{date, eps_estimate} of the next results announcement on or after today, from an earnings calendar."""
+        t = (today or date.today()).isoformat()
+
+        def fmp_norm(p):
+            rows = sorted((r for r in p if r.get("date", "")[:10] >= t and r.get("epsActual") is None),
+                          key=lambda r: r["date"])
+            return {"date": rows[0]["date"][:10], "eps_estimate": rows[0].get("epsEstimated")} if rows else None
+
+        def fh_norm(p):
+            rows = sorted((r for r in (p or {}).get("earningsCalendar", []) if r.get("date", "")[:10] >= t),
+                          key=lambda r: r["date"])
+            return {"date": rows[0]["date"][:10], "eps_estimate": rows[0].get("epsEstimate")} if rows else None
+
+        end = ((today or date.today()) + timedelta(days=120)).isoformat()
+        return _first([
+            ("FMP", lambda: self.fmp.call("earnings", symbol), fmp_norm),
+            ("Finnhub", lambda: self.finnhub.call("earnings_calendar", symbol, **{"from": t, "to": end}), fh_norm),
+        ], missing_note="No earnings calendar available: the next results date is not known.")
 
     def price_history(self, symbol: str, start: str) -> MarketResult:
         """[{date, close, adj_close}] ascending by date. FMP light has no adjusted close (adj_close=None)."""

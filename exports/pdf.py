@@ -180,6 +180,8 @@ def build_pdf(rep) -> bytes:
                              ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
                              ("LEFTPADDING", (0, 0), (-1, -1), 7)]))
     s += [box, Spacer(1, 6)]
+    for note in ([vd.headline_note] if getattr(vd, "headline_note", "") else []) + list(getattr(vd, "top_notes", []) or []):
+        s.append(P("Read this first: " + note, SMALL))
     card = [["Confidence", vd.confidence or "-", "Conviction", rep.md.conviction if rep.md else "-"],
             ["Stage", v.classification.stage_label, "Toolkit", v.classification.toolkit] if v is not None else
             ["Toolkit", f"{m.financial.toolkit} (no DCF)", "Cost of equity", pct(m.financial.cost_of_equity.value)]]
@@ -188,6 +190,8 @@ def build_pdf(rep) -> bytes:
         card.append(["Bear / base / bull", f"{money(b)} / {money(base)} / {money(bu)}", "WACC", pct(v.wacc.wacc.value)])
     card.append(["Analyst target", money((m.analyst_targets or {}).get("median")) if m.analyst_targets else
                  "not available", "Price", f"{m.inputs.price.source}, {_date(m.inputs.price.period)}"])
+    ne = getattr(getattr(cd, "market", None), "next_earnings", None)
+    card.append(["Next results", _date(ne["date"]) if ne and ne.get("date") else "date not known", "", ""])
     s.append(table(card, ["", "", "", ""], [32 * mm, 55 * mm, 32 * mm, 63 * mm]))
     if rep.md:
         for line in rep.md.view.get("reasoning_lines", [])[:4]:

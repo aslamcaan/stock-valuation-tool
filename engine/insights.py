@@ -63,9 +63,46 @@ def price_walk(inp: DCFInputs, price: float, effective_tax: float | None, curren
     if w is not None:
         add("Discount rate the price needs", f"WACC {w:.1%} instead of {cur.wacc:.1%}", replace(cur, wacc=w))
     if abs(steps[-1]["value"] - price) > 0.005 * price:  # the price is out of reach: show what is left unexplained
-        steps.append({"label": "Not explained", "detail": "the price is out of reach of these changes",
-                      "value": price, "change": price - steps[-1]["value"]})
+        implied = implied_assumptions(inp, price)
+        steps.append({"label": "Not explained",
+                      "detail": "the price is out of reach of these one-at-a-time changes" + (
+                          f". Solved directly instead: {implied['text']}" if implied else ""),
+                      "value": price, "change": price - steps[-1]["value"], "implied": implied})
     return steps
+
+
+def implied_assumptions(inp: DCFInputs, price: float) -> dict | None:
+    """What the price needs, solved directly on the base case: the revenue CAGR (every year's growth shifted by the same
+    amount) and, separately, the terminal operating margin (every year's margin shifted), each with the other held.
+    Wide search ranges, because a price far above the DCF needs a very different company. None if neither reaches it."""
+    def cagr(i: DCFInputs) -> float:
+        prod = 1.0
+        for y in i.years:
+            prod *= 1 + y.revenue_growth
+        return prod ** (1 / len(i.years)) - 1
+
+    def by_growth(x: float) -> float:
+        return run_dcf(with_changes(inp, growth_shift=x)).value_per_share
+
+    def by_margin(x: float) -> float:
+        return run_dcf(with_changes(inp, margin_shift=x)).value_per_share
+    g = _solve(by_growth, price, -0.30, 3.0, steps=60)
+    m = _solve(by_margin, price, -0.30, 1.0, steps=60)
+    base_tm = inp.terminal_margin if inp.terminal_margin is not None else inp.years[-1].operating_margin
+    out = {"base_cagr": cagr(inp), "base_terminal_margin": base_tm,
+           "implied_cagr": cagr(with_changes(inp, growth_shift=g)) if g is not None else None,
+           "implied_terminal_margin": base_tm + m if m is not None else None}
+    parts = []
+    if out["implied_cagr"] is not None:
+        parts.append(f"a revenue CAGR of {out['implied_cagr']:.1%} a year over {len(inp.years)} years "
+                     f"(our base case {out['base_cagr']:.1%})")
+    if out["implied_terminal_margin"] is not None:
+        parts.append(f"a terminal operating margin of {out['implied_terminal_margin']:.1%} "
+                     f"(our base case {base_tm:.1%})")
+    if not parts:
+        return None
+    out["text"] = " or ".join(parts) + ", each on its own with everything else at the base case"
+    return out
 
 
 # --- 2. what the price pays for --------------------------------------------------------------------------------------

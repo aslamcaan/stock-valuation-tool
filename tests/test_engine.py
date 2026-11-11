@@ -210,7 +210,12 @@ def test_cyclical_classified_and_normalised():
     plan = _plan(h, a, c.stage, cur, cyc["mid_cycle_margin"])
     margins = plan.path("operating_margin")
     assert margins[:2] == pytest.approx([cur, cur])
-    assert margins[2:] == pytest.approx([cyc["mid_cycle_margin"]] * (len(margins) - 2))
+    # no cliff: a straight-line fade from the year-2 margin to the mid-cycle margin over the rest of the forecast
+    fade = margins[1:]
+    steps = [x - y for x, y in zip(fade, fade[1:])]
+    assert fade[-1] == pytest.approx(cyc["mid_cycle_margin"])
+    assert all(st > 0 for st in steps) and max(steps) - min(steps) < 1e-9
+    assert len(margins) >= 7  # a cyclical's horizon is long enough for the fade
     growth = plan.path("revenue_growth")
     assert growth[0] <= 0.10  # a cyclical's peak-year growth is not extrapolated
 
@@ -234,7 +239,11 @@ def test_consensus_used_only_with_three_analysts_and_flagged_above_history():
     cons = [ConsensusYear(date(2026, 12, 31), fy25 * 2.0, fy25 * 1.9, fy25 * 2.1, None, 12, "test"),
             ConsensusYear(date(2027, 12, 31), fy25 * 2.0 * 1.10, 0, 0, None, 12, "test")]
     plan = _plan(h, a, "high_growth", 0.1, consensus=cons)
-    assert plan.path("revenue_growth")[0] == pytest.approx(1.0)
+    best = max(x for x in [h.v("revenue", q) / h.v("revenue", p) - 1 for p, q in zip(h.fy_labels, h.fy_labels[1:])
+                           if h.v("revenue", p)])
+    # the base case never beats the company's best year; the raw consensus (+100%) is kept for the bull case only
+    assert plan.path("revenue_growth")[0] == pytest.approx(best)
+    assert plan.raw_growth_path[0] == pytest.approx(1.0)
     assert any(f.code == "consensus_above_history" for f in plan.flags)
     few = [replace(c, analysts=2) for c in cons]
     plan2 = _plan(h, a, "high_growth", 0.1, consensus=few)

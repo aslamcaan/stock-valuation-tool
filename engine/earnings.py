@@ -2,10 +2,13 @@
 options-implied move (no free options source is wired in), so the typical move is labelled as the history's own."""
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from statistics import mean, median
 
 WINDOW_DAYS = 14
+KPI_PRIORITY = re.compile(r"data ?cent(?:er|re)|cloud|\bAI\b|bookings|subscri|backlog|\bRPO\b|users|volume|shipments", re.I)
+GUIDE_PRIORITY = re.compile(r"revenue|sales|quarter|margin|capital|capex|earnings|eps", re.I)
 
 
 def _closes(rows: list[dict]) -> list[tuple[str, float]]:
@@ -34,7 +37,7 @@ def reaction(day: str, timing: str | None, closes: list[tuple[str, float]]) -> d
 
 
 def last_moves(history: list[dict], timings: dict[str, str], closes_rows: list[dict], n: int = 8,
-               today: date | None = None) -> list[dict]:
+               today: date | None = None, assume_timing: str | None = None) -> list[dict]:
     """The last `n` reported results (those with an actual EPS), newest first, each with its price reaction and the EPS
     surprise (actual against the consensus estimate, in the provider's figures)."""
     closes = _closes(closes_rows)
@@ -44,9 +47,12 @@ def last_moves(history: list[dict], timings: dict[str, str], closes_rows: list[d
     out = []
     for r in rows:
         d = r["date"][:10]
-        rx = reaction(d, timings.get(d), closes)
+        known = timings.get(d)
+        rx = reaction(d, known or assume_timing, closes)
         if rx is None:
             continue
+        if not known and assume_timing and rx["basis"] != "timing unknown: two-session move":
+            rx["basis"] += " (assumed)"
         est, act = r.get("epsEstimated"), r.get("epsActual")
         rx["eps_actual"], rx["eps_estimate"] = act, est
         rx["surprise"] = None if est in (None, 0) else (act - est) / abs(est)
@@ -76,16 +82,20 @@ def key_numbers(research: dict | None, limit: int = 3) -> list[dict]:
     """The few figures to watch, chosen by rule from the annual report's extracts: the volume KPI the company reports, the
     segments by size of revenue, and any guidance metric it states. Each carries its verbatim quote."""
     data = research or {}
-    out: list[dict] = []
-    vk = (data.get("business") or {}).get("volume_kpi") or {}
+    out: list[dict] = []   # the research extracts are flat: volume_kpi, kpis, segments, guidance at the top level
+    vk = data.get("volume_kpi") or {}
     if vk.get("name"):
         out.append({"label": vk["name"], "why": "the volume the company's revenue is earned on", "quote": vk.get("quote", "")})
-    segs = sorted(((s.get("revenue_millions") or 0, s) for s in (data.get("business") or {}).get("segments", [])),
-                  key=lambda x: -x[0])
+    kpi = next((k for k in data.get("kpis", []) if KPI_PRIORITY.search(k.get("name", "")) and k.get("value_text")), None)
+    if kpi:
+        out.append({"label": kpi["name"], "why": f"the company's own headline measure, last reported {kpi['value_text']}"
+                    + (f" ({kpi['period']})" if kpi.get("period") else ""), "quote": kpi.get("quote", "")})
+    guides = data.get("guidance", [])
+    g = next((x for x in guides if GUIDE_PRIORITY.search(x.get("metric", ""))), guides[0] if guides else None)
+    if g:
+        out.append({"label": f"Guidance: {g.get('metric', '')}", "why": g.get("guidance_text", ""), "quote": g.get("quote", "")})
+    segs = sorted(((s.get("revenue_millions") or 0, s) for s in data.get("segments", [])), key=lambda x: -x[0])
     for rev, s in segs[:2]:
         if rev:
-            out.append({"label": f"{s['name']} revenue", "why": "the largest segment by revenue",
-                        "quote": s.get("quote", "")})
-    for g in (data.get("risks") or {}).get("guidance", [])[:1]:
-        out.append({"label": f"Guidance: {g.get('metric', '')}", "why": g.get("guidance_text", ""), "quote": g.get("quote", "")})
+            out.append({"label": f"{s['name']} revenue", "why": "a large segment by revenue", "quote": s.get("quote", "")})
     return out[:limit]

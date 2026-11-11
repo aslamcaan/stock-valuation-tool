@@ -246,13 +246,34 @@ def test_the_preview_opens_only_within_14_days():
 
 def test_key_numbers_come_from_the_filing_and_keep_their_quotes():
     from engine.earnings import key_numbers
-    data = {"business": {"volume_kpi": {"name": "Data Center revenue", "quote": "Data Center revenue was $115bn"},
-                         "segments": [{"name": "Graphics", "revenue_millions": 14000, "quote": "g"},
-                                      {"name": "Compute & Networking", "revenue_millions": 116000, "quote": "c"}]},
-            "risks": {"guidance": [{"metric": "Revenue", "guidance_text": "$54bn plus or minus 2%", "quote": "q"}]}}
+    data = {"volume_kpi": {"name": "Data Center revenue", "quote": "Data Center revenue was $115bn"},
+            "segments": [{"name": "Graphics", "revenue_millions": 14000, "quote": "g"},
+                         {"name": "Compute & Networking", "revenue_millions": 116000, "quote": "c"}],
+            "guidance": [{"metric": "Revenue", "guidance_text": "$54bn plus or minus 2%", "quote": "q"}]}
     out = key_numbers(data)
-    assert [w["label"] for w in out] == ["Data Center revenue", "Compute & Networking revenue", "Graphics revenue"]
-    assert key_numbers(None) == [] and key_numbers(data, limit=4)[-1]["label"].startswith("Guidance")
+    assert [w["label"] for w in out] == ["Data Center revenue", "Guidance: Revenue", "Compute & Networking revenue"]
+    assert key_numbers(None) == [] and key_numbers(data, limit=4)[-1]["label"] == "Graphics revenue"
+    # the real NVDA extracts: the headline KPI first, then the guidance that names money or the quarter, then a segment
+    nvda = {"volume_kpi": {"name": ""}, "kpis": [{"name": "Developers using CUDA", "value_text": "over 7.5 million"},
+                                                 {"name": "Data Center revenue", "value_text": "193,737", "period": "FY2026"}],
+            "guidance": [{"metric": "Gaming supply constraints", "guidance_text": "headwind"},
+                         {"metric": "Capital expenditures", "guidance_text": "We expect to increase capital expenditures"}],
+            "segments": [{"name": "Compute & Networking", "revenue_millions": 193479}]}
+    labels = [w["label"] for w in key_numbers(nvda)]
+    assert labels == ["Data Center revenue", "Guidance: Capital expenditures", "Compute & Networking revenue"]
+
+
+def test_past_reactions_assume_the_next_reports_session_and_say_so():
+    from datetime import date
+    from engine.earnings import last_moves
+    hist = [{"date": "2026-10-12", "epsActual": 1.1, "epsEstimated": 1.0}]
+    got = last_moves(hist, {}, _closes(jump_after={"2026-10-13": 0.10}), 8, today=date(2026, 10, 28), assume_timing="amc")[0]
+    assert got["move"] == pytest.approx(0.10) and got["basis"] == "after the close (assumed)"
+    known = last_moves(hist, {"2026-10-12": "amc"}, _closes(jump_after={"2026-10-13": 0.10}), 8, today=date(2026, 10, 28),
+                       assume_timing="bmo")[0]
+    assert "assumed" not in known["basis"] and known["basis"] == "after the close"    # a known timing is never overridden
+    none = last_moves(hist, {}, _closes(jump_after={"2026-10-13": 0.10}), 8, today=date(2026, 10, 28))[0]
+    assert "timing unknown" in none["basis"]
 
 
 def test_the_preview_builder_states_what_is_missing_and_never_invents_an_options_move():
@@ -360,18 +381,32 @@ def test_capex_sentences_are_forward_looking_verbatim_and_carry_a_figure():
 
 def test_ai_revenue_share_uses_segments_then_kpis_and_attaches_above_30_percent():
     from engine.capex import qualifies
-    nvda = {"business": {"segments": [{"name": "Compute & Networking", "revenue_millions": 116000},
-                                      {"name": "Graphics", "revenue_millions": 14000}]}}
-    ok, share, how = qualifies(nvda, 130000)
-    assert ok and share == pytest.approx(116 / 130) and "Compute & Networking" in how
-    ko = {"business": {"segments": [{"name": "Beverages", "revenue_millions": 40000}]}}
+    # the research desk's extracts are flat (segments, kpis at the top level), as saved in the NVDA, MU and AMD reports
+    nvda = {"segments": [{"name": "Compute & Networking", "revenue_millions": 193479},
+                         {"name": "Graphics", "revenue_millions": 22459}]}
+    ok, share, how = qualifies(nvda, 216000)
+    assert ok and share == pytest.approx(193479 / 215938) and "Compute & Networking" in how
+    mu = {"segments": [{"name": "Cloud Memory Business Unit (CMBU)", "revenue_millions": 43085},
+                       {"name": "Core Data Center Business Unit (CDBU)", "revenue_millions": 37592},
+                       {"name": "Mobile and Client Business Unit (MCBU)", "revenue_millions": 36601},
+                       {"name": "Automotive and Embedded Business Unit (AEBU)", "revenue_millions": 15886}]}
+    assert qualifies(mu, 133000)[1] == pytest.approx(0.6058, abs=1e-3)
+    amd = {"segments": [{"name": "Data Center", "revenue_millions": 16635}, {"name": "Client and Gaming", "revenue_millions": 14550},
+                        {"name": "Embedded", "revenue_millions": 3454}]}
+    assert qualifies(amd, 34600)[0] is True and qualifies(amd, 34600)[1] == pytest.approx(0.4802, abs=1e-3)
+    ko = {"segments": [{"name": "Beverages", "revenue_millions": 40000}]}
     assert qualifies(ko, 46000)[0] is False
-    kpi = {"business": {"segments": [], "kpis": [{"name": "Data Center revenue", "value_text": "$115.2 billion"}]}}
+    kpi = {"segments": [], "kpis": [{"name": "Data Center revenue", "value_text": "$115.2 billion"}]}
     ok, share, how = qualifies(kpi, 200000)
     assert ok and share == pytest.approx(0.576) and how.startswith("KPI")
+    bare = {"kpis": [{"name": "Data Center revenue", "value_text": "193,737"}]}          # no unit: millions, as in NVDA's report
+    assert qualifies(bare, 216000)[1] == pytest.approx(193737 / 216000)
+    pct = {"kpis": [{"name": "Data center share of total revenue", "value_text": "approximately 60%"}]}
+    assert qualifies(pct, 133000)[1] == pytest.approx(0.60)
+    assert qualifies({"kpis": [{"name": "Developers using CUDA", "value_text": "over 7.5 million"}]}, 216000)[0] is False
     no, share, why = qualifies({}, None)
     assert not no and share is None and "no data centre" in why
-    edge = {"business": {"segments": [{"name": "Cloud", "revenue_millions": 30}, {"name": "Other", "revenue_millions": 70}]}}
+    edge = {"segments": [{"name": "Cloud", "revenue_millions": 30}, {"name": "Other", "revenue_millions": 70}]}
     assert qualifies(edge, 100)[0] is False                                                  # exactly 30% is not above it
 
 
@@ -488,3 +523,64 @@ def test_pitch_works_for_a_report_with_no_md_and_no_dcf():
     rep.model.financial = object()                                   # a bank: no DCF
     pdf = build_pitch(rep, [], None)
     assert len(re.findall(rb"/Type\s*/Page[^s]", pdf)) == 1
+
+
+# --- review round 1: reports saved before the DCF figures were stored ----------------------------------------------------
+def test_a_report_saved_before_dcf_figures_existed_still_gives_risk_reward_and_compare():
+    from engine.compare_table import row_for
+    from engine.expectations import dcf_figures_of
+    from types import SimpleNamespace
+    rep = fake_report("KO", price_factor=0.9)
+    rep.model.inputs = SimpleNamespace(price=SimpleNamespace(period="2026-11-01"), risk_free=rep.model.inputs.risk_free)
+    new = dict(rep.model.valuation.dcf_figures)
+    del rep.model.valuation.__dict__["dcf_figures"]          # an old pickle has no such attribute at all
+    assert not hasattr(rep.model.valuation, "dcf_figures")
+    old = dcf_figures_of(rep.model.valuation)
+    for k in ("bear", "base", "bull", "probability_weighted", "base_case"):
+        assert old[k] == pytest.approx(new[k])
+    assert risk_reward(rep)["pct"]["base"] == pytest.approx(new["base"] / rep.model.verdict.price - 1)
+    assert row_for(rep)["base"] == pytest.approx(new["base"])
+
+
+def test_no_source_file_contains_a_stray_control_character():
+    """A backspace in a regex (a bad escape in a patch script) silently breaks word boundaries: scan every source file."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    bad = [str(p.relative_to(root)) for p in root.rglob("*.py")
+           if ".venv" not in p.parts and any(c in p.read_text(encoding="utf-8") for c in "\x08\x00\x0b\x0c")]
+    assert bad == []
+
+
+def test_a_capex_condition_gets_the_hyperscaler_filings_as_evidence_and_others_do_not():
+    from types import SimpleNamespace
+    import desks.thesis as th
+    import desks.capex as cx
+    rows = [{"ticker": "META", "statements": [{"quote": "We anticipate 2026 capital expenditures to be $135-145 billion.",
+                                                 "filed": "2026-10-21", "form": "8-K", "url": "https://sec/x"}], "notes": []},
+            {"ticker": "MSFT", "statements": [], "notes": ["none"]}]
+    orig = cx.capex_tracker
+    cx.capex_tracker = lambda svc: rows
+    try:
+        got = th.extra_evidence(object(), ["Two of META, AMZN, GOOGL guide 2027 capex down"])
+        assert got["hyperscaler_capex_statements"][0]["ticker"] == "META" and got["hyperscalers_without_a_statement"] == ["MSFT"]
+        assert th.extra_evidence(object(), ["NVDA data centre revenue misses guidance"]) == {}
+        assert th.extra_evidence(None, ["capex falls"]) == {}
+    finally:
+        cx.capex_tracker = orig
+    seen = {}
+
+    class AI:
+        def call(self, **k):
+            seen.update(k)
+            return {"results": []}
+    rep = SimpleNamespace(news=None, research=None, company=None, ticker="NVDA", report_id="r")
+    res, _ = th.run_thesis_check(AI(), "r", rep, ["capex falls"], {"hyperscaler_capex_statements": rows[0:1][0:0] or [
+        {"ticker": "META", "quote": "We anticipate 2026 capital expenditures to be $135-145 billion.", "filed": "2026-10-21",
+         "form": "8-K", "url": "u"}]})
+    assert "META" in seen["content"] and res[0]["status"] == "no_evidence"      # nothing returned: never a guess
+
+
+def test_expectations_warn_when_the_dcf_failed_its_fit_check():
+    rep = fake_report("KO", price_factor=1.5)
+    rep.model.valuation.model_fit_failed = True
+    assert "failed its fit check" in expectations(rep)["base_line"]

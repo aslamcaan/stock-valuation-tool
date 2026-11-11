@@ -42,14 +42,18 @@ def build_preview(rep, svc, today: date | None = None) -> dict:
     closes = res.data if res.available else []
     if not closes:
         out["notes"].append("No price history, so the past moves cannot be computed.")
-    out["moves"] = last_moves(history, timings, closes, 8, today) if closes else []
+    next_hour = timings.get(ne["date"][:10])
+    out["moves"] = last_moves(history, timings, closes, 8, today, assume_timing=next_hour) if closes else []
     out["summary"] = move_summary(out["moves"])
     out["watch"] = key_numbers(getattr(getattr(rep, "research", None), "data", None))
-    out["guidance"] = ((getattr(getattr(rep, "research", None), "data", None) or {}).get("risks") or {}).get("guidance", [])
+    out["guidance"] = (getattr(getattr(rep, "research", None), "data", None) or {}).get("guidance", [])
     news = getattr(rep, "news", None)
     out["release"] = next(({"headline": i.headline, "date": i.published, "url": i.url}
                            for i in (news.items if news else []) if i.earnings_release), None)
     out["options_implied_move"] = None
+    if any("(assumed)" in m["basis"] for m in out["moves"]):
+        out["notes"].append("Where the calendar did not give the session of a past report, it is assumed to be the same "
+                            "as the next report's (marked assumed).")
     out["notes"].append("Options-implied move: not available (no options data source is connected). The typical move "
                         "shown is the average of the last eight reactions, not a market forecast.")
     return out

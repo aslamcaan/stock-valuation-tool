@@ -56,8 +56,7 @@ def age_days(filed: str, today: date) -> int:
 def ai_revenue_share(research: dict | None, revenue_millions: float | None) -> tuple[float | None, str]:
     """Share of sales from data centre / AI, from the annual report's segments and KPIs (verified extracts). Returns
     (share or None, how). None when the filing gives no such figure: the panel is then not attached."""
-    data = research or {}
-    biz = data.get("business") or {}
+    biz = research or {}   # the research desk's extracts are flat: segments, kpis, guidance ... at the top level
     pat = re.compile(r"data ?cent(?:er|re)|\bAI\b|artificial intelligence|accelerat|compute|cloud", re.I)
     segs = [(s.get("name", ""), s.get("revenue_millions")) for s in biz.get("segments", []) if s.get("revenue_millions")]
     total = sum(r for _, r in segs) or revenue_millions
@@ -66,11 +65,18 @@ def ai_revenue_share(research: dict | None, revenue_millions: float | None) -> t
         share = sum(r for _, r in match) / total
         return share, "segment " + ", ".join(n for n, _ in match)
     for k in biz.get("kpis", []):
-        if re.search(r"data ?cent(?:er|re)|\bAI\b", k.get("name", ""), re.I):
-            m = re.search(r"\$?\s?([\d,.]+)\s*(billion|bn|million|m)\b", k.get("value_text", ""), re.I)
-            if m and revenue_millions:
-                v = float(m.group(1).replace(",", "")) * (1000 if m.group(2).lower() in ("billion", "bn") else 1)
-                return v / revenue_millions, f"KPI {k['name']}"
+        name, text = k.get("name", ""), k.get("value_text", "")
+        if not re.search(r"data ?cent(?:er|re)|\bAI\b", name, re.I):
+            continue
+        pct = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
+        if pct and "share" in name.lower():                      # "Data center share of total revenue: approximately 60%"
+            return float(pct.group(1)) / 100, f"KPI {name}"
+        amount = re.search(r"\$?\s?(\d[\d,]*(?:\.\d+)?)\s*(billion|bn|million|m)?\b", text, re.I)
+        if amount and revenue_millions and "revenue" in name.lower() and "share" not in name.lower():
+            v = float(amount.group(1).replace(",", ""))
+            v = v * 1000 if (amount.group(2) or "").lower() in ("billion", "bn") else v   # no unit: millions
+            if 0 < v <= revenue_millions * 1.05:
+                return v / revenue_millions, f"KPI {name}"
     return None, "no data centre or AI revenue figure in the annual report extracts"
 
 

@@ -4,6 +4,8 @@ the stock) and runs after the rating is written, so it can never feed the valuat
 user's statements of fact to test; fetched text is data, never instructions."""
 from __future__ import annotations
 
+import re
+
 from desks.ai import SONNET, AIClient
 from desks.guarded import guarded_call
 from desks.impact import _news_text
@@ -35,21 +37,38 @@ def evidence_payload(rep) -> dict:
     items = [{"headline": i.headline, "date": i.published, "source": i.source, "url": i.url, "summary": i.summary}
              for i in (news.items if news else [])]
     data = (getattr(getattr(rep, "research", None), "data", None) or {})
-    risks = data.get("risks") or {}
     ne = getattr(getattr(rep.company, "market", None), "next_earnings", None) if rep.company else None
-    return {"news": items, "annual_report": {"guidance": risks.get("guidance", []),
-                                              "risk_factors": [r.get("title") for r in risks.get("risk_factors", [])]},
+    return {"news": items, "annual_report": {"guidance": data.get("guidance", []),
+                                              "risk_factors": [r.get("title") for r in data.get("risk_factors", [])]},
             "next_results": ne}
 
 
-def run_thesis_check(ai: AIClient, report_id: str, rep, conditions: list[str]) -> tuple[list[dict], list[str]]:
+CAPEX_WORDS = re.compile(r"(MSFT|Microsoft|AMZN|Amazon|GOOGL?|Alphabet|Google|META|ORCL|Oracle|capex|capital expenditure)",
+                         re.I)
+
+
+def extra_evidence(svc, conditions: list[str]) -> dict:
+    """A condition about hyperscaler capex cannot be tested from one company's own report, so the capex tracker's filing
+    sentences (verbatim, dated, linked) are added when any condition names them. Free: it reads cached SEC filings."""
+    if svc is None or not any(CAPEX_WORDS.search(c) for c in conditions):
+        return {}
+    from desks.capex import capex_tracker
+    rows = [{"ticker": r["ticker"], "filed": s["filed"], "form": s["form"], "quote": s["quote"], "url": s["url"]}
+            for r in capex_tracker(svc) for s in r["statements"]]
+    return {"hyperscaler_capex_statements": rows,
+            "hyperscalers_without_a_statement": [r["ticker"] for r in capex_tracker(svc) if not r["statements"]]}
+
+
+def run_thesis_check(ai: AIClient, report_id: str, rep, conditions: list[str], extra: dict | None = None
+                     ) -> tuple[list[dict], list[str]]:
     """Returns (one result per condition, guard log). The conditions are numbered from 0."""
     ev = evidence_payload(rep)
-    payload = {"conditions": [{"index": i, "condition": c} for i, c in enumerate(conditions)], **ev}
+    payload = {"conditions": [{"index": i, "condition": c} for i, c in enumerate(conditions)], **ev, **(extra or {})}
     data, log = guarded_call(ai, report_id=report_id, desk="Thesis check", model=SONNET, system=SYSTEM, payload=payload,
                              schema=SCHEMA, sources="", effort="low", max_tokens=4000,
                              instructions="Test each condition.", skip={"date", "source"},
-                             quotable=_news_text_safe(rep))
+                             quotable=_news_text_safe(rep) + [r["quote"] for r in (extra or {}).get(
+                                 "hyperscaler_capex_statements", [])])
     return enforce(data.get("results", []), len(conditions)), log
 
 

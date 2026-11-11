@@ -47,7 +47,7 @@ def price_chart(closes: list[tuple[str, float]], levels: dict[str, float | None]
     """Daily closes as a line, with the bear, base and bull DCF as dashed levels."""
     d = Drawing(width, height)
     if len(closes) < 2:
-        d.add(String(4, height / 2, "No price history available.", fontSize=7, fillColor=GREY))
+        d.add(String(4, height / 2, "No price history available.", fontSize=7, fontName="Helvetica", fillColor=GREY))
         return d
     lv = {k: v for k, v in levels.items() if v}
     ys = [c for _, c in closes] + list(lv.values())
@@ -69,10 +69,11 @@ def price_chart(closes: list[tuple[str, float]], levels: dict[str, float | None]
     colour = {"Bear DCF": colors.HexColor("#c4302b"), "Base DCF": ACCENT, "Bull DCF": colors.HexColor("#1a7f37")}
     for name, v in lv.items():
         d.add(Line(left, y(v), width - 4, y(v), strokeColor=colour.get(name, GREY), strokeWidth=0.7, strokeDashArray=[3, 2]))
-        d.add(String(2, y(v) - 2, f"{v:,.0f}", fontSize=6, fillColor=colour.get(name, GREY)))
-    d.add(String(left, 1, closes[0][0], fontSize=6, fillColor=GREY))
-    d.add(String(width - 4 - 38, 1, closes[-1][0], fontSize=6, fillColor=GREY))
-    d.add(String(2, top - 4, f"{closes[-1][1]:,.0f} now", fontSize=6, fillColor=INK))
+        d.add(String(2, y(v) - 2, f"{v:,.0f}", fontSize=6, fontName="Helvetica", fillColor=colour.get(name, GREY)))
+    d.add(String(left, 1, closes[0][0], fontSize=6, fontName="Helvetica", fillColor=GREY))
+    d.add(String(width - 4 - 44, 1, closes[-1][0], fontSize=6, fontName="Helvetica", fillColor=GREY))
+    d.add(String(width - 4, y(closes[-1][1]) + 3, f"last close {closes[-1][1]:,.0f}", fontSize=6, fontName="Helvetica",
+                 fillColor=INK, textAnchor="end"))
     return d
 
 

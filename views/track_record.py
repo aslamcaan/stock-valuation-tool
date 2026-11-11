@@ -112,12 +112,19 @@ def horizons_section() -> None:
     if not st.toggle("Show the price 1, 3 and 6 months after each call", value=True, key="tr_horizons",
                      help="Fetches daily closes (cached for six hours). A column stays empty until that date has passed."):
         return
-    start_h = (min(date.fromisoformat(c["call_date"]) for c in shown) - timedelta(days=10)).isoformat()
+    # every dated call, not just the latest per company: each version of a call is judged on its own date. Reports run
+    # without the AI desks have no rating and so no call to judge; they appear only if "Not rated" is picked.
+    pool_h = [c for c in calls if (not chosen or rating_of(c) in chosen) and (not tickers or c["ticker"] in tickers)
+              and (rating_of(c) != "Not rated" or "Not rated" in (chosen or []))]
+    if not pool_h:
+        st.caption("No rated calls match these filters.")
+        return
+    start_h = (min(date.fromisoformat(c["call_date"]) for c in pool_h) - timedelta(days=10)).isoformat()
 
     def px(ticker: str, when_: date) -> float | None:
         return price_on_or_before(closes(ticker, start_h), when_, max_gap_days=7)
     with st.spinner("Fetching prices…"):
-        rows = [horizon_row(c, px, date.today(), base_dcf(c["report_id"])) for c in shown]
+        rows = [horizon_row(c, px, date.today(), base_dcf(c["report_id"])) for c in pool_h]
 
     def cell(a: dict) -> str:
         if not a["elapsed"]:

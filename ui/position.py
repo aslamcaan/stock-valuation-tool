@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import streamlit as st
 
+from engine.expectations import dcf_figures_of
 from engine.sizing import FX_FEE, size_position
 from engine.thesis import LABEL, MAX_CONDITIONS, clean_conditions, overall
 from ui.format import money
@@ -53,7 +54,7 @@ def position_panel(rep, svc) -> None:
     st.caption(f"Rate: {source}. FX fee {FX_FEE:.2%} each way (Trading 212). Loss is in pounds after both fees, with "
                "the exchange rate held.")
     if pos and entry and fx and v is not None:
-        figs = v.dcf_figures or {}
+        figs = dcf_figures_of(v)
         targets = {"Bear DCF": figs.get("bear"), "Base DCF": figs.get("base"), "Bull DCF": figs.get("bull")}
         try:
             r = size_position(pos, entry, fx, port or None, targets, current_price=price)
@@ -103,10 +104,11 @@ def position_panel(rep, svc) -> None:
             st.error(str(exc))
             conds = []
         if conds:
-            from desks.thesis import run_thesis_check
+            from desks.thesis import extra_evidence, run_thesis_check
             with st.spinner("Reading the latest filings and news…"):
                 try:
-                    results, _ = run_thesis_check(svc.ai, f"thesis-{rep.report_id}", rep, conds)
+                    results, _ = run_thesis_check(svc.ai, f"thesis-{rep.report_id}", rep, conds,
+                                                  extra_evidence(svc, conds))
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"The check could not run: {type(exc).__name__}: {exc}")
                 else:

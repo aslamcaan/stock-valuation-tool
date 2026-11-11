@@ -62,7 +62,7 @@ code-scored half of the rating rubric. Your job:
    Write the view to match that evidence.
 Rules: never calculate. Only use numbers from the computed results (rounded as shown) or verbatim filing quotes.
 UK English. Be decisive and specific.
-Write ratios such as margins, ROIC, WACC and growth as percentages to one decimal (30.9%), never as decimals (0.309); money with its unit ($10.1bn, $116m)."""
+Write ratios such as margins, ROIC, WACC and growth as percentages to one decimal (30.9%), never as decimals (0.309); money with its unit ($10.1bn, $116m). Multiples are written as multiples, never as percentages: net debt to EBITDA, interest cover, EV/EBITDA and P/E as 0.1x, 12.4x, never 8.2%."""
 
 
 @dataclass

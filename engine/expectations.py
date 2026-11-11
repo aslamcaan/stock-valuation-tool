@@ -14,6 +14,23 @@ from engine.report_mc import mc_for
 from engine.scenarios import DEFAULT_SCENARIOS
 
 
+def dcf_figures_of(v) -> dict:
+    """The report's DCF figures per US share. A report saved before the figures were stored lacks them, so they are
+    rebuilt from its scenarios (the same numbers: the figures are those scenarios, scaled to a US share)."""
+    fig = getattr(v, "dcf_figures", None)
+    if fig:
+        return fig
+    out = {}
+    for s in getattr(v, "scenarios", None) or []:
+        if s.value_per_share is not None:
+            out[s.scenario.name.lower()] = v.per_us_share(s.value_per_share)
+    if getattr(v, "dcf", None) is not None:
+        out["base_case"] = v.per_us_share(v.dcf.value_per_share)
+    if getattr(v, "scenario_value", None) is not None:
+        out["probability_weighted"] = v.per_us_share(v.scenario_value)
+    return out
+
+
 def _best_growth(rep) -> tuple[float, str] | None:
     a, h = getattr(rep.company, "analysis", None), getattr(rep.company, "historicals_usd", None)
     if a is None or h is None:
@@ -63,6 +80,8 @@ def expectations(rep) -> dict | None:
                             "the price needs a different business from the one in the base case.")
     out["base_line"] = (f"Our base case: {out['base_cagr']:.1%} a year and a terminal margin of "
                         f"{out['base_terminal_margin']:.1%}." if imp else "")
+    if getattr(v, "model_fit_failed", False):
+        out["base_line"] += " The DCF failed its fit check, so treat these figures as unreliable."
     out["stretch"] = None if not best or out["implied_cagr"] is None else out["implied_cagr"] > best[0]
     return out
 
@@ -73,7 +92,7 @@ def risk_reward(rep) -> dict | None:
     if v is None or v.dcf_inputs is None or getattr(m, "financial", None) is not None:
         return None
     price = m.verdict.price
-    fig = v.dcf_figures or {}
+    fig = dcf_figures_of(v)
     pts = {k: fig.get(k) for k in ("bear", "base", "bull")}
     pct = {k: (None if x is None or not price else x / price - 1) for k, x in pts.items()}
     weights = {s.name.lower(): s.probability for s in DEFAULT_SCENARIOS}

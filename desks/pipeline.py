@@ -497,7 +497,9 @@ def check_holding(rep: FullReport, svc) -> None:
         h = svc.store.holding(rep.ticker)
         if not h or not h["conditions"]:
             return
-        results, log = run_thesis_check(svc.ai, rep.report_id, rep, h["conditions"])
+        from desks.thesis import extra_evidence
+        results, log = run_thesis_check(svc.ai, rep.report_id, rep, h["conditions"],
+                                        extra_evidence(svc, h["conditions"]))
         rep.guard_log += log
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         rep.thesis_check = {"checked_at": now, "conditions": list(h["conditions"]), "results": results,
@@ -595,7 +597,12 @@ def save(rep: FullReport, store) -> None:
 
 
 def load(report_id: str, store) -> FullReport:
-    return store.load_report(report_id)
+    """A saved report. Fields added after it was saved are filled with their empty value, so every reader can rely on them."""
+    rep = store.load_report(report_id)
+    m = getattr(rep, "model", None)
+    if m is not None and not hasattr(m, "company_metrics"):
+        m.company_metrics = None          # reports saved before peer regressions existed
+    return rep
 
 
 def import_legacy_files(store) -> int:

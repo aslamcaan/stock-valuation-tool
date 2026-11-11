@@ -52,7 +52,7 @@ stage, so set stage_review to agree with suggested_stage "none", and challenge t
 underwriting quality, capital).
 Rules: never calculate. Only use numbers that appear in the computed results (rounded as shown) or verbatim in the
 filing quotes. Write in UK English, concise, specific to this company.
-Write ratios such as margins, ROIC, WACC and growth as percentages to one decimal (30.9%), never as decimals (0.309); money with its unit ($10.1bn, $116m)."""
+Write ratios such as margins, ROIC, WACC and growth as percentages to one decimal (30.9%), never as decimals (0.309); money with its unit ($10.1bn, $116m). Multiples are written as multiples, never as percentages: net debt to EBITDA, interest cover, EV/EBITDA and P/E as 0.1x, 12.4x, never 8.2%."""
 
 
 # a high-severity challenge whose subject is one of these questions the headline number itself

@@ -294,8 +294,9 @@ def build_plan(h: Historicals, stage: str, *, valuation_date: date, current_marg
         m_tail = _lerp(my2, target, rest)
     elif stage == CYCLICAL and (cycle_target_margin is not None or mid_cycle_margin is not None):
         target = cycle_target_margin if cycle_target_margin is not None else mid_cycle_margin
-        why = ("fades in a straight line from year 3 to the mid-cycle target (half way between the median and the "
-               "90th-percentile margin of the years on file, up to 10), so there is no cliff")
+        why = ("fades in a straight line from year 3 to the mid-cycle target (between the median and the "
+               "90th-percentile margin of the years on file, up to 10: half way, or placed by the price deck where "
+               "one is shown), so there is no cliff")
         m_tail = _lerp(my2, target, rest)
     elif stage == MATURE_STABLE and five_year_avg_margin is not None:
         target, why = five_year_avg_margin, "returns to the 5-year median margin (history trend)"

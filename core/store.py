@@ -50,6 +50,24 @@ CREATE TABLE IF NOT EXISTS reports (
     payload {BLOB} NOT NULL
 );
 """
+HOLDINGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS holdings (
+    ticker TEXT PRIMARY KEY,
+    position_gbp REAL,
+    entry_price REAL,
+    portfolio_gbp REAL,
+    thesis TEXT,
+    conditions TEXT,
+    updated_at TEXT
+);
+CREATE TABLE IF NOT EXISTS condition_checks (
+    ticker TEXT NOT NULL,
+    checked_at TEXT NOT NULL,
+    report_id TEXT,
+    results TEXT,
+    PRIMARY KEY (ticker, checked_at)
+);
+"""
 REVISION_WINDOWS = (30, 60, 90)
 WINDOW_SLACK_DAYS = 10  # a snapshot up to this many days older than the target date still counts
 
@@ -57,7 +75,40 @@ WINDOW_SLACK_DAYS = 10  # a snapshot up to this many days older than the target 
 class Store:
     def __init__(self, target: Database | str | Path):
         self.db = as_database(target)
-        self.db.script(SCHEMA + TRACK_SCHEMA + REPORTS_SCHEMA)
+        self.db.script(SCHEMA + TRACK_SCHEMA + REPORTS_SCHEMA + HOLDINGS_SCHEMA)
+
+    # --- holdings: the user's own position, thesis and exit conditions (one row per ticker) ---------------------------
+    def save_holding(self, ticker: str, **fields) -> None:
+        import json
+        from datetime import datetime, timezone
+        row = {"ticker": ticker.upper(), "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        for k in ("position_gbp", "entry_price", "portfolio_gbp", "thesis"):
+            row[k] = fields.get(k)
+        row["conditions"] = json.dumps(list(fields.get("conditions") or []))
+        self.db.upsert("holdings", row, keys=("ticker",))
+
+    def holding(self, ticker: str) -> dict | None:
+        import json
+        rows = self.db.query("SELECT * FROM holdings WHERE ticker=?", (ticker.upper(),))
+        if not rows:
+            return None
+        r = rows[0]
+        r["conditions"] = json.loads(r.get("conditions") or "[]")
+        return r
+
+    def save_checks(self, ticker: str, checked_at: str, report_id: str, results: list[dict]) -> None:
+        import json
+        self.db.upsert("condition_checks", {"ticker": ticker.upper(), "checked_at": checked_at, "report_id": report_id,
+                                            "results": json.dumps(results)}, keys=("ticker", "checked_at"))
+
+    def last_checks(self, ticker: str) -> dict | None:
+        import json
+        rows = self.db.query("SELECT * FROM condition_checks WHERE ticker=? ORDER BY checked_at DESC LIMIT 1",
+                             (ticker.upper(),))
+        if not rows:
+            return None
+        rows[0]["results"] = json.loads(rows[0]["results"] or "[]")
+        return rows[0]
 
     def save_snapshot(self, ticker: str, rows: list[dict], when: date) -> None:
         """rows: {fiscal_year_end, revenue_avg, eps_avg, analysts, source}. One snapshot per ticker per day."""

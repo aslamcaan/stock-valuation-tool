@@ -92,6 +92,61 @@ with st.spinner("Fetching prices…" if show_since else "Loading the calls…"):
     results = [evaluate(c, price_at, date.today()) for c in shown]
 
 
+# --- price 1, 3 and 6 months later, against the price and the base DCF at the call -------------------------------
+@st.cache_data(show_spinner=False, max_entries=200)
+def base_dcf(report_id: str) -> float | None:
+    """The report's base-case DCF per US share (older saved reports without the figures fall back to the DCF itself)."""
+    try:
+        rep = load(report_id, get_services().store)
+        v = rep.model.valuation if rep.model else None
+        if v is None or v.dcf is None:
+            return None
+        return (getattr(v, "dcf_figures", None) or {}).get("base") or v.per_us_share(v.dcf.value_per_share)
+    except Exception:  # an unreadable report just has no base DCF in the table
+        return None
+
+
+def horizons_section() -> None:
+    from engine.track import AFTER, hit_rate_by_rating, horizon_row
+    from ui.format import plain_table
+    if not st.toggle("Show the price 1, 3 and 6 months after each call", value=True, key="tr_horizons",
+                     help="Fetches daily closes (cached for six hours). A column stays empty until that date has passed."):
+        return
+    start_h = (min(date.fromisoformat(c["call_date"]) for c in shown) - timedelta(days=10)).isoformat()
+
+    def px(ticker: str, when_: date) -> float | None:
+        return price_on_or_before(closes(ticker, start_h), when_, max_gap_days=7)
+    with st.spinner("Fetching prices…"):
+        rows = [horizon_row(c, px, date.today(), base_dcf(c["report_id"])) for c in shown]
+
+    def cell(a: dict) -> str:
+        if not a["elapsed"]:
+            return "not yet"
+        if a["price"] is None:
+            return "no price"
+        hit = {True: " ✓", False: " ✗", None: ""}[a["hit"]]
+        gap = "" if a["vs_base_dcf"] is None else f" ({a['vs_base_dcf']:+.0%} vs base DCF)"
+        return f"{money(a['price'])} {a['change']:+.0%}{hit}{gap}" if a["change"] is not None else money(a["price"])
+    head = ["Call", "Ticker", "Rating", "Verdict", "Price", "Base DCF"] + [f"After {h}" for h in AFTER]
+    body = [[r["call_date"], r["ticker"], r["rating"], r["verdict"] or "–", money(r["price"]) if r["price"] else "–",
+             money(r["base_dcf"]) if r["base_dcf"] else "–"] + [cell(r["after"][h]) for h in AFTER] for r in rows]
+    st.markdown("#### Price after the call")
+    st.markdown(plain_table(body, head), unsafe_allow_html=True)
+    rates = hit_rate_by_rating(rows)
+    if rates:
+        order = [g for g in RATINGS if g in rates]
+        hr = [[g] + [("–" if rates[g][h]["rate"] is None else f"{rates[g][h]['rate']:.0%} of {rates[g][h]['calls']}")
+                     for h in AFTER] for g in order]
+        st.markdown("#### Hit rate by rating")
+        st.markdown(plain_table(hr, ["Rating"] + [f"After {h}" for h in AFTER]), unsafe_allow_html=True)
+    st.caption("✓ means the price moved the way the rating said: up for a Buy or Strong Buy, down for a Sell or Strong "
+               "Sell, within 10% either way for a Hold. Prices are daily closes (FMP or Tiingo) on or before the date, "
+               "against the price at the call. Small samples: a hit rate on a handful of calls is not evidence.")
+
+
+horizons_section()
+
+
 def mini(price: float, fv: float) -> str:
     """Price at the call against the call's fair value, on one small axis."""
     lo, hi = min(price, fv), max(price, fv)

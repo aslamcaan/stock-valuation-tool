@@ -64,3 +64,58 @@ def hit_rates(results: list[CallResult]) -> dict[str, dict[str, dict]]:
             hits = None if want_positive is None else sum(1 for x in xs if (x > 0) == want_positive) / len(xs)
             out[group][h] = {"calls": len(xs), "hit_rate": hits, "average_excess": sum(xs) / len(xs)}
     return out
+
+
+# --- price after 1, 3 and 6 months, against the price and the base DCF at the call -----------------------------------
+AFTER = {"1m": 30, "3m": 91, "6m": 182}
+HOLD_BAND = 0.10  # a Hold is right when the price ends within 10% of where it was at the call
+
+
+def direction_hit(rating: str | None, change: float | None) -> bool | None:
+    """Did the price move the way the rating said? Buys and Strong Buys: up. Sells and Strong Sells: down. Hold: within
+    +/-10%. None for an unrated call or a horizon that has not passed."""
+    if change is None or not rating or rating == "Not rated":
+        return None
+    if rating in BULLISH:
+        return change > 0
+    if rating in BEARISH:
+        return change < 0
+    if rating == "Hold":
+        return abs(change) <= HOLD_BAND
+    return None
+
+
+def horizon_row(call: dict, price_at: PriceAt, today: date, base_dcf: float | None) -> dict:
+    """One call: the price at the call, the verdict and base DCF, and the price 1, 3 and 6 months later (None until that
+    date has passed or no close was found), each as a move from the call price and a gap to the base DCF."""
+    d = date.fromisoformat(call["call_date"])
+    p0 = call.get("price")
+    row = {"ticker": call["ticker"], "call_date": call["call_date"], "price": p0, "verdict": call.get("verdict"),
+           "rating": call.get("rating") or "Not rated", "fair_value": call.get("fair_value"), "base_dcf": base_dcf,
+           "report_id": call.get("report_id"), "after": {}}
+    for name, days in AFTER.items():
+        end = d + timedelta(days=days)
+        p = price_at(call["ticker"], end) if end <= today else None
+        change = (p / p0 - 1) if p and p0 else None
+        row["after"][name] = {"date": end.isoformat(), "elapsed": end <= today, "price": p, "change": change,
+                              "vs_base_dcf": (p / base_dcf - 1) if p and base_dcf else None,
+                              "hit": direction_hit(row["rating"], change)}
+    return row
+
+
+def hit_rate_by_rating(rows: list[dict]) -> dict[str, dict[str, dict]]:
+    """{rating: {horizon: {calls, hits, rate}}} over rows whose horizon has a price. `rate` is None with no calls."""
+    out: dict[str, dict[str, dict]] = {}
+    for r in rows:
+        if r["rating"] == "Not rated":
+            continue
+        g = out.setdefault(r["rating"], {h: {"calls": 0, "hits": 0, "rate": None} for h in AFTER})
+        for h, a in r["after"].items():
+            if a["hit"] is None:
+                continue
+            g[h]["calls"] += 1
+            g[h]["hits"] += 1 if a["hit"] else 0
+    for g in out.values():
+        for v in g.values():
+            v["rate"] = v["hits"] / v["calls"] if v["calls"] else None
+    return out

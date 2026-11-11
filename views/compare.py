@@ -33,6 +33,45 @@ latest: dict[str, dict] = {}
 for r in rows:  # newest first: keep the latest report per ticker
     latest.setdefault(r["ticker"], r)
 choices = list(latest.values())
+
+
+@st.cache_data(show_spinner="Opening saved reports…", max_entries=24)
+def _load_cached(report_id: str):
+    return load(report_id, get_services().store)
+
+
+def ranked_table() -> None:
+    """Every chosen company in one table, ranked by expected return; CSV and one-page PDF downloads."""
+    from engine.compare_table import COLUMNS, fmt, ranked, to_csv
+    from exports.compare_pdf import build_compare_pdf
+    picks = st.multiselect("Companies", choices, default=choices[:8], format_func=lambda r: r["ticker"])
+    reps = []
+    for r in picks:
+        rep = _load_cached(r["report_id"])
+        if rep.model is None:
+            st.caption(f"{r['ticker']}: the report stopped before a valuation, so it is left out.")
+        else:
+            reps.append(rep)
+    if not reps:
+        return
+    rows = ranked(reps)
+    head = ["#"] + [h for _, h, _ in COLUMNS]
+    body = [[str(r["rank"])] + [fmt(r[k], kind) for k, _, kind in COLUMNS] for r in rows]
+    st.markdown(plain_table(body, head), unsafe_allow_html=True)
+    st.caption("Expected return: the DCF at 25% bear, 50% base and 25% bull against the price on the date shown. "
+               "A bull case that starts from the raw analyst path can dominate it, so read it with the base and the "
+               "Monte Carlo share. A dash means the report has no such figure.")
+    c1, c2 = st.columns(2)
+    c1.download_button("Download CSV", to_csv(rows), "compare.csv", "text/csv")
+    c2.download_button("Download one-page PDF", build_compare_pdf(rows), "compare.pdf", "application/pdf")
+
+
+if not choices:
+    st.markdown(note("Compare needs saved reports on at least two companies."), unsafe_allow_html=True)
+    st.stop()
+if st.radio("View", ["Ranked table", "Two side by side"], horizontal=True) == "Ranked table":
+    ranked_table()
+    st.stop()
 if len(choices) < 2:
     st.markdown(note("Compare needs saved reports on at least two companies."), unsafe_allow_html=True)
     st.stop()

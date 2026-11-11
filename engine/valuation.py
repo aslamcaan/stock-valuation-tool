@@ -66,6 +66,7 @@ class EngineInputs:
     segments_reason: str = ""  # why no segments reached the SOTP (e.g. the filing's segment revenues were missing)
     one_off_adjustments: dict[str, float] = field(default_factory=dict)  # FY label -> amount added back to EBIT
     overrides: dict = field(default_factory=dict)
+    price_deck: dict | None = None      # a cyclical's price index summary (engine.price_deck), set for memory names
 
 
 @dataclass
@@ -97,6 +98,17 @@ class Valuation:
 
     def per_us_share(self, x: float | None) -> float | None:
         return None if x is None else x * self.per_us_share_factor
+
+
+def _deck_target(cyc: dict, deck: dict | None) -> float | None:
+    """The mid-cycle margin target; with a memory-specific price deck it sits between the median and the 90th percentile
+    according to where prices are in their own range, otherwise half way (engine.classify). A broad proxy index is
+    shown but never moves the margin: it would put a record-margin memory maker at the bottom of a semiconductor
+    price range that has fallen for a decade."""
+    if not deck or not deck.get("memory_specific") or not cyc.get("available"):
+        return cyc.get("cycle_target_margin")
+    from engine.price_deck import target_margin
+    return target_margin(cyc["median_margin"], cyc["p90_margin"], deck.get("position"))
 
 
 def _latest(h: Historicals, line: str) -> Value | None:
@@ -285,7 +297,7 @@ def value_company(i: EngineInputs) -> Valuation:
             risk_free=i.risk_free, wacc=wacc, roic=a.metrics.get("roic", {}).get(last),
             mid_cycle_margin=cyc.get("mid_cycle_margin"),
             five_year_avg_margin=median(margins_5y) if margins_5y else None,
-            overrides=overrides, cycle_target_margin=cyc.get("cycle_target_margin"))
+            overrides=overrides, cycle_target_margin=_deck_target(cyc, i.price_deck))
     plan = make_plan(i.overrides)
     flags += plan.flags
     g = plan.terminal_growth.value

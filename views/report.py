@@ -184,7 +184,7 @@ if getattr(rep, "save_error", None):
     st.warning(rep.save_error)
 exportable = rep.model is not None and (getattr(rep.model, "financial", None) is not None or
                                         (rep.model.valuation is not None and rep.model.valuation.dcf is not None))
-bar = st.columns([3.2, 1, 1, 1, 1], vertical_alignment="center")
+bar = st.columns([2.6, 1, 1, 1, 1, 1], vertical_alignment="center")
 bar[0].caption(f"Saved report {rep.report_id}")
 if bar[1].button("Re-run", icon=":material/refresh:", width="stretch",
                  help="Runs every desk again and saves a new dated version (the saved one is kept)."):
@@ -201,6 +201,19 @@ if rep.model is not None and "edited" not in st.session_state and \
             st.error(f"News refresh failed: {type(exc).__name__}: {exc}")
         else:
             st.rerun()
+def pitch_bytes(rep) -> bytes:
+    """The one-page pitch: two years of daily closes for the chart and the user's own saved thesis and exit conditions."""
+    from datetime import date, timedelta
+    from exports.pitch import build_pitch
+    res = svc.market.price_history(rep.ticker, (date.today() - timedelta(days=730)).isoformat())
+    closes = [(r["date"], r["close"]) for r in res.data] if res.available else []
+    try:
+        holding = svc.store.holding(rep.ticker)
+    except Exception:  # noqa: BLE001  (the pitch is built without the saved thesis if the lookup fails)
+        holding = None
+    return build_pitch(rep, closes, holding)
+
+
 if exportable:
     try:
         # built only when clicked: the workbook evaluates every formula so its values show in any viewer (a few seconds)
@@ -210,6 +223,9 @@ if exportable:
                                width="stretch", help="The full model with live formulas (takes a few seconds to build).")
         bar[4].download_button("PDF", lambda: build_pdf(rep), file_name=f"{rep.report_id}.pdf", icon=":material/picture_as_pdf:",
                                mime="application/pdf", width="stretch", help="The report as a research note.")
+        bar[5].download_button("Pitch", lambda: pitch_bytes(rep), file_name=f"{rep.ticker}-pitch.pdf",
+                               icon=":material/description:", mime="application/pdf", width="stretch",
+                               help="One A4 page for an interview: thesis, valuation, risks with exit conditions, chart.")
     except Exception as exc:  # an export problem must not hide the report
         bar[3].caption(f"Export unavailable: {exc}")
 if "edited" in st.session_state:
@@ -317,5 +333,34 @@ def _what_if_tab() -> None:
     what_if(rep)
 
 
-render_report(rep, extra_tabs=[("What if", _what_if_tab), ("History", _history_tab),
-                               ("Edit assumptions", _edit_tab), ("Desk log", _log_tab)])
+def _earnings_tab() -> None:
+    from ui.earnings import earnings_panel
+    if rep.model is None:
+        st.caption("This report has no model.")
+        return
+    earnings_panel(rep, svc)
+
+
+def _position_tab() -> None:
+    from ui.position import position_panel
+    if rep.model is None:
+        st.caption("This report has no model.")
+        return
+    position_panel(rep, svc)
+
+
+def _capex_tab() -> None:
+    from ui.capex import attaches, capex_panel
+    ok, why = attaches(rep)
+    capex_panel(svc, why)
+
+
+_tabs = [("Earnings", _earnings_tab), ("Position", _position_tab), ("What if", _what_if_tab), ("History", _history_tab),
+         ("Edit assumptions", _edit_tab), ("Desk log", _log_tab)]
+try:
+    from ui.capex import attaches
+    if rep.model is not None and attaches(rep)[0]:  # data centre or AI revenue above 30% of sales
+        _tabs.insert(0, ("AI capex", _capex_tab))
+except Exception:  # noqa: BLE001  (the extra tab must never stop a report opening)
+    pass
+render_report(rep, extra_tabs=_tabs)

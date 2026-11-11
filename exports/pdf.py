@@ -182,6 +182,15 @@ def build_pdf(rep) -> bytes:
     s += [box, Spacer(1, 6)]
     for note in ([vd.headline_note] if getattr(vd, "headline_note", "") else []) + list(getattr(vd, "top_notes", []) or []):
         s.append(P("Read this first: " + note, SMALL))
+    try:
+        from engine.expectations import expectations, risk_reward
+        e, rr = expectations(rep), risk_reward(rep)
+    except Exception:  # noqa: BLE001  (these lines are extras: the report still prints without them)
+        e = rr = None
+    if e:
+        s.append(P("What the price needs: " + " ".join(e["lines"]) + " " + e["base_line"], SMALL))
+    if rr:
+        s.append(P("Risk and reward: " + rr["line"], SMALL))
     card = [["Confidence", vd.confidence or "-", "Conviction", rep.md.conviction if rep.md else "-"],
             ["Stage", v.classification.stage_label, "Toolkit", v.classification.toolkit] if v is not None else
             ["Toolkit", f"{m.financial.toolkit} (no DCF)", "Cost of equity", pct(m.financial.cost_of_equity.value)]]

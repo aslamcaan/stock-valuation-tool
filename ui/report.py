@@ -148,6 +148,34 @@ def value_strip(m) -> str:
     return ""
 
 
+def expectations_box(rep) -> None:
+    """What the price needs, ahead of the blended fair value (engine.expectations)."""
+    from engine.expectations import expectations
+    try:
+        e = expectations(rep)
+    except Exception as exc:  # noqa: BLE001  (a missing box must not hide the report)
+        st.caption(f"Expectations box unavailable: {type(exc).__name__}: {exc}")
+        return
+    if not e:
+        return
+    tone = "warn" if e.get("stretch") else ""
+    body = "".join(f"<div>{esc(x)}</div>" for x in e["lines"])
+    html(f"<div class='vt-note {tone}'><b>What the price needs.</b>{body}"
+         f"<div style='color:var(--vt-muted)'>{esc(e['base_line'])} Source: this report's DCF and the filings' reported "
+         f"history, solved in code.</div></div>")
+
+
+def risk_reward_line(rep) -> None:
+    from engine.expectations import risk_reward
+    try:
+        r = risk_reward(rep)
+    except Exception as exc:  # noqa: BLE001
+        st.caption(f"Risk and reward unavailable: {type(exc).__name__}: {exc}")
+        return
+    if r:
+        html(f"<div class='vt-note'><b>Risk and reward.</b> {esc(r['line'])}</div>")
+
+
 def verdict_card(rep) -> None:
     m, cd = rep.model, rep.company
     vd, v = m.verdict, m.valuation
@@ -201,9 +229,11 @@ def verdict_card(rep) -> None:
     # what the reader must see before the numbers: the headline is not the plain blend, the run was partial, or a data check failed
     for note in ([vd.headline_note] if getattr(vd, "headline_note", "") else []) + list(getattr(vd, "top_notes", []) or []):
         html(f"<div class='vt-note warn'><b>Read this first.</b> {esc(note)}</div>")
+    expectations_box(rep)
     html(f"<div class='vt-head'><div class='top'>{ident}{_ring(rep.md)}</div><div class='vt-kpis'>{''.join(kpis)}</div>"
          f"{strip}<div class='vt-stats'>{''.join(f'<span>{x}</span>' for x in stats)}</div>"
          + (f"<div class='vt-chips'>{chips}</div>" if chips else "") + "</div>")
+    risk_reward_line(rep)
     if vd.confidence == "Low":
         html(f"<div class='vt-note warn'><b>Low confidence.</b> {esc('; '.join(vd.confidence_reasons))}.</div>")
     why_rating(rep)
@@ -1140,7 +1170,9 @@ def what_if(rep) -> None:
                     f"<div class='s'>{esc(sub)}</div></div>")
         html("<div class='vt-kpis'>"
              + kpi("Fair value", money(now.fair_value), f"{move:+.1%} vs base {money(ref.fair_value)}", ACCENT)
-             + kpi("DCF", money(now.dcf_value), "probability-weighted scenarios")
+             + kpi("DCF", money(now.dcf_value),
+                   (f"{now.dcf_value / ref.dcf_value - 1:+.1%} vs base {money(ref.dcf_value)}"
+                    if now.dcf_value and ref.dcf_value else "probability-weighted scenarios"))
              + kpi("Upside", f"{gap:+.1%}", f"vs price {money(price)}", GREEN if gap > 0 else RED)
              + kpi("Verdict", now.verdict or "–", "same rules as the report", VERDICT_COLOUR.get(now.verdict))
              + "</div>")

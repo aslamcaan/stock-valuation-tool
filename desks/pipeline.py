@@ -76,6 +76,7 @@ class FullReport:
     overrides: dict = field(default_factory=dict)
     peers_pool: list = field(default_factory=list)   # all peer candidates (reused when assumptions are edited)
     peer_notes: list[str] = field(default_factory=list)
+    thesis_check: dict | None = None        # {checked_at, results, overall, conditions} for a saved holding
 
 
 class Progress:
@@ -296,6 +297,7 @@ def run_report(ticker: str, svc, events: queue.Queue | None = None, valuation_da
                 rep.guard_log += rep.impact.guard_log[n_log:]
             p("MD", DONE, f"{md.rating} (conviction {md.conviction})", cost())
             log_to_track_record(rep, svc.store)
+            check_holding(rep, svc)
         except CostCapExceeded as exc:
             rep.stopped = str(exc)
             for d in ("Review desk", "Impact analyst", "MD"):
@@ -484,6 +486,25 @@ def _finish(rep: FullReport, p: Progress, cost: float, store) -> FullReport:
     except Exception as exc:  # the report is still shown; it just is not kept
         rep.save_error = f"The report could not be saved ({type(exc).__name__}: {exc})."
     return rep
+
+
+def check_holding(rep: FullReport, svc) -> None:
+    """If the user has saved exit conditions for this ticker, test them against this report's filings and news. The
+    check sees only the conditions, runs after the rating, and never changes the report's numbers."""
+    from desks.thesis import run_thesis_check
+    from engine.thesis import overall
+    try:
+        h = svc.store.holding(rep.ticker)
+        if not h or not h["conditions"]:
+            return
+        results, log = run_thesis_check(svc.ai, rep.report_id, rep, h["conditions"])
+        rep.guard_log += log
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        rep.thesis_check = {"checked_at": now, "conditions": list(h["conditions"]), "results": results,
+                            "overall": overall(results)}
+        svc.store.save_checks(rep.ticker, now, rep.report_id, results)
+    except Exception as exc:  # noqa: BLE001  (the exit check is an extra: the report stands without it)
+        rep.guard_log.append(f"Thesis check not run: {type(exc).__name__}: {exc}")
 
 
 def log_to_track_record(rep: FullReport, store) -> None:

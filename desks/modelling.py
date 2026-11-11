@@ -251,6 +251,39 @@ def kpi_flags(cd: CompanyData, vk: dict) -> list[Flag]:
     return checks.kpi_divergence(cd.historicals, vk["name"], series)
 
 
+PRICE_DECK_SERIES = "PCU334413334413"
+PRICE_DECK_LABEL = "Semiconductor producer price index"
+PRICE_DECK_MEMORY_SPECIFIC = False  # True only for a DRAM or NAND series; the broad index is shown, not used
+
+
+def price_deck_for(ticker: str, svc, today: date) -> dict | None:
+    """The memory and storage names get a dated price index (FRED's semiconductor producer price index: the only free,
+    dated series found; there is no free DRAM or NAND contract or spot series). None for any other company."""
+    from data_desk.peers import peer_group
+    from engine.price_deck import summarise
+    grp = peer_group(ticker)
+    if not grp or grp[0] != "memory and storage":
+        return None
+    try:
+        c = svc.fred.series(PRICE_DECK_SERIES, start=f"{today.year - 11}-01-01")
+    except Exception:  # noqa: BLE001  (no deck is a missing input: the margin target falls back to half way)
+        return None
+    s = summarise([(d, v) for d, v in c.payload])
+    if s is None:
+        return None
+    return {**s, "series": PRICE_DECK_SERIES, "label": PRICE_DECK_LABEL, "source": "FRED (BLS producer price index)",
+            "memory_specific": PRICE_DECK_MEMORY_SPECIFIC, "fetched_at": getattr(c, "fetched_at_iso", None)}
+
+
+def deck_text(d: dict) -> str:
+    ch = lambda x: "n/a" if x is None else f"{x:+.1%}"  # noqa: E731
+    return (f"{d['label']} (FRED {d['series']}, monthly, latest {d['as_of']}): 3-month {ch(d['change_3m'])}, 12-month "
+            f"{ch(d['change_12m'])}, at the {d['position']:.0%} point of its {d['months']}-month range. It is a broad "
+            "semiconductor price index, not DRAM or NAND contract prices (no free memory price series exists), so it is "
+            "shown for context and does not move the margin fade." if not d.get("memory_specific") else
+            "it places the mid-cycle margin target between the company's median and 90th-percentile margin.")
+
+
 def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, overrides: dict | None = None,
                   progress=None, peers: list[CompanyMetrics] | None = None, research: dict | None = None
                   ) -> ValuationReport:
@@ -297,7 +330,13 @@ def run_modelling(cd: CompanyData, svc, valuation_date: date | None = None, over
     if toolkit != CORPORATE:
         return run_financial(cd, svc, ei, toolkit, today, notes, overrides or {}, peers, say, extra_flags)
     say("Classifying the company and building the forecast")
+    deck = price_deck_for(getattr(cd.profile, "ticker", ""), svc, today)
+    if deck:
+        ei.price_deck = deck
     v = value_company(ei)
+    if deck and v.classification.stage == CYCLICAL:
+        extra_flags.append(Flag(INFO, "price_deck", f"Price deck: {deck['label']} {deck['trend']}",
+                                deck_text(deck), None, {}))
     stops = [f for f in v.flags if f.is_hard_stop]
     if stops:  # e.g. terminal growth at or above WACC: refuse to value, naming the line that broke
         raise ValuationError("Hard stop: " + "; ".join(f"{f.title}: {f.message}" for f in stops))

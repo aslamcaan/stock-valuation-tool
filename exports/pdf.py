@@ -95,11 +95,58 @@ def _pages(rep):
     return first, later
 
 
+def printable(s: str) -> str:
+    """Only characters the built-in Helvetica can draw (Windows-1252). Dashes and spaces of other widths become plain ones;
+    anything else that has no plain form is dropped rather than printed as a black box."""
+    import unicodedata
+    out = []
+    for ch in s:
+        try:
+            ch.encode("cp1252")
+            out.append(ch)
+            continue
+        except UnicodeEncodeError:
+            pass
+        if unicodedata.category(ch) == "Pd":
+            out.append("-")
+        elif unicodedata.category(ch) in ("Zs", "Zl", "Zp"):
+            out.append(" ")
+        elif unicodedata.category(ch) == "Cf":     # zero-width and other invisible format characters
+            continue
+        else:
+            plain = unicodedata.normalize("NFKD", ch).encode("ascii", "ignore").decode()
+            out.append(plain or "?")           # a character the font cannot draw is marked, never silently removed
+    return "".join(out)
+
+
 def clean(s) -> str:
     s = "" if s is None else str(s)
     for a, b in REPLACE.items():
         s = s.replace(a, b)
+    s = printable(s)
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def stamp(ts) -> str:
+    """A fetch time for a table: 2026-11-11 17:02 UTC-05:00, not a 30-character ISO string with nanoseconds."""
+    t = str(ts or "")
+    m = re.match(r"^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?$", t)
+    if not m:
+        return t
+    tz = m.group(3)
+    zone = "" if tz is None else " UTC" if tz in ("Z", "+00:00", "+0000") else f" UTC{tz[:3]}:{tz[-2:]}"   # no zone given: none shown
+    return f"{m.group(1)} {m.group(2)}{zone}"
+
+
+def assumption_value(a: dict) -> str:
+    v, unit = a["value"], a.get("unit")
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        if unit == "%":
+            return pct(v, 2)
+        if unit == "x":
+            return f"{v:.2f}x"
+        return f"{v:,.0f}" if abs(v) >= 1000 else f"{v:.4g}"
+    return str(v)
 
 
 def P(text, style=BODY) -> Paragraph:
@@ -473,10 +520,9 @@ def _finish(doc, s: list, rep, buf) -> bytes:
     s.append(table([[f.level.upper(), f.title, f.message] for f in m.flags], ["Level", "Flag", "Detail"],
                    [18 * mm, 45 * mm, 119 * mm]))
     s.append(P(f"{n(21)}. Assumptions and data provenance", H2))
-    s.append(table([[a["group"], a["name"], f"{a['value']:.4g}" if isinstance(a["value"], float) else str(a["value"]),
-                     a["source"]] for a in m.assumptions], ["Group", "Assumption", "Value", "Source"],
+    s.append(table([[a["group"], a["name"], assumption_value(a), a["source"]] for a in m.assumptions], ["Group", "Assumption", "Value", "Source"],
                    [22 * mm, 50 * mm, 22 * mm, 88 * mm]))
-    s.append(table([[x["source"], x["what"], x.get("detail") or "", x.get("fetched_at") or ""] for x in m.sources],
+    s.append(table([[x["source"], x["what"], stamp(x.get("detail") or ""), stamp(x.get("fetched_at"))] for x in m.sources],
                    ["Source", "What", "Detail", "Fetched"], [35 * mm, 40 * mm, 72 * mm, 35 * mm]))
     s.append(KeepTogether([P(f"{n(22)}. Disclaimer", H2), P(DISCLAIMER, SMALL)]))
     s.append(Spacer(1, 4))

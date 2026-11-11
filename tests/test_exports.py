@@ -126,3 +126,71 @@ def test_rsq_matches_engine_regression():
     from exports.pycel_ext import rsq
     xs, ys = (0.1, 0.2, 0.3, 0.4, 0.55), (2.0, 3.1, 3.9, 5.2, 6.0)
     assert rsq(ys, xs) == pytest.approx(_ols(list(xs), list(ys))[2])
+
+
+def test_excel_headline_follows_the_apps_fallback_to_the_scenario_weighted_dcf(rep, tmp_path):
+    """NVDA, 11 Nov: the app's headline was the scenario-weighted DCF ($189.77) but the workbook still blended the sum of
+    the parts ($242.93), so its check cell read 53.17 and its verdict differed from the report's."""
+    from dataclasses import replace
+    v = rep.model.verdict
+    fb = replace(v, weights_used={"dcf": 1.0}, fallback="divergence", dcf_value=v.fair_value)
+    rep2 = SimpleNamespace(**{**rep.__dict__, "model": SimpleNamespace(**{**rep.model.__dict__, "verdict": fb})})
+    path = tmp_path / "fb.xlsx"
+    build_workbook(rep2).save(path)
+    r = verify(path)
+    assert r["errors"] == [] and r["fair_value_check"] == pytest.approx(0, abs=1e-9)
+    assert r["verdict"] == fb.verdict
+    assert build_workbook(rep2)["Summary"]["A10"].value.startswith("Fair value (scenario-weighted DCF")
+
+
+def test_pdf_text_never_prints_a_missing_glyph_box_and_tables_are_tidy():
+    from exports.pdf import assumption_value, clean, printable, stamp
+    assert printable("non‑marketable") == "non-marketable"           # non-breaking hyphen (NVDA's filing quote)
+    assert clean("a​b c d").replace(" ", " ") == "ab c d" and printable("café – “q”") == "café – “q”"
+    assert "■" not in clean("x‑y \U0001f600 z") and "&amp;" in clean("AT&T")
+    assert assumption_value({"value": 0.001718, "unit": "%"}) == "0.17%" and assumption_value({"value": 2.216, "unit": "x"}) == "2.22x"
+    assert assumption_value({"value": "FY2026", "unit": None}) == "FY2026"
+    assert stamp("2026-11-11T12:02:36.449137198-05:00") == "2026-11-11 12:02 UTC-05:00"
+    assert stamp("2026-10-14T16:48:23+00:00") == "2026-10-14 16:48 UTC" and stamp("2026-11-11") == "2026-11-11"
+
+
+def test_compare_pdf_survives_markup_characters_in_names():
+    from exports.compare_pdf import build_compare_pdf
+    from engine.compare_table import COLUMNS
+    row = {"rank": 1, **{k: ("AT&T <b>" if kind == "text" else None) for k, _, kind in COLUMNS}}
+    assert build_compare_pdf([row])[:4] == b"%PDF"
+
+
+def test_excel_reconciles_to_the_app_and_carries_the_raw_bull_path_when_there_is_one(tmp_path):
+    """The bull case runs on the analysts' raw growth path when the plan has one (MU, AMD, PLTR, 11 Nov: it ignored it and the
+    check cell was off by up to $928 a share). Give the fixture a raw path and require the bull block to use it."""
+    import copy
+    ei = engine_inputs("GRAB")
+    v = value_company(ei)
+    v2 = copy.copy(v)
+    v2.plan = copy.copy(v.plan)
+    v2.plan.raw_growth_path = [g + 0.05 for g in v.plan.path("revenue_growth")]
+    rep2 = rep_for(ei, v2)
+    from dataclasses import replace as rp
+    v2.scenarios = [rp(sc, scenario=rp(sc.scenario, raw_consensus_growth=True)) if sc.scenario.name == "Bull" else sc
+                    for sc in v2.scenarios]
+    wb = build_workbook(rep2)
+    assert any("raw path" in str(c.value) for row in wb["Inputs"].iter_rows() for c in row)
+    calc = wb["Calc"]
+    bull_start = next(r for r in range(1, calc.max_row) if calc.cell(r, 1).value == "Bull scenario")
+    assert "Inputs" in str(calc.cell(bull_start + 2, 2).value)        # the growth row of the bull block links to Inputs
+    path = tmp_path / "raw.xlsx"
+    wb.save(path)
+    assert verify(path)["errors"] == []
+
+
+def rep_for(ei, v):
+    dcf_value = v.per_us_share(v.scenario_value)
+    verdict = blend({"dcf": dcf_value, "comps": None, "history": None}, ei.price.value, dcf_value=dcf_value)
+    model = SimpleNamespace(valuation=v, inputs=ei, comps=None, history={}, verdict=verdict, assumptions=[], sources=[],
+                            flags=[], football=[], analyst_targets=None, company_metrics=None, revisions={}, trace={})
+    profile = SimpleNamespace(name="Grab Holdings", ticker="GRAB", exchange="Nasdaq", sic_description="Services",
+                              reporting_currency="USD")
+    company = SimpleNamespace(profile=profile, historicals=ei.historicals, analysis=ei.analysis)
+    return SimpleNamespace(model=model, company=company, md=None, review=None, research=None, ticker="GRAB",
+                           report_id="GRAB-test", created_at="2026-10-15T00:00:00", valuation_date=date(2026, 10, 15))

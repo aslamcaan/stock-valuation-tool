@@ -51,7 +51,7 @@ def fall_back_to_dcf(v: Verdict, dcf_value: float | None, reason: str, kind: str
                        "not rely on it.", fallback=kind, confidence="Low",
                        confidence_reasons=[reason] + [r for r in v.confidence_reasons if r != reason])
     return replace(v, fair_value=dcf_value, gap=dcf_value / v.price - 1, verdict=_band_verdict(dcf_value, v.price),
-                   weights_used={"dcf": 1.0}, headline_note=f"{reason} The headline is the scenario-weighted DCF "
+                   weights_used={"dcf": 1.0}, dcf_value=dcf_value, headline_note=f"{reason} The headline is the scenario-weighted DCF "
                    f"(${dcf_value:,.2f}) instead of the blend" + (f" (${v.fair_value:,.2f})." if v.fair_value else "."),
                    fallback=kind, blend_fair_value=v.blend_fair_value or v.fair_value, confidence="Low",
                    confidence_reasons=[reason] + [r for r in v.confidence_reasons if r != reason],

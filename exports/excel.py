@@ -86,7 +86,7 @@ class Sheet:
 
 # --- DCF block ---------------------------------------------------------------------------------------------------
 def dcf_block(sh: Sheet, top: int, n: int, I: dict, title: str, g_shift: str = "0", m_shift: str = "0",
-              wacc: str | None = None, tg: str | None = None) -> dict:
+              wacc: str | None = None, tg: str | None = None, growth_key: str = "growth") -> dict:
     """Write one full DCF from row `top`. I holds Inputs references. Returns cell refs of the results."""
     ws = sh.ws
     wacc = wacc or I["wacc"]
@@ -106,7 +106,7 @@ def dcf_block(sh: Sheet, top: int, n: int, I: dict, title: str, g_shift: str = "
         c, prev = col(2 + j), col(1 + j)
         first = j == 0
         sh.formula(f"{c}{r['year']}", f"{I['years'][j]}")
-        sh.formula(f"{c}{r['growth']}", f"{I['growth'][j]}+{g_shift}", PCT)
+        sh.formula(f"{c}{r['growth']}", f"{I[growth_key][j]}+{g_shift}", PCT)
         prev_rev = I["base_rev"] if first else f"{prev}{r['rev']}"
         sh.formula(f"{c}{r['rev']}", f"{prev_rev}*(1+{c}{r['growth']})", NUM)
         sh.formula(f"{c}{r['margin']}", f"{I['margin'][j]}+{m_shift}", PCT)
@@ -230,6 +230,9 @@ def build_workbook(rep) -> Workbook:
         row += 1
 
     add_row("Revenue growth", [y.revenue_growth for y in d.years], PCT, "growth")
+    raw = getattr(v.plan, "raw_growth_path", None)
+    if raw and len(raw) == len(d.years):   # the bull case runs on the analysts' raw path; the base case caps and fades it
+        add_row("Revenue growth: analysts' raw path (bull case only)", list(raw), PCT, "raw_growth")
     add_row("Operating margin (GAAP)", [y.operating_margin for y in d.years], PCT, "margin")
     add_row("Tax rate", [y.tax_rate for y in d.years], PCT, "tax")
     add_row("Sales-to-capital", [y.sales_to_capital for y in d.years], "0.00", "s2c")
@@ -358,8 +361,10 @@ def build_workbook(rep) -> Workbook:
     for s in v.scenarios:
         nm = s.scenario.name
         g_expr = f"MIN({I['tg']}+{I[f'ts_{nm}']},{I['g_cap']})"
-        blk = dcf_block(calc, top, n, I, f"{nm} scenario", g_shift=I[f"gs_{nm}"], m_shift=I[f"ms_{nm}"],
-                        wacc=f"({I['wacc']}+{I[f'ws_{nm}']})", tg=g_expr)
+        raw_bull = bool(s.scenario.raw_consensus_growth) and "raw_growth" in I
+        blk = dcf_block(calc, top, n, I, f"{nm} scenario", g_shift="0" if raw_bull else I[f"gs_{nm}"],
+                        m_shift=I[f"ms_{nm}"], wacc=f"({I['wacc']}+{I[f'ws_{nm}']})", tg=g_expr,
+                        growth_key="raw_growth" if raw_bull else "growth")
         scen_refs[nm] = blk["vps"]
         top = blk["end_row"] + 2
     sens1, sens2 = v.sensitivity_wacc_growth, v.sensitivity_growth_margin
@@ -465,8 +470,14 @@ def build_workbook(rep) -> Workbook:
         for cc in "JKLM":
             co.formula(f"{cc}{last + 1}", f'IFERROR(MEDIAN({cc}5:{cc}{last}),"")', MULT, bold=True)
         own = getattr(m, "company_metrics", None)
+        mid_note = ""
+        if getattr(m.comps, "normalised_note", ""):   # a cyclical: peer multiples are applied to mid-cycle earnings
+            from engine.comps import mid_cycle_metrics
+            got = mid_cycle_metrics(own, v.plan.drivers["operating_margin"].chosen.value, ei.marginal_tax.value)
+            if got:
+                own, mid_note = got[0], " at the mid-cycle operating margin"
         cm_row = last + 3
-        co.label(f"A{cm_row}", f"Company metrics ({own.period}, SEC XBRL)", bold=True)
+        co.label(f"A{cm_row}", f"Company metrics ({own.period}, SEC XBRL{mid_note})", bold=True)
         implied = []
         r_ = cm_row + 1
         for label, cc, key, metric in (("Revenue", "K", "ev_sales", own.revenue), ("EBITDA", "L", "ev_ebitda", own.ebitda),
@@ -534,16 +545,28 @@ def build_workbook(rep) -> Workbook:
     # as an input from the app, so the blend still matches; missing methods get zero weight via the Inputs tab
     comps_link = comps_ref or (str(m.verdict.components.get("comps")) if m.verdict.components.get("comps") else "0")
     hist_link = hist_ref or (str(m.verdict.components.get("history")) if m.verdict.components.get("history") else "0")
-    dcf_link = sotp_ref or dcf_weighted
-    rows_ = [("Share price", I["price"], PS), ("DCF (probability-weighted)" if not sotp_ref else "Sum of the parts",
+    # the app blends the SOTP only when it is within 3x of the DCF: follow what the verdict actually used (this also reads
+    # reports saved before the verdict recorded it)
+    app_dcf = m.verdict.components.get("dcf")
+    sotp_app = v.per_us_share(v.sotp.value_per_share) if v.sotp.applicable else None
+    use_sotp = bool(sotp_ref) and sotp_app is not None and app_dcf is not None and abs(app_dcf - sotp_app) <= 0.005 * max(
+        abs(sotp_app), 1.0)
+    dcf_link = sotp_ref if use_sotp else dcf_weighted
+    rows_ = [("Share price", I["price"], PS), ("DCF (probability-weighted)" if not use_sotp else "Sum of the parts",
                                                dcf_link, PS),
              ("Comps", comps_link, PS), ("Historical multiples", hist_link, PS)]
     for i, (label, f, fmt) in enumerate(rows_):
         su.label(f"A{5 + i}", label)
         su.formula(f"B{5 + i}", f, fmt)
-    su.label("A10", "Fair value (weighted blend)", bold=True)
-    su.formula("B10", f"(B6*{I['w_dcf']}+B7*{I['w_comps']}+B8*{I['w_history']})/({I['w_dcf']}+{I['w_comps']}+{I['w_history']})",
-               PS, bold=True)
+    # when the app's headline fell back to the scenario-weighted DCF (methods disagree, or the review desk objected), the
+    # workbook shows the same figure: the blend row is kept for reference and the headline row points at the DCF
+    fell_back = bool(m.verdict.fallback) and m.verdict.weights_used == {"dcf": 1.0}
+    su.label("A9", "Scenario-weighted DCF (the headline when the blend is not used)")
+    su.formula("B9", dcf_weighted, PS)
+    blend_f = (f"(B6*{I['w_dcf']}+B7*{I['w_comps']}+B8*{I['w_history']})/({I['w_dcf']}+{I['w_comps']}+{I['w_history']})")
+    su.label("A10", "Fair value (scenario-weighted DCF: the blend was not used)" if fell_back else "Fair value (weighted blend)",
+             bold=True)
+    su.formula("B10", "B9" if fell_back else blend_f, PS, bold=True)
     su.label("A11", "Upside / (downside) to fair value")
     su.formula("B11", "B10/B5-1", PCT)
     su.label("A12", "Verdict (price > 15% below fair value = Undervalued; > 15% above = Overvalued)")

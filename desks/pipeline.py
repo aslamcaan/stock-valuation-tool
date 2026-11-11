@@ -512,8 +512,8 @@ def check_holding(rep: FullReport, svc) -> None:
 
 
 def log_to_track_record(rep: FullReport, store) -> None:
-    """Every completed report (a verdict was reached) goes into the track record."""
-    if rep.model is None or rep.model.verdict.fair_value is None:
+    """Every rated report goes into the track record. A model-only run (no MD, so no rating) is not a call and is not logged."""
+    if rep.model is None or rep.model.verdict.fair_value is None or rep.md is None or not rep.md.rating:
         return
     from data_desk.sector_etf import sector_etf
     created = datetime.fromisoformat(rep.created_at)

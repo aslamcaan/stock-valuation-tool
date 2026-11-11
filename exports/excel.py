@@ -561,6 +561,9 @@ def build_workbook(rep) -> Workbook:
     # when the app's headline fell back to the scenario-weighted DCF (methods disagree, or the review desk objected), the
     # workbook shows the same figure: the blend row is kept for reference and the headline row points at the DCF
     fell_back = bool(m.verdict.fallback) and m.verdict.weights_used == {"dcf": 1.0}
+    if fell_back:
+        su.ws["A3"] = ("Fair value = the scenario-weighted DCF: the methods disagree or the review desk objected, so the blend "
+                       "below is shown for reference only.")
     su.label("A9", "Scenario-weighted DCF (the headline when the blend is not used)")
     su.formula("B9", dcf_weighted, PS)
     blend_f = (f"(B6*{I['w_dcf']}+B7*{I['w_comps']}+B8*{I['w_history']})/({I['w_dcf']}+{I['w_comps']}+{I['w_history']})")

@@ -17,7 +17,7 @@ def earnings_panel(rep, svc) -> None:
     head = f"**Next results: {when(ne['date'])}**" + (f", {p['session']}" if p.get("session") else
                                                       " (the time of day is not known)")
     st.markdown(head + f" · in {p['days']} days · Source: earnings calendar (FMP, Finnhub).")
-    if p.get("days") is None or p["days"] > 14:
+    if p.get("days") is None or p["days"] < 0 or p["days"] > 14 or "consensus" not in p:
         st.caption(p["notes"][-1])
         return
     c = p["consensus"]

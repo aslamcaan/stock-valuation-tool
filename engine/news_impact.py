@@ -156,7 +156,7 @@ def reprice(report, overrides: dict, prob_shift: float = 0.0) -> Repriced:
     notes: list[str] = []
     scen, extra = _scenario_value(v, prob_shift)
     notes += extra
-    dcf_v = v.per_us_share(scen)
+    dcf_v = None if getattr(v, "model_fit_failed", False) else v.per_us_share(scen)
     comps = report.verdict.components
     sotp_v = None
     if v.sotp.applicable:
@@ -167,7 +167,7 @@ def reprice(report, overrides: dict, prob_shift: float = 0.0) -> Repriced:
             notes.append("sum of the parts scaled by the DCF's change (segments are valued on the same drivers)")
     weights = (ei.overrides or {}).get("blend_weights")
     vd = blend({"dcf": dcf_v, "comps": comps.get("comps"), "history": comps.get("history")}, ei.price.value, weights,
-               sotp_v)
+               sotp_v, dcf_value=dcf_v)
     y1 = None
     k0 = len(v.plan.skipped)
     if v.dcf and len(v.dcf.years) > k0 and v.dcf.shares:

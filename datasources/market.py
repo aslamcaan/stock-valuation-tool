@@ -79,9 +79,21 @@ def _when(iso: str | None) -> datetime | None:
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
+def last_close_time(now: datetime) -> datetime:
+    """The most recent US market close (21:00 UTC, a weekday) at or before `now`. Holidays are not modelled."""
+    t = now.replace(hour=21, minute=0, second=0, microsecond=0)
+    if t > now:
+        t -= timedelta(days=1)
+    while t.weekday() >= 5:
+        t -= timedelta(days=1)
+    return t
+
+
 def _is_stale(iso: str | None) -> bool:
+    """Older than STALE_HOURS AND older than the latest market close: a Friday close read on a Sunday is current."""
     d = _when(iso)
-    return d is None or datetime.now(timezone.utc) - d > timedelta(hours=STALE_HOURS)
+    now = datetime.now(timezone.utc)
+    return d is None or (now - d > timedelta(hours=STALE_HOURS) and d < last_close_time(now) - timedelta(hours=1))
 
 
 def _ts(epoch: int | float | None) -> str | None:

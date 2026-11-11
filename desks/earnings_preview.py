@@ -18,6 +18,10 @@ def build_preview(rep, svc, today: date | None = None) -> dict:
         return out
     days = within_window(ne["date"], today)
     out["days"] = (date.fromisoformat(ne["date"]) - today).days
+    if out["days"] < 0:
+        out["notes"].append(f"The results date on this saved report ({ne['date']}) has passed. Re-run the report to get the "
+                            "next date.")
+        return out
     if days is None:
         out["notes"].append(f"Results are {out['days']} days away; the preview opens 14 days before.")
         return out

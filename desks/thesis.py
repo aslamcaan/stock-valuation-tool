@@ -53,10 +53,11 @@ def extra_evidence(svc, conditions: list[str]) -> dict:
     if svc is None or not any(CAPEX_WORDS.search(c) for c in conditions):
         return {}
     from desks.capex import capex_tracker
+    tracker = capex_tracker(svc)
     rows = [{"ticker": r["ticker"], "filed": s["filed"], "form": s["form"], "quote": s["quote"], "url": s["url"]}
-            for r in capex_tracker(svc) for s in r["statements"]]
+            for r in tracker for s in r["statements"]]
     return {"hyperscaler_capex_statements": rows,
-            "hyperscalers_without_a_statement": [r["ticker"] for r in capex_tracker(svc) if not r["statements"]]}
+            "hyperscalers_without_a_statement": [r["ticker"] for r in tracker if not r["statements"]]}
 
 
 def run_thesis_check(ai: AIClient, report_id: str, rep, conditions: list[str], extra: dict | None = None

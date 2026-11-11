@@ -41,8 +41,9 @@ def row_for(rep) -> dict:
         row.update(bear=rr["values"]["bear"], base=rr["values"]["base"], bull=rr["values"]["bull"],
                    pct_base=rr["pct"]["base"], pct_bull=rr["pct"]["bull"], mc_above=rr["prob_above_price"],
                    expected_return=rr["expected_return"], basis="DCF, 25/50/25")
-        if rr["fit_failed"]:
-            row["basis"] = "DCF failed its fit check"
+        if rr["fit_failed"]:  # a DCF the report itself rejects is not ranked: it goes last
+            row["basis"] = "DCF failed its fit check (not ranked)"
+            row["expected_return"] = None
     elif vd.fair_value and price:
         row.update(expected_return=vd.fair_value / price - 1, basis="blended fair value (no DCF)")
     cm = getattr(m, "company_metrics", None)

@@ -584,3 +584,33 @@ def test_expectations_warn_when_the_dcf_failed_its_fit_check():
     rep = fake_report("KO", price_factor=1.5)
     rep.model.valuation.model_fit_failed = True
     assert "failed its fit check" in expectations(rep)["base_line"]
+
+
+# --- review round 2 ------------------------------------------------------------------------------------------------------
+def test_a_passed_results_date_gives_a_note_not_a_crash():
+    from datetime import date
+    from types import SimpleNamespace
+    from desks.earnings_preview import build_preview
+    rep = SimpleNamespace(ticker="NVDA", research=None, news=None,
+                          company=SimpleNamespace(market=SimpleNamespace(next_earnings={"date": "2026-11-05"})))
+    p = build_preview(rep, SimpleNamespace(), today=date(2026, 11, 11))
+    assert p["days"] == -6 and "has passed" in p["notes"][0] and "consensus" not in p
+
+
+def test_a_friday_close_read_on_a_sunday_is_not_stale_but_a_missed_session_is():
+    from datetime import datetime, timezone
+    import datasources.market as mk
+    sunday = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
+    assert mk.last_close_time(sunday) == datetime(2026, 11, 6, 21, tzinfo=timezone.utc)
+    assert mk.last_close_time(datetime(2026, 11, 10, 15, tzinfo=timezone.utc)) == datetime(2026, 11, 9, 21, tzinfo=timezone.utc)
+
+
+def test_a_failed_fit_dcf_does_not_drive_the_rating_and_is_not_ranked():
+    from desks.pipeline import rating_evidence
+    from engine.compare_table import ranked
+    rep = fake_report("KO", price_factor=0.8)
+    rep.model.valuation.model_fit_failed = True
+    ev = rating_evidence(rep, rep.model)
+    assert ev["dcf_bull"] is None and ev["prob_above"] is None
+    row = ranked([rep])[0]
+    assert row["expected_return"] is None and "not ranked" in row["basis"]

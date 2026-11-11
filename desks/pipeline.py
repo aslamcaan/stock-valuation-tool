@@ -340,6 +340,8 @@ def rating_evidence(rep, model) -> dict | None:
     v = getattr(model, "valuation", None)
     if v is None or v.dcf_inputs is None:
         return None
+    if getattr(v, "model_fit_failed", False):  # a DCF left out of the blend must not decide the rating either
+        return {"fair_value": model.verdict.fair_value, "price": model.verdict.price, "dcf_bull": None, "prob_above": None}
     prob = None
     try:
         from engine.report_mc import mc_for
